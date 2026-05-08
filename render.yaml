@@ -37,7 +37,7 @@ services:
       - key: DEBUG
         value: "false"
       - key: CORS_ORIGINS
-        value: https://fintrade-frontend-three.vercel.app
+        value: "*"
       - key: OPENAI_API_KEY
         value: ""
       - key: USE_MILVUS
