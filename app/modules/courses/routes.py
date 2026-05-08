@@ -66,3 +66,18 @@ async def enroll(
     )
     enrollment = result.scalar_one()
     return schemas.EnrollmentResponse.model_validate(enrollment)
+
+@router.post("/lessons/{lesson_id}/audio")
+async def generate_audio(
+    lesson_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate audio from a text lesson (mock implementation)."""
+    import asyncio
+    await asyncio.sleep(1) # Simulate processing
+    return {
+        "status": "success",
+        "audio_url": f"https://example.com/audio/lesson_{lesson_id}.mp3",
+        "message": "Audio generated successfully."
+    }
