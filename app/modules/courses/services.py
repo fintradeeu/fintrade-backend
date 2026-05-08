@@ -73,6 +73,26 @@ async def create_course(db: AsyncSession, data: dict, created_by: int) -> Course
     return course
 
 
+async def update_course(db: AsyncSession, course_id: int, data: dict) -> Course:
+    """Update an existing course."""
+    result = await db.execute(
+        select(Course)
+        .options(selectinload(Course.modules).selectinload(CourseModule.lessons))
+        .where(Course.id == course_id)
+    )
+    course = result.scalar_one_or_none()
+    if course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    for key, value in data.items():
+        if value is not None and hasattr(course, key):
+            setattr(course, key, value)
+
+    await db.flush()
+    await db.refresh(course)
+    logger.info("course_updated", course_id=course.id, title=course.title)
+    return course
+
 # ── Modules ──────────────────────────────────────────────────────────
 async def create_module(db: AsyncSession, data: dict) -> CourseModule:
     """Admin creates a module for a course."""

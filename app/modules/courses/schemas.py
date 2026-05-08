@@ -73,6 +73,16 @@ class CourseCreate(BaseModel):
     is_published: bool = False
     instructor_id: Optional[int] = None
 
+class CourseUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    short_description: Optional[str] = Field(None, max_length=500)
+    thumbnail_url: Optional[str] = None
+    price: Optional[float] = None
+    difficulty_level: Optional[str] = None
+    duration_hours: Optional[int] = None
+    is_published: Optional[bool] = None
+
 
 class CourseListResponse(BaseModel):
     id: int

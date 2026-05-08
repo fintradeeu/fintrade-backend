@@ -163,6 +163,18 @@ async def create_course(
     return course_schemas.CourseDetailResponse.model_validate(course)
 
 
+@router.put("/courses/{course_id}", response_model=course_schemas.CourseDetailResponse)
+async def update_course(
+    course_id: int,
+    body: course_schemas.CourseUpdate,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a course (admin/faculty only)."""
+    course = await course_services.update_course(db, course_id, body.model_dump(exclude_unset=True))
+    return course_schemas.CourseDetailResponse.model_validate(course)
+
+
 @router.post("/modules", response_model=course_schemas.ModuleResponse, status_code=201)
 async def create_module(
     body: course_schemas.ModuleCreate,
