@@ -159,8 +159,27 @@ async def create_course(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new course (admin/faculty only)."""
-    course = await course_services.create_course(db, body.model_dump(), created_by=admin.id)
+    data = body.model_dump()
+    # Default to published if not explicitly set
+    if data.get("is_published") is None:
+        data["is_published"] = True
+    course = await course_services.create_course(db, data, created_by=admin.id)
     return course_schemas.CourseDetailResponse.model_validate(course)
+
+
+@router.post("/courses/publish-all")
+async def publish_all_courses(
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Publish all draft courses (admin only)."""
+    from sqlalchemy import update
+    from app.modules.courses.models import Course
+    result = await db.execute(
+        update(Course).where(Course.is_published == False).values(is_published=True)  # noqa: E712
+    )
+    await db.flush()
+    return {"published_count": result.rowcount, "message": f"{result.rowcount} courses published."}
 
 
 @router.put("/courses/{course_id}", response_model=course_schemas.CourseDetailResponse)
