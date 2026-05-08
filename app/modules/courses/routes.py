@@ -73,11 +73,53 @@ async def generate_audio(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate audio from a text lesson (mock implementation)."""
-    import asyncio
-    await asyncio.sleep(1) # Simulate processing
+    """Generate audio from a text lesson."""
+    import os
+    from bs4 import BeautifulSoup
+    from gtts import gTTS
+    from fastapi import HTTPException, status
+    from sqlalchemy import select
+    from app.modules.courses.models import Lesson
+
+    # Fetch lesson
+    result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
+    lesson = result.scalar_one_or_none()
+
+    if not lesson:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found")
+    
+    if lesson.content_type != "text":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only text lessons can be converted to audio.")
+    
+    if not lesson.content or not str(lesson.content).strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lesson has no text content to convert.")
+
+    # Strip HTML tags
+    soup = BeautifulSoup(lesson.content, "html.parser")
+    clean_text = soup.get_text(separator=" ", strip=True)
+
+    if not clean_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lesson content is empty after removing formatting.")
+
+    # Generate audio
+    audio_dir = "uploads/audio"
+    os.makedirs(audio_dir, exist_ok=True)
+    file_name = f"lesson_{lesson_id}.mp3"
+    file_path = os.path.join(audio_dir, file_name)
+    audio_url = f"/uploads/audio/{file_name}"
+
+    try:
+        tts = gTTS(clean_text, lang='en')
+        tts.save(file_path)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to generate audio: {str(e)}")
+
+    # Save url to database so we don't have to generate it again
+    lesson.video_url = audio_url
+    await db.commit()
+
     return {
         "status": "success",
-        "audio_url": f"https://example.com/audio/lesson_{lesson_id}.mp3",
+        "audio_url": audio_url,
         "message": "Audio generated successfully."
     }
