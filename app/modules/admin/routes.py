@@ -406,6 +406,37 @@ async def create_lecture(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=traceback.format_exc())
 
+@router.put("/lectures/{lecture_id}/start", response_model=lecture_schemas.LectureResponse)
+async def start_lecture(
+    lecture_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start a lecture (admin/faculty only)."""
+    lecture = await lecture_services.start_lecture(db, lecture_id)
+    return lecture_schemas.LectureResponse.model_validate(lecture)
+
+@router.put("/lectures/{lecture_id}/end", response_model=lecture_schemas.LectureResponse)
+async def end_lecture(
+    lecture_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """End a lecture (admin/faculty only)."""
+    lecture = await lecture_services.end_lecture(db, lecture_id)
+    return lecture_schemas.LectureResponse.model_validate(lecture)
+
+@router.post("/lectures/{lecture_id}/recordings", response_model=lecture_schemas.RecordingResponse, status_code=201)
+async def add_lecture_recording(
+    lecture_id: int,
+    body: lecture_schemas.RecordingCreate,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a recording to a completed lecture (admin/faculty only)."""
+    recording = await lecture_services.add_recording(db, lecture_id, body.recording_url)
+    return lecture_schemas.RecordingResponse.model_validate(recording)
+
 # ── Media Upload ────────────────────────────────────────────────────
 import os
 import uuid

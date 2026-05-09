@@ -70,3 +70,48 @@ async def join_lecture(db: AsyncSession, user_id: int, lecture_id: int) -> dict:
         "meeting_link": lecture.meeting_link,
         "message": f"Joined lecture: {lecture.title}",
     }
+
+
+async def start_lecture(db: AsyncSession, lecture_id: int) -> Lecture:
+    """Start a lecture (set is_live=True)."""
+    lecture = await db.get(Lecture, lecture_id)
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+    
+    lecture.is_live = True
+    lecture.is_completed = False
+    await db.commit()
+    await db.refresh(lecture)
+    logger.info("lecture_started", lecture_id=lecture.id)
+    return lecture
+
+
+async def end_lecture(db: AsyncSession, lecture_id: int) -> Lecture:
+    """End a lecture (set is_live=False, is_completed=True)."""
+    lecture = await db.get(Lecture, lecture_id)
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+    
+    lecture.is_live = False
+    lecture.is_completed = True
+    await db.commit()
+    await db.refresh(lecture)
+    logger.info("lecture_ended", lecture_id=lecture.id)
+    return lecture
+
+
+async def add_recording(db: AsyncSession, lecture_id: int, recording_url: str) -> LectureRecording:
+    """Add a recording to a completed lecture."""
+    lecture = await db.get(Lecture, lecture_id)
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+        
+    recording = LectureRecording(
+        lecture_id=lecture.id,
+        recording_url=recording_url,
+    )
+    db.add(recording)
+    await db.commit()
+    await db.refresh(recording)
+    logger.info("lecture_recording_added", lecture_id=lecture.id, recording_id=recording.id)
+    return recording
