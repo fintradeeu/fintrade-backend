@@ -32,6 +32,27 @@ ALTER_STATEMENTS = [
     "ALTER TABLE course_exam_questions ADD COLUMN IF NOT EXISTS category VARCHAR(100)",
     "ALTER TABLE course_exam_questions ADD COLUMN IF NOT EXISTS negative_marks FLOAT DEFAULT 0.0",
     "ALTER TABLE course_exam_questions ADD COLUMN IF NOT EXISTS explanation TEXT",
+
+    # --- entrance_exams ---
+    "ALTER TABLE entrance_exams ADD COLUMN IF NOT EXISTS questions_per_attempt INTEGER",
+    "ALTER TABLE entrance_exams ADD COLUMN IF NOT EXISTS start_time TIMESTAMPTZ",
+    "ALTER TABLE entrance_exams ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ",
+
+    # --- course_exams ---
+    "ALTER TABLE course_exams ADD COLUMN IF NOT EXISTS questions_per_attempt INTEGER",
+
+    # --- exam_attempts (Entrance) ---
+    "ALTER TABLE exam_attempts ADD COLUMN IF NOT EXISTS needs_manual_evaluation BOOLEAN DEFAULT FALSE",
+
+    # --- course_exam_attempts ---
+    "ALTER TABLE course_exam_attempts ADD COLUMN IF NOT EXISTS device_id VARCHAR(255)",
+    "ALTER TABLE course_exam_attempts ADD COLUMN IF NOT EXISTS needs_manual_evaluation BOOLEAN DEFAULT FALSE",
+
+    # --- exam_results (Entrance) ---
+    "ALTER TABLE exam_results ADD COLUMN IF NOT EXISTS evaluated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+
+    # --- course_exam_results ---
+    "ALTER TABLE course_exam_results ADD COLUMN IF NOT EXISTS evaluated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
 ]
 
 CREATE_TABLES = [

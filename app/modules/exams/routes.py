@@ -168,9 +168,15 @@ async def submit_exam(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit the entrance exam, auto-evaluate, and return the result."""
-    answers = [{"question_id": a.question_id, "selected_option_id": a.selected_option_id} for a in body.answers]
-    result = await services.submit_exam(db, current_user.id, body.attempt_id, answers)
-    return schemas.ExamResultResponse.model_validate(result)
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        answers = [{"question_id": a.question_id, "selected_option_id": a.selected_option_id} for a in body.answers]
+        result = await services.submit_exam(db, current_user.id, body.attempt_id, answers)
+        return schemas.ExamResultResponse.model_validate(result)
+    except Exception as e:
+        logger.error(f"Error in submit_exam: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/course/submit", response_model=schemas.ExamResultResponse)
 async def submit_course_exam(
@@ -179,9 +185,15 @@ async def submit_course_exam(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit the course exam, auto-evaluate, and return the result."""
-    answers = [{"question_id": a.question_id, "selected_option_id": a.selected_option_id, "descriptive_text": a.descriptive_text} for a in body.answers]
-    result = await services.submit_course_exam(db, current_user.id, body.attempt_id, answers)
-    return schemas.ExamResultResponse.model_validate(result)
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        answers = [{"question_id": a.question_id, "selected_option_id": a.selected_option_id, "descriptive_text": a.descriptive_text} for a in body.answers]
+        result = await services.submit_course_exam(db, current_user.id, body.attempt_id, answers)
+        return schemas.ExamResultResponse.model_validate(result)
+    except Exception as e:
+        logger.error(f"Error in submit_course_exam: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/result", response_model=schemas.ExamResultResponse)
