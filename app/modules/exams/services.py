@@ -474,7 +474,9 @@ async def submit_exam(db: AsyncSession, user_id: int, attempt_id: int, answers: 
     needs_manual_evaluation = False
 
     for question in questions:
-        total_marks += question.marks
+        q_marks = question.marks if question.marks is not None else 1.0
+        q_neg = question.negative_marks if question.negative_marks is not None else 0.0
+        total_marks += q_marks
         student_answer = student_answers.get(question.id)
         
         if question.question_type == "descriptive":
@@ -486,11 +488,11 @@ async def submit_exam(db: AsyncSession, user_id: int, attempt_id: int, answers: 
             correct_option = next((o for o in question.options if o.is_correct), None)
             if correct_option and student_answer.selected_option_id == correct_option.id:
                 student_answer.is_correct = True
-                obtained_marks += question.marks
+                obtained_marks += q_marks
                 correct_count += 1
             else:
                 student_answer.is_correct = False
-                obtained_marks -= question.negative_marks
+                obtained_marks -= q_neg
 
     percentage = (obtained_marks / total_marks * 100) if total_marks > 0 else 0.0
 
@@ -595,7 +597,9 @@ async def submit_course_exam(db: AsyncSession, user_id: int, attempt_id: int, an
     correct_count = 0
 
     for question in questions:
-        total_marks += question.marks
+        q_marks = question.marks if question.marks is not None else 1.0
+        q_neg = question.negative_marks if question.negative_marks is not None else 0.0
+        total_marks += q_marks
         student_answer = student_answers.get(question.id)
 
         if not student_answer or not student_answer.selected_option_id:
@@ -604,11 +608,11 @@ async def submit_course_exam(db: AsyncSession, user_id: int, attempt_id: int, an
         correct_option = next((o for o in question.options if o.is_correct), None)
         if correct_option and student_answer.selected_option_id == correct_option.id:
             student_answer.is_correct = True
-            obtained_marks += question.marks
+            obtained_marks += q_marks
             correct_count += 1
         else:
             student_answer.is_correct = False
-            obtained_marks -= question.negative_marks
+            obtained_marks -= q_neg
 
     percentage = (obtained_marks / total_marks * 100) if total_marks > 0 else 0.0
 
