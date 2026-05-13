@@ -42,3 +42,6 @@ aiofiles==23.2.1
 # AI / Audio Generation
 gTTS==2.5.1
 beautifulsoup4==4.12.3
+
+# Excel/CSV parsing for bulk question upload
+openpyxl==3.1.2

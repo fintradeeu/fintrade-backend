@@ -123,3 +123,23 @@ async def generate_audio(
         "audio_url": audio_url,
         "message": "Audio generated successfully."
     }
+
+# ── Assignments ──────────────────────────────────────────────────────
+@router.get("/{course_id}/assignments", response_model=List[schemas.AssignmentResponse])
+async def get_course_assignments(
+    course_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all assignments for a course."""
+    assignments = await services.get_course_assignments(db, course_id)
+    return [schemas.AssignmentResponse.model_validate(a) for a in assignments]
+
+@router.post("/assignments/submit", response_model=schemas.AssignmentSubmissionResponse, status_code=201)
+async def submit_assignment(
+    body: schemas.AssignmentSubmissionCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Student submits an assignment file."""
+    submission = await services.submit_assignment(db, body.model_dump(), current_user.id)
+    return schemas.AssignmentSubmissionResponse.model_validate(submission)

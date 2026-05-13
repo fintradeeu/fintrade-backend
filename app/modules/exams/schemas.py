@@ -15,9 +15,11 @@ class ExamOptionCreate(BaseModel):
 
 class ExamQuestionCreate(BaseModel):
     question_text: str = Field(..., min_length=1)
-    question_type: str = "mcq"
+    question_type: str = "mcq"  # mcq, true_false, multi_select, descriptive
     marks: float = 1.0
+    negative_marks: float = 0.0
     order: int = 0
+    category: Optional[str] = None
     explanation: Optional[str] = None
     options: List[ExamOptionCreate] = []
 
@@ -29,7 +31,9 @@ class EntranceExamCreate(BaseModel):
     duration_minutes: int = 60
     passing_score: float = 60.0
     is_active: bool = True
-    is_active: bool = True
+    questions_per_attempt: Optional[int] = None  # null = use all questions
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
     questions: List[ExamQuestionCreate] = []
 
 class CourseExamCreate(BaseModel):
@@ -42,6 +46,9 @@ class CourseExamCreate(BaseModel):
     passing_score: float = 60.0
     max_attempts: int = 3
     is_active: bool = True
+    questions_per_attempt: Optional[int] = None  # null = use all questions
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
     questions: List[ExamQuestionCreate] = []
 
 class ExamUpdate(BaseModel):
@@ -67,7 +74,9 @@ class ExamQuestionResponse(BaseModel):
     question_text: str
     question_type: str
     marks: float
+    negative_marks: float
     order: int
+    category: Optional[str] = None
     options: List[ExamOptionResponse] = []
 
     model_config = {"from_attributes": True}
@@ -81,6 +90,8 @@ class EntranceExamResponse(BaseModel):
     duration_minutes: int
     passing_score: float
     is_active: bool
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -99,7 +110,8 @@ class AttemptStartResponse(BaseModel):
 # ── Answer submission ────────────────────────────────────────────────
 class AnswerSubmit(BaseModel):
     question_id: int
-    selected_option_id: int
+    selected_option_id: Optional[int] = None
+    descriptive_text: Optional[str] = None
 
 
 class ExamSubmitRequest(BaseModel):
@@ -139,6 +151,8 @@ class CourseExamResponse(BaseModel):
     passing_score: float
     max_attempts: int
     is_active: bool
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -177,6 +191,51 @@ class CameraStatusRequest(BaseModel):
 class SessionCloseRequest(BaseModel):
     attempt_id: int
 
+
+# ── Exam Results & Reviews ───────────────────────────────────────────
+
+class ExamOptionReview(BaseModel):
+    id: int
+    option_text: str
+    is_correct: bool
+
+    model_config = {"from_attributes": True}
+
+class QuestionReview(BaseModel):
+    id: int
+    question_text: str
+    question_type: str
+    marks: float
+    negative_marks: float
+    explanation: Optional[str] = None
+    options: List[ExamOptionReview] = []
+    selected_option_id: Optional[int] = None
+    is_correct: Optional[bool] = None
+
+class AttemptReviewResponse(BaseModel):
+    attempt_id: int
+    exam_title: str
+    started_at: datetime
+    submitted_at: Optional[datetime] = None
+    total_questions: int
+    correct_answers: int
+    total_marks: float
+    obtained_marks: float
+    percentage: float
+    passed: bool
+    violations: List[str] = []
+    questions: List[QuestionReview] = []
+
+    model_config = {"from_attributes": True}
+
+class AttemptSummary(BaseModel):
+    id: int
+    submitted_at: Optional[datetime] = None
+    percentage: float = 0.0
+    passed: bool = False
+    is_violation_wasted: bool = False
+
+    model_config = {"from_attributes": True}
 
 # ── Skill Analysis ───────────────────────────────────────────────────
 

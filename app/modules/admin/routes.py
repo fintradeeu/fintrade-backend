@@ -2,7 +2,7 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import require_roles
@@ -215,6 +215,28 @@ async def create_lesson(
     lesson = await course_services.create_lesson(db, body.model_dump())
     return course_schemas.LessonResponse.model_validate(lesson)
 
+@router.post("/assignments", response_model=course_schemas.AssignmentResponse, status_code=201)
+async def create_assignment(
+    body: course_schemas.AssignmentCreate,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new assignment for a course (admin/faculty only)."""
+    assignment = await course_services.create_assignment(db, body.model_dump())
+    return course_schemas.AssignmentResponse.model_validate(assignment)
+
+@router.post("/assignments/grade", response_model=course_schemas.AssignmentSubmissionResponse)
+async def grade_assignment(
+    submission_id: int,
+    score: float,
+    feedback: str,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Grade an assignment submission (admin/faculty only)."""
+    submission = await course_services.grade_assignment_submission(db, submission_id, score, feedback)
+    return course_schemas.AssignmentSubmissionResponse.model_validate(submission)
+
 
 # ── Exam management ─────────────────────────────────────────────────
 @router.post("/exams/create", response_model=exam_schemas.EntranceExamResponse, status_code=201)
@@ -296,16 +318,88 @@ async def list_all_exams(
     }
 
 
+@router.get("/exams/questions-list")
+async def get_exam_questions(
+    exam_id: int = Query(..., description="Exam to fetch questions for"),
+    is_course: bool = Query(False, description="True for course exams, False for entrance exams"),
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all questions for a given exam (admin/faculty only)."""
+    questions = await exam_services.get_admin_exam_questions(db, exam_id, is_course)
+    result = []
+    for q in questions:
+        result.append({
+            "id": q.id,
+            "question_text": q.question_text,
+            "question_type": q.question_type,
+            "marks": q.marks,
+            "negative_marks": q.negative_marks,
+            "category": q.category or "",
+            "explanation": q.explanation or "",
+            "options": [
+                {"id": o.id, "option_text": o.option_text, "is_correct": o.is_correct}
+                for o in (q.options or [])
+            ]
+        })
+    return result
+
+
 @router.post("/exams/questions", response_model=schemas.MessageResponse, status_code=201)
 async def add_questions(
     exam_id: int = Query(..., description="Exam to add questions to"),
     body: List[exam_schemas.ExamQuestionCreate] = ...,
-    _admin: User = Depends(require_roles(["admin"])),
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """Add questions to an existing exam (admin only)."""
-    await exam_services.add_questions_to_exam(db, exam_id, [q.model_dump() for q in body])
+    """Add questions to an existing entrance exam (admin/faculty only)."""
+    await exam_services.add_questions_to_exam(db, exam_id, [q.model_dump() for q in body], is_course_exam=False)
     return schemas.MessageResponse(message=f"Added {len(body)} questions to exam {exam_id}")
+
+
+@router.post("/course-exams/questions", response_model=schemas.MessageResponse, status_code=201)
+async def add_course_questions(
+    exam_id: int = Query(..., description="Exam to add questions to"),
+    body: List[exam_schemas.ExamQuestionCreate] = ...,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add questions to an existing course exam (admin/faculty only)."""
+    await exam_services.add_questions_to_exam(db, exam_id, [q.model_dump() for q in body], is_course_exam=True)
+    return schemas.MessageResponse(message=f"Added {len(body)} questions to exam {exam_id}")
+
+
+@router.post("/exams/upload-questions", response_model=schemas.MessageResponse, status_code=201)
+async def upload_exam_questions(
+    exam_id: int = Query(..., description="Exam to add questions to"),
+    is_course_exam: bool = Query(False, description="True for course exams, False for entrance exams"),
+    file: UploadFile = File(...),
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk upload questions from CSV or Excel file (admin/faculty only).
+
+    Expected columns: question, option_a, option_b, option_c, option_d, correct_answer
+    Optional columns: marks, negative_marks, category, explanation, question_type
+    """
+    contents = await file.read()
+    questions = await exam_services.parse_questions_from_file(contents, file.filename or "upload.csv")
+    await exam_services.add_questions_to_exam(db, exam_id, questions, is_course_exam=is_course_exam)
+    return schemas.MessageResponse(message=f"Parsed and added {len(questions)} questions from '{file.filename}' to exam {exam_id}")
+
+
+@router.post("/exams/preview-upload")
+async def preview_upload(
+    file: UploadFile = File(...),
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+):
+    """Preview parsed questions from a CSV/Excel file without saving them.
+
+    Returns the parsed question list so the teacher can review before confirming.
+    """
+    contents = await file.read()
+    questions = await exam_services.parse_questions_from_file(contents, file.filename or "upload.csv")
+    return {"count": len(questions), "questions": questions}
 
 
 # ── Offer management ────────────────────────────────────────────────

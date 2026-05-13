@@ -234,3 +234,48 @@ async def get_enrolled_courses(db: AsyncSession, user_id: int) -> List[CourseEnr
         .order_by(CourseEnrollment.enrolled_at.desc())
     )
     return list(result.scalars().all())
+
+# ── Assignments ──────────────────────────────────────────────────────
+from app.modules.courses.models import Assignment, AssignmentSubmission
+
+async def create_assignment(db: AsyncSession, data: dict) -> Assignment:
+    assignment = Assignment(
+        course_id=data["course_id"],
+        module_id=data.get("module_id"),
+        title=data["title"],
+        description=data.get("description"),
+        due_date=data.get("due_date"),
+        max_score=data.get("max_score", 100.0)
+    )
+    db.add(assignment)
+    await db.flush()
+    await db.refresh(assignment)
+    return assignment
+
+async def get_course_assignments(db: AsyncSession, course_id: int) -> List[Assignment]:
+    result = await db.execute(
+        select(Assignment).where(Assignment.course_id == course_id)
+    )
+    return list(result.scalars().all())
+
+async def submit_assignment(db: AsyncSession, data: dict, user_id: int) -> AssignmentSubmission:
+    submission = AssignmentSubmission(
+        assignment_id=data["assignment_id"],
+        user_id=user_id,
+        file_url=data["file_url"]
+    )
+    db.add(submission)
+    await db.flush()
+    await db.refresh(submission)
+    return submission
+
+async def grade_assignment_submission(db: AsyncSession, submission_id: int, score: float, feedback: str) -> AssignmentSubmission:
+    submission = await db.get(AssignmentSubmission, submission_id)
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    submission.score = score
+    submission.teacher_feedback = feedback
+    submission.status = "graded"
+    await db.flush()
+    await db.refresh(submission)
+    return submission

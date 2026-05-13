@@ -135,3 +135,40 @@ class EnrollmentResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+# ── Assignments ──────────────────────────────────────────────────────
+class AssignmentCreate(BaseModel):
+    course_id: int
+    module_id: Optional[int] = None
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    max_score: float = 100.0
+
+class AssignmentResponse(BaseModel):
+    id: int
+    course_id: int
+    module_id: Optional[int] = None
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    max_score: float
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+class AssignmentSubmissionCreate(BaseModel):
+    assignment_id: int
+    file_url: str
+
+class AssignmentSubmissionResponse(BaseModel):
+    id: int
+    assignment_id: int
+    user_id: int
+    file_url: str
+    submitted_at: datetime
+    status: str
+    score: Optional[float] = None
+    teacher_feedback: Optional[str] = None
+
+    model_config = {"from_attributes": True}

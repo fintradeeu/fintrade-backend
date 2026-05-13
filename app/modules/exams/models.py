@@ -27,7 +27,10 @@ class EntranceExam(Base):
     duration_minutes = Column(Integer, default=60)
     passing_score = Column(Float, default=60.0)  # percentage
     max_attempts = Column(Integer, default=0)  # 0 = unlimited (with 30-day restriction)
+    questions_per_attempt = Column(Integer, nullable=True)  # null = all questions; otherwise random N from pool
     is_active = Column(Boolean, default=True)
+    start_time = Column(DateTime(timezone=True), nullable=True)
+    end_time = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),
@@ -52,6 +55,8 @@ class ExamQuestion(Base):
     question_type = Column(String(50), default="mcq")  # mcq, true_false
     marks = Column(Float, default=1.0)
     order = Column(Integer, default=0)
+    category = Column(String(100), nullable=True)
+    negative_marks = Column(Float, default=0.0)
     explanation = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -89,6 +94,7 @@ class ExamAttempt(Base):
     submitted_at = Column(DateTime(timezone=True), nullable=True)
     is_submitted = Column(Boolean, default=False)
     time_spent_seconds = Column(Integer, nullable=True)
+    needs_manual_evaluation = Column(Boolean, default=False)
 
     # relationships
     exam = relationship("EntranceExam", back_populates="attempts")
@@ -106,6 +112,7 @@ class ExamAnswer(Base):
     attempt_id = Column(Integer, ForeignKey("exam_attempts.id", ondelete="CASCADE"), nullable=False)
     question_id = Column(Integer, ForeignKey("exam_questions.id", ondelete="CASCADE"), nullable=False)
     selected_option_id = Column(Integer, ForeignKey("exam_options.id"), nullable=True)
+    descriptive_text = Column(Text, nullable=True)
     is_correct = Column(Boolean, nullable=True)
     answered_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -152,7 +159,10 @@ class CourseExam(Base):
     duration_minutes = Column(Integer, default=60)
     passing_score = Column(Float, default=60.0)  # percentage
     max_attempts = Column(Integer, default=3)
+    questions_per_attempt = Column(Integer, nullable=True)  # null = all questions; otherwise random N from pool
     is_active = Column(Boolean, default=True)
+    start_time = Column(DateTime(timezone=True), nullable=True)
+    end_time = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),
@@ -176,6 +186,8 @@ class CourseExamQuestion(Base):
     question_type = Column(String(50), default="mcq")  # mcq, true_false
     marks = Column(Float, default=1.0)
     order = Column(Integer, default=0)
+    category = Column(String(100), nullable=True)
+    negative_marks = Column(Float, default=0.0)
     explanation = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -204,6 +216,7 @@ class CourseExamAttempt(Base):
     is_submitted = Column(Boolean, default=False)
     time_spent_seconds = Column(Integer, nullable=True)
     device_id = Column(String(255), nullable=True) # For single device restriction
+    needs_manual_evaluation = Column(Boolean, default=False)
 
     # relationships
     exam = relationship("CourseExam", back_populates="attempts")
@@ -218,6 +231,7 @@ class CourseExamAnswer(Base):
     attempt_id = Column(Integer, ForeignKey("course_exam_attempts.id", ondelete="CASCADE"), nullable=False)
     question_id = Column(Integer, ForeignKey("course_exam_questions.id", ondelete="CASCADE"), nullable=False)
     selected_option_id = Column(Integer, ForeignKey("course_exam_options.id"), nullable=True)
+    descriptive_text = Column(Text, nullable=True)
     is_correct = Column(Boolean, nullable=True)
     answered_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
