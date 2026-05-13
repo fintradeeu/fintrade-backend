@@ -6,5 +6,7 @@ echo "📦 Installing Python dependencies..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
+echo "🗄️  Running database migrations..."
+python -m alembic upgrade head
+
 echo "✅ Build complete!"
-echo "ℹ️  Database init & seeding will run at application startup."
