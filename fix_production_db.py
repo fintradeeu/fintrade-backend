@@ -53,6 +53,9 @@ ALTER_STATEMENTS = [
 
     # --- course_exam_results ---
     "ALTER TABLE course_exam_results ADD COLUMN IF NOT EXISTS evaluated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+
+    # --- course_exam_answers ---
+    "ALTER TABLE course_exam_answers ADD COLUMN IF NOT EXISTS descriptive_text TEXT",
 ]
 
 CREATE_TABLES = [
