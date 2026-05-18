@@ -79,6 +79,15 @@ class Settings(BaseSettings):
     # ── Redis (optional) ─────────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # ── AWS (SNS for SMS, SES for Email) ─────────────────────────────
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "ap-south-1"
+    SES_SENDER_EMAIL: str = "noreply@thefintrade.com"
+
+    # ── OTP ──────────────────────────────────────────────────────────
+    OTP_EXPIRY_MINUTES: int = 5
+
     # ── Admin seed credentials ───────────────────────────────────────
     ADMIN_EMAIL: str = "admin@platform.com"
     ADMIN_PASSWORD: str = "admin123!"

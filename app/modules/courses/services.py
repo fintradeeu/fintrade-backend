@@ -116,6 +116,22 @@ async def create_module(db: AsyncSession, data: dict) -> CourseModule:
     return module
 
 
+async def update_module(db: AsyncSession, module_id: int, data: dict) -> CourseModule:
+    """Update an existing module."""
+    module = await db.get(CourseModule, module_id)
+    if module is None:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    for key, value in data.items():
+        if value is not None and hasattr(module, key):
+            setattr(module, key, value)
+
+    await db.flush()
+    await db.refresh(module)
+    logger.info("module_updated", module_id=module.id)
+    return module
+
+
 # ── Lessons ──────────────────────────────────────────────────────────
 async def create_lesson(db: AsyncSession, data: dict) -> Lesson:
     """Admin creates a lesson for a module."""
@@ -137,6 +153,22 @@ async def create_lesson(db: AsyncSession, data: dict) -> Lesson:
     await db.flush()
     await db.refresh(lesson)
     logger.info("lesson_created", lesson_id=lesson.id, module_id=lesson.module_id)
+    return lesson
+
+
+async def update_lesson(db: AsyncSession, lesson_id: int, data: dict) -> Lesson:
+    """Update an existing lesson."""
+    lesson = await db.get(Lesson, lesson_id)
+    if lesson is None:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+
+    for key, value in data.items():
+        if value is not None and hasattr(lesson, key):
+            setattr(lesson, key, value)
+
+    await db.flush()
+    await db.refresh(lesson)
+    logger.info("lesson_updated", lesson_id=lesson.id)
     return lesson
 
 

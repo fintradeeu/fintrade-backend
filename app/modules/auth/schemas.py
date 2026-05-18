@@ -22,6 +22,17 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
 
+class OTPVerifyRequest(BaseModel):
+    """Step 2 of login — submit the OTP code."""
+    otp_token: str = Field(..., description="Token returned from login step 1")
+    code: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
+
+
+class OTPResendRequest(BaseModel):
+    """Request to resend the OTP code."""
+    otp_token: str = Field(..., description="Token returned from login step 1")
+
+
 # ── Response schemas ─────────────────────────────────────────────────
 class RoleResponse(BaseModel):
     id: int
@@ -49,6 +60,14 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+
+class OTPPendingResponse(BaseModel):
+    """Returned after successful password validation — OTP has been sent."""
+    message: str = "Verification code sent"
+    otp_token: str
+    expires_in_seconds: int
+    channels: List[str] = []  # e.g. ["email", "sms"] or ["email"]
 
 
 class MessageResponse(BaseModel):
