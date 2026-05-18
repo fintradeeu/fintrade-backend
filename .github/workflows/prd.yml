@@ -1,33 +1,50 @@
-name: todo-app
+name: fintrade-backend-deploy
+
 on:
   push:
-    branches: [ prd ]
-
+    branches:
+      - prd
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Install SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+      - name: Deploy Backend
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
 
-    - name: Install SSH keys
-      run: |
-        install -m 600 -D /dev/null ~/.ssh/id_rsa
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-        ssh-keyscan -H ${{ secrets.SSH_HOST }} > ~/.ssh/known_hosts
+            echo "---------------- Change Directory ----------------"
+            cd ${{ secrets.WORK_DIR }}
+            echo "---------------- Git Pull ----------------"
+            git pull origin ${{ secrets.BRANCH }}
 
-    - name: deploy
-      run: |
-        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
-          echo "---------- Changing Directory ---------------"
-          cd ${{ secrets.WORK_DIR }}
-          
-          echo "----------------- Git Pull ------------------"
-          git pull origin ${{ secrets.BRANCH }}
+            echo "---------------- Install Pip ----------------"
 
-    
-          echo "----------------------- Pipeline executed Successfully ----------------------------"
-        EOF
+            docker exec -i ${{ secrets.CONT_NAME }} pip install --upgrade pip
 
-    - name: Cleanup
-      run: rm -rf ~/.ssh
+            echo "---------------- Install Requirements ----------------"
+
+            docker exec -i ${{ secrets.CONT_NAME }} pip install -r requirements.txt
+
+            echo "---------------- Alembic Migration ----------------"
+
+            docker exec -i ${{ secrets.CONT_NAME }} python -m alembic upgrade head
+
+            echo "---------------- Restart-------------------"
+
+            docker restart ${{ secrets.CONT_NAME }}
+
+            echo "---------------- Deployment Successful ----------------"
+
+          EOF
+
+      - name: Cleanup SSH
+        run: |
+          rm -rf ~/.ssh
