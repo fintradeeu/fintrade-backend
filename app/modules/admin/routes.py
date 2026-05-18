@@ -205,6 +205,18 @@ async def create_module(
     return course_schemas.ModuleResponse.model_validate(module)
 
 
+@router.put("/modules/{module_id}", response_model=course_schemas.ModuleResponse)
+async def update_module(
+    module_id: int,
+    body: course_schemas.ModuleUpdate,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a course module (admin/faculty only)."""
+    module = await course_services.update_module(db, module_id, body.model_dump(exclude_unset=True))
+    return course_schemas.ModuleResponse.model_validate(module)
+
+
 @router.post("/lessons", response_model=course_schemas.LessonResponse, status_code=201)
 async def create_lesson(
     body: course_schemas.LessonCreate,
@@ -214,6 +226,19 @@ async def create_lesson(
     """Create a lesson in a module (admin/faculty only)."""
     lesson = await course_services.create_lesson(db, body.model_dump())
     return course_schemas.LessonResponse.model_validate(lesson)
+
+
+@router.put("/lessons/{lesson_id}", response_model=course_schemas.LessonResponse)
+async def update_lesson(
+    lesson_id: int,
+    body: course_schemas.LessonUpdate,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a lesson (admin/faculty only)."""
+    lesson = await course_services.update_lesson(db, lesson_id, body.model_dump(exclude_unset=True))
+    return course_schemas.LessonResponse.model_validate(lesson)
+
 
 @router.post("/assignments", response_model=course_schemas.AssignmentResponse, status_code=201)
 async def create_assignment(

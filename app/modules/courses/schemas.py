@@ -24,6 +24,16 @@ class LessonCreate(BaseModel):
     is_published: bool = False
 
 
+class LessonUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    content: Optional[str] = None
+    content_type: Optional[str] = Field(None, max_length=50)
+    video_url: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    order: Optional[int] = None
+    is_published: Optional[bool] = None
+
+
 class LessonResponse(BaseModel):
     id: int
     module_id: int
@@ -46,6 +56,13 @@ class ModuleCreate(BaseModel):
     description: Optional[str] = None
     order: int = 0
     is_published: bool = False
+
+
+class ModuleUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    order: Optional[int] = None
+    is_published: Optional[bool] = None
 
 
 class ModuleResponse(BaseModel):
