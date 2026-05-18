@@ -1,5 +1,4 @@
 name: fintrade-backend-deploy
-
 on:
   push:
     branches:
@@ -18,32 +17,30 @@ jobs:
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
       - name: Deploy Backend
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
-
-            echo "---------------- Change Directory ----------------"
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            set -e
+            echo '---------------- Change Directory ----------------'
             cd ${{ secrets.WORK_DIR }}
-            echo "---------------- Git Pull ----------------"
+            echo '---------------- Git Pull ----------------'
             git pull origin ${{ secrets.BRANCH }}
-
-            echo "---------------- Install Pip ----------------"
+            echo '---------------- Upgrade Pip ----------------'
 
             docker exec -i ${{ secrets.CONT_NAME }} pip install --upgrade pip
 
-            echo "---------------- Install Requirements ----------------"
+            echo '---------------- Install Requirements ----------------'
 
             docker exec -i ${{ secrets.CONT_NAME }} pip install -r requirements.txt
 
-            echo "---------------- Alembic Migration ----------------"
+            echo '---------------- Alembic Migration ----------------'
 
             docker exec -i ${{ secrets.CONT_NAME }} python -m alembic upgrade head
 
-            echo "---------------- Restart-------------------"
+            echo '---------------- Restart Container ----------------'
 
             docker restart ${{ secrets.CONT_NAME }}
 
-            echo "---------------- Deployment Successful ----------------"
-
-          EOF
+            echo '---------------- Deployment Successful ----------------'
+          "
 
       - name: Cleanup SSH
         run: |
