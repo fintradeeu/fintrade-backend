@@ -96,3 +96,20 @@ class Session(Base):
     expires_at = Column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User", back_populates="sessions")
+
+
+class OTPCode(Base):
+    """Stores one-time verification codes for two-step authentication."""
+    __tablename__ = "otp_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    code = Column(String(6), nullable=False)
+    otp_token = Column(String(64), nullable=False, unique=True, index=True)
+    channel = Column(String(10), default="both")  # "sms", "email", "both"
+    is_used = Column(Boolean, default=False)
+    attempts = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    user = relationship("User")

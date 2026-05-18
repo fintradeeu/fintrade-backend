@@ -38,14 +38,31 @@ async def register(
     )
 
 
-@router.post("/login", response_model=schemas.TokenResponse)
+@router.post("/login", response_model=schemas.OTPPendingResponse)
 async def login(
     body: schemas.LoginRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Authenticate and return JWT tokens."""
+    """Step 1 — Validate credentials and send OTP via SMS + Email."""
     user = await services.authenticate_user(db, body.email, body.password)
+    otp_result = await services.generate_and_send_otp(db, user)
+    return schemas.OTPPendingResponse(
+        message="Verification code sent",
+        otp_token=otp_result["otp_token"],
+        expires_in_seconds=otp_result["expires_in_seconds"],
+        channels=otp_result["channels"],
+    )
+
+
+@router.post("/verify-otp", response_model=schemas.TokenResponse)
+async def verify_otp(
+    body: schemas.OTPVerifyRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Step 2 — Verify OTP code and return JWT tokens."""
+    user = await services.verify_otp(db, body.otp_token, body.code)
     tokens = await services.create_session(
         db,
         user,
@@ -56,6 +73,21 @@ async def login(
         access_token=tokens["access_token"],
         refresh_token=tokens["refresh_token"],
         user=schemas.UserResponse.model_validate(user),
+    )
+
+
+@router.post("/resend-otp", response_model=schemas.OTPPendingResponse)
+async def resend_otp(
+    body: schemas.OTPResendRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Resend a new OTP code (invalidates the previous one)."""
+    otp_result = await services.resend_otp(db, body.otp_token)
+    return schemas.OTPPendingResponse(
+        message="New verification code sent",
+        otp_token=otp_result["otp_token"],
+        expires_in_seconds=otp_result["expires_in_seconds"],
+        channels=otp_result["channels"],
     )
 
 

@@ -1,5 +1,7 @@
 """Auth module — business logic / service layer."""
 
+import secrets
+import string
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -15,10 +17,18 @@ from app.core.security import (
     verify_password,
 )
 from app.config import settings
-from app.modules.auth.models import Role, Session, User
+from app.modules.auth.models import OTPCode, Role, Session, User
 from app.utils.logger import get_logger
+from app.utils.aws_notifications import (
+    build_otp_email_html,
+    build_otp_sms_message,
+    send_email,
+    send_sms,
+)
 
 logger = get_logger(__name__)
+
+MAX_OTP_ATTEMPTS = 5  # Lock after 5 wrong attempts
 
 
 async def get_or_create_role(db: AsyncSession, role_name: str) -> Role:
@@ -83,6 +93,172 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
         )
     return user
 
+
+# ── OTP helpers ──────────────────────────────────────────────────────
+
+def _generate_otp_code() -> str:
+    """Generate a cryptographically secure 6-digit OTP."""
+    return "".join(secrets.choice(string.digits) for _ in range(6))
+
+
+def _generate_otp_token() -> str:
+    """Generate a unique token to identify an OTP session."""
+    return secrets.token_hex(32)
+
+
+async def generate_and_send_otp(db: AsyncSession, user: User) -> dict:
+    """Create an OTP, persist it, and send via SMS + Email.
+
+    Returns:
+        dict with otp_token, expires_in_seconds, and channels used
+    """
+    code = _generate_otp_code()
+    otp_token = _generate_otp_token()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
+
+    # Store in DB
+    otp = OTPCode(
+        user_id=user.id,
+        code=code,
+        otp_token=otp_token,
+        channel="both",
+        expires_at=expires_at,
+    )
+    db.add(otp)
+    await db.flush()
+
+    # Send via both channels
+    channels_sent = []
+
+    # Email — always sent (email is mandatory in registration)
+    email_html = build_otp_email_html(code, user.full_name)
+    email_sent = await send_email(
+        to_email=user.email,
+        subject=f"{code} — Your FinTrade Verification Code",
+        body_html=email_html,
+    )
+    if email_sent:
+        channels_sent.append("email")
+
+    # SMS — only if phone number exists
+    if user.phone:
+        phone = user.phone if user.phone.startswith("+") else f"+91{user.phone}"
+        sms_message = build_otp_sms_message(code)
+        sms_sent = await send_sms(phone_number=phone, message=sms_message)
+        if sms_sent:
+            channels_sent.append("sms")
+
+    if not channels_sent:
+        # Neither channel worked — log but don't block (for dev/testing)
+        logger.warning("otp_delivery_failed", user_id=user.id, code=code)
+
+    logger.info("otp_generated", user_id=user.id, channels=channels_sent)
+
+    return {
+        "otp_token": otp_token,
+        "expires_in_seconds": settings.OTP_EXPIRY_MINUTES * 60,
+        "channels": channels_sent,
+    }
+
+
+async def verify_otp(db: AsyncSession, otp_token: str, code: str) -> User:
+    """Validate an OTP code and return the associated user.
+
+    Raises HTTPException on invalid/expired/used codes.
+    """
+    result = await db.execute(
+        select(OTPCode).where(OTPCode.otp_token == otp_token)
+    )
+    otp = result.scalar_one_or_none()
+
+    if otp is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification session",
+        )
+
+    if otp.is_used:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This code has already been used",
+        )
+
+    if datetime.now(timezone.utc) > otp.expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code has expired. Please request a new one.",
+        )
+
+    if otp.attempts >= MAX_OTP_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many incorrect attempts. Please request a new code.",
+        )
+
+    if otp.code != code:
+        otp.attempts += 1
+        await db.flush()
+        remaining = MAX_OTP_ATTEMPTS - otp.attempts
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Incorrect code. {remaining} attempt(s) remaining.",
+        )
+
+    # Mark as used
+    otp.is_used = True
+    await db.flush()
+
+    # Fetch the full user with roles
+    user_result = await db.execute(
+        select(User).options(selectinload(User.roles)).where(User.id == otp.user_id)
+    )
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    logger.info("otp_verified", user_id=user.id)
+    return user
+
+
+async def resend_otp(db: AsyncSession, otp_token: str) -> dict:
+    """Invalidate the old OTP and send a fresh one.
+
+    Returns the same dict structure as generate_and_send_otp.
+    """
+    result = await db.execute(
+        select(OTPCode).where(OTPCode.otp_token == otp_token)
+    )
+    otp = result.scalar_one_or_none()
+
+    if otp is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification session",
+        )
+
+    # Mark old OTP as used
+    otp.is_used = True
+    await db.flush()
+
+    # Fetch user
+    user_result = await db.execute(
+        select(User).options(selectinload(User.roles)).where(User.id == otp.user_id)
+    )
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # Generate new OTP
+    return await generate_and_send_otp(db, user)
+
+
+# ── Session management ───────────────────────────────────────────────
 
 async def create_session(
     db: AsyncSession,
