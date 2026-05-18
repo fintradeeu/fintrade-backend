@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Union
 
 from app.core.security import get_current_user, oauth2_scheme
 from app.db.database import get_db
@@ -38,14 +39,32 @@ async def register(
     )
 
 
-@router.post("/login", response_model=schemas.OTPPendingResponse)
+@router.post("/login", response_model=Union[schemas.TokenResponse, schemas.OTPPendingResponse])
 async def login(
     body: schemas.LoginRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Step 1 — Validate credentials and send OTP via SMS + Email."""
+    """Step 1 — Validate credentials and send OTP via SMS + Email (Bypassed for Admins)."""
     user = await services.authenticate_user(db, body.email, body.password)
+    
+    # Check if user is an admin
+    is_admin = any(role.name == "admin" for role in user.roles)
+    if is_admin:
+        # Bypass OTP for admins and return tokens directly
+        tokens = await services.create_session(
+            db,
+            user,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+        return schemas.TokenResponse(
+            access_token=tokens["access_token"],
+            refresh_token=tokens["refresh_token"],
+            user=schemas.UserResponse.model_validate(user),
+        )
+
+    # For normal users, generate and send OTP
     otp_result = await services.generate_and_send_otp(db, user)
     return schemas.OTPPendingResponse(
         message="Verification code sent",
