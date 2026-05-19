@@ -97,6 +97,37 @@ from fastapi.staticfiles import StaticFiles
 # Ensure uploads directory exists
 os.makedirs("uploads", exist_ok=True)
 
+# ── System Routes (External API) ────────────────────────────────────
+import subprocess
+from fastapi import HTTPException
+
+@app.post("/system/db/migrate", tags=["System"])
+async def trigger_db_migration(secret_key: str):
+    """Trigger Alembic migrations from external request (e.g. Postman)."""
+    if secret_key != "fintrade_migrate_2026":
+        raise HTTPException(status_code=403, detail="Invalid secret key")
+    
+    try:
+        # Run alembic upgrade head
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return {
+            "status": "success",
+            "message": "Migration completed successfully",
+            "output": result.stdout
+        }
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Migration failed. Exit code: {e.returncode}. Output: {e.stdout}. Error: {e.stderr}"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
 # Mount static uploads
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
