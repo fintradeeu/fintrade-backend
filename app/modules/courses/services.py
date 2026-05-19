@@ -17,12 +17,15 @@ logger = get_logger(__name__)
 
 # ── Courses ──────────────────────────────────────────────────────────
 async def list_courses(
-    db: AsyncSession, skip: int = 0, limit: int = 20, published_only: bool = True
+    db: AsyncSession, skip: int = 0, limit: int = 20, published_only: bool = True,
+    is_featured: Optional[bool] = None
 ) -> List[Course]:
     """Return paginated list of courses."""
     query = select(Course).offset(skip).limit(limit).order_by(Course.created_at.desc())
     if published_only:
         query = query.where(Course.is_published == True)  # noqa: E712
+    if is_featured is not None:
+        query = query.where(Course.is_featured == is_featured)
     result = await db.execute(query)
     return list(result.scalars().all())
 

@@ -1,8 +1,8 @@
 """Courses module — API routes."""
 
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import PaginationParams
@@ -17,10 +17,11 @@ router = APIRouter(prefix="/courses", tags=["Courses"])
 @router.get("", response_model=List[schemas.CourseListResponse])
 async def list_courses(
     pagination: PaginationParams = Depends(),
+    is_featured: Optional[bool] = Query(None, description="Filter by featured status"),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all published courses."""
-    courses = await services.list_courses(db, skip=pagination.skip, limit=pagination.limit)
+    """List all published courses. Use ?is_featured=true for landing page."""
+    courses = await services.list_courses(db, skip=pagination.skip, limit=pagination.limit, is_featured=is_featured)
     return [schemas.CourseListResponse.model_validate(c) for c in courses]
 
 

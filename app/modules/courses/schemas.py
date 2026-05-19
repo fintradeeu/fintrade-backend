@@ -1,7 +1,7 @@
 """Courses module — Pydantic schemas."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -85,9 +85,12 @@ class CourseCreate(BaseModel):
     short_description: Optional[str] = Field(None, max_length=500)
     thumbnail_url: Optional[str] = None
     price: float = 0.0
+    original_price: Optional[float] = None
     difficulty_level: str = "beginner"
     duration_hours: Optional[int] = None
     is_published: bool = False
+    is_featured: bool = False
+    marketing_highlights: Optional[List[str]] = None
     instructor_id: Optional[int] = None
 
 class CourseUpdate(BaseModel):
@@ -96,9 +99,12 @@ class CourseUpdate(BaseModel):
     short_description: Optional[str] = Field(None, max_length=500)
     thumbnail_url: Optional[str] = None
     price: Optional[float] = None
+    original_price: Optional[float] = None
     difficulty_level: Optional[str] = None
     duration_hours: Optional[int] = None
     is_published: Optional[bool] = None
+    is_featured: Optional[bool] = None
+    marketing_highlights: Optional[List[str]] = None
 
 
 class CourseListResponse(BaseModel):
@@ -108,9 +114,12 @@ class CourseListResponse(BaseModel):
     short_description: Optional[str] = None
     thumbnail_url: Optional[str] = None
     price: float
+    original_price: Optional[float] = None
     difficulty_level: str
     duration_hours: Optional[int] = None
     is_published: bool
+    is_featured: bool = False
+    marketing_highlights: Optional[List[str]] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -124,9 +133,12 @@ class CourseDetailResponse(BaseModel):
     short_description: Optional[str] = None
     thumbnail_url: Optional[str] = None
     price: float
+    original_price: Optional[float] = None
     difficulty_level: str
     duration_hours: Optional[int] = None
     is_published: bool
+    is_featured: bool = False
+    marketing_highlights: Optional[List[str]] = None
     modules: List[ModuleResponse] = []
     created_at: datetime
     updated_at: Optional[datetime] = None
