@@ -121,12 +121,15 @@ def trigger_db_migration(secret_key: str):
             
         alembic_cfg = Config(os.path.join(root_dir, "alembic.ini"))
         
-        # Run upgrade head programmatically
+        # 1. Generate the migration script dynamically on the server
+        command.revision(alembic_cfg, autogenerate=True, message="auto-migrate-server")
+        
+        # 2. Run upgrade head programmatically to apply it
         command.upgrade(alembic_cfg, "head")
         
         return {
             "status": "success",
-            "message": "Migration completed successfully"
+            "message": "Migration generated and applied successfully"
         }
     except Exception as e:
         error_details = traceback.format_exc()
