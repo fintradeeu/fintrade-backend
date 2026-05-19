@@ -118,7 +118,7 @@ class CourseListResponse(BaseModel):
     difficulty_level: str
     duration_hours: Optional[int] = None
     is_published: bool
-    is_featured: bool = False
+    is_featured: Optional[bool] = False
     marketing_highlights: Optional[List[str]] = None
     created_at: datetime
 
@@ -137,7 +137,7 @@ class CourseDetailResponse(BaseModel):
     difficulty_level: str
     duration_hours: Optional[int] = None
     is_published: bool
-    is_featured: bool = False
+    is_featured: Optional[bool] = False
     marketing_highlights: Optional[List[str]] = None
     modules: List[ModuleResponse] = []
     created_at: datetime
