@@ -98,8 +98,8 @@ from fastapi.staticfiles import StaticFiles
 os.makedirs("uploads", exist_ok=True)
 
 # ── System Routes (External API) ────────────────────────────────────
-import subprocess
 from fastapi import HTTPException
+import traceback
 
 @app.post("/system/db/migrate", tags=["System"])
 async def trigger_db_migration(secret_key: str):
@@ -108,25 +108,29 @@ async def trigger_db_migration(secret_key: str):
         raise HTTPException(status_code=403, detail="Invalid secret key")
     
     try:
-        # Run alembic upgrade head
-        result = subprocess.run(
-            ["alembic", "upgrade", "head"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        from alembic.config import Config
+        from alembic import command
+        import os
+        
+        # Determine the root directory (where alembic.ini is located)
+        # Assuming app is a package inside the root directory
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if not os.path.exists(os.path.join(root_dir, "alembic.ini")):
+            # Fallback to current working directory
+            root_dir = os.getcwd()
+            
+        alembic_cfg = Config(os.path.join(root_dir, "alembic.ini"))
+        
+        # Run upgrade head programmatically
+        command.upgrade(alembic_cfg, "head")
+        
         return {
             "status": "success",
-            "message": "Migration completed successfully",
-            "output": result.stdout
+            "message": "Migration completed successfully"
         }
-    except subprocess.CalledProcessError as e:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Migration failed. Exit code: {e.returncode}. Output: {e.stdout}. Error: {e.stderr}"
-        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+        error_details = traceback.format_exc()
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}\n{error_details}")
 
 # Mount static uploads
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
