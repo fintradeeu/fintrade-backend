@@ -102,7 +102,7 @@ from fastapi import HTTPException
 import traceback
 
 @app.post("/system/db/migrate", tags=["System"])
-async def trigger_db_migration(secret_key: str):
+def trigger_db_migration(secret_key: str):
     """Trigger Alembic migrations from external request (e.g. Postman)."""
     if secret_key != "fintrade_migrate_2026":
         raise HTTPException(status_code=403, detail="Invalid secret key")
