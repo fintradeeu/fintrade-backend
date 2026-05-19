@@ -94,10 +94,16 @@ async def get_current_user(
 
 
 def require_roles(allowed_roles: List[str]):
-    """Factory that returns a dependency checking the user has any of the listed roles."""
+    """Factory that returns a dependency checking the user has any of the listed roles.
+
+    Admins are implicitly granted all roles — they always pass this check.
+    """
 
     async def _checker(current_user=Depends(get_current_user)):
         user_role_names = {r.name for r in current_user.roles}
+        # Admin is a superset — always passes any role check
+        if "admin" in user_role_names:
+            return current_user
         if not user_role_names.intersection(set(allowed_roles)):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
