@@ -38,6 +38,16 @@ async def get_article(
 
 # ── Admin endpoints ─────────────────────────────────────────────────
 
+@router.get("/admin/news/stats", response_model=schemas.NewsStatsResponse)
+async def news_stats(
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get news statistics (admin only)."""
+    stats = await services.get_news_stats(db)
+    return schemas.NewsStatsResponse(**stats)
+
+
 @router.get("/admin/news", response_model=List[schemas.NewsResponse])
 async def list_all_news(
     skip: int = Query(0, ge=0),
@@ -83,12 +93,3 @@ async def delete_article(
     await services.delete_article(db, article_id)
     return schemas.MessageResponse(message="Article deleted successfully")
 
-
-@router.get("/admin/news/stats", response_model=schemas.NewsStatsResponse)
-async def news_stats(
-    _admin: User = Depends(require_roles(["admin"])),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get news statistics (admin only)."""
-    stats = await services.get_news_stats(db)
-    return schemas.NewsStatsResponse(**stats)

@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     """Central configuration for the LMS backend."""
 
     # ── App ──────────────────────────────────────────────────────────
-    APP_NAME: str = "FItTrade LMS"
+    APP_NAME: str = "FinTrade LMS"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000,http://localhost:5173,https://fintrade-frontend-three.vercel.app"

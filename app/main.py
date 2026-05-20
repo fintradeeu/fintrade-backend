@@ -1,4 +1,4 @@
-"""FItTrade LMS — FastAPI application entry point."""
+"""FinTrade LMS — FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
 

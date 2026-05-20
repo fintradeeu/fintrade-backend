@@ -101,8 +101,8 @@ def require_roles(allowed_roles: List[str]):
 
     async def _checker(current_user=Depends(get_current_user)):
         user_role_names = {r.name for r in current_user.roles}
-        # Admin is a superset — always passes any role check
-        if "admin" in user_role_names:
+        # Admin / Super-Admin is a superset — always passes any role check
+        if user_role_names.intersection({"admin", "super_admin"}):
             return current_user
         if not user_role_names.intersection(set(allowed_roles)):
             raise HTTPException(
