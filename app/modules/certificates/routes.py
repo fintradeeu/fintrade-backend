@@ -22,6 +22,15 @@ async def generate_certificate(
     cert = await services.generate_certificate(db, current_user.id, req.course_id)
     return schemas.CertificateResponse.model_validate(cert)
 
+@router.get("", response_model=list[schemas.CertificateResponse])
+async def list_user_certificates(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all certificates for the currently logged-in student."""
+    certs = await services.list_certificates_for_user(db, current_user.id)
+    return [schemas.CertificateResponse.model_validate(c) for c in certs]
+
 
 @router.get("/{cert_id}", response_model=schemas.CertificateResponse)
 async def get_certificate(
