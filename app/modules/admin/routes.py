@@ -240,6 +240,28 @@ async def update_lesson(
     return course_schemas.LessonResponse.model_validate(lesson)
 
 
+@router.delete("/modules/{module_id}", response_model=schemas.MessageResponse)
+async def delete_module(
+    module_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a module and all its lessons (admin/faculty only)."""
+    await course_services.delete_module(db, module_id)
+    return schemas.MessageResponse(message="Module deleted successfully")
+
+
+@router.delete("/lessons/{lesson_id}", response_model=schemas.MessageResponse)
+async def delete_lesson(
+    lesson_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a lesson (admin/faculty only)."""
+    await course_services.delete_lesson(db, lesson_id)
+    return schemas.MessageResponse(message="Lesson deleted successfully")
+
+
 @router.post("/assignments", response_model=course_schemas.AssignmentResponse, status_code=201)
 async def create_assignment(
     body: course_schemas.AssignmentCreate,

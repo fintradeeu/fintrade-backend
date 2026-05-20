@@ -175,6 +175,26 @@ async def update_lesson(db: AsyncSession, lesson_id: int, data: dict) -> Lesson:
     return lesson
 
 
+async def delete_module(db: AsyncSession, module_id: int) -> None:
+    """Delete a module and all its lessons (cascade)."""
+    module = await db.get(CourseModule, module_id)
+    if module is None:
+        raise HTTPException(status_code=404, detail="Module not found")
+    await db.delete(module)
+    await db.flush()
+    logger.info("module_deleted", module_id=module_id)
+
+
+async def delete_lesson(db: AsyncSession, lesson_id: int) -> None:
+    """Delete a single lesson."""
+    lesson = await db.get(Lesson, lesson_id)
+    if lesson is None:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    await db.delete(lesson)
+    await db.flush()
+    logger.info("lesson_deleted", lesson_id=lesson_id)
+
+
 # ── Enrollment ───────────────────────────────────────────────────────
 async def enroll_user(
     db: AsyncSession,
