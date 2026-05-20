@@ -45,32 +45,20 @@ async def login(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Step 1 — Validate credentials and send OTP via SMS + Email (Bypassed for Admins)."""
+    """Step 1 — Validate credentials and bypass OTP for all users (Development Mode)."""
     user = await services.authenticate_user(db, body.email, body.password)
     
-    # Check if user is an admin
-    is_admin = any(role.name == "admin" for role in user.roles)
-    if is_admin:
-        # Bypass OTP for admins and return tokens directly
-        tokens = await services.create_session(
-            db,
-            user,
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-        )
-        return schemas.TokenResponse(
-            access_token=tokens["access_token"],
-            refresh_token=tokens["refresh_token"],
-            user=schemas.UserResponse.model_validate(user),
-        )
-
-    # For normal users, generate and send OTP
-    otp_result = await services.generate_and_send_otp(db, user)
-    return schemas.OTPPendingResponse(
-        message="Verification code sent",
-        otp_token=otp_result["otp_token"],
-        expires_in_seconds=otp_result["expires_in_seconds"],
-        channels=otp_result["channels"],
+    # TEMPORARY: Bypass OTP for ALL users while waiting on AWS verification
+    tokens = await services.create_session(
+        db,
+        user,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return schemas.TokenResponse(
+        access_token=tokens["access_token"],
+        refresh_token=tokens["refresh_token"],
+        user=schemas.UserResponse.model_validate(user),
     )
 
 
