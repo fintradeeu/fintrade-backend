@@ -97,6 +97,7 @@ async def get_chat_history(db: AsyncSession, user_id: int) -> List[ChatSession]:
     result = await db.execute(
         select(ChatSession)
         .options(selectinload(ChatSession.messages))
+        .where(ChatSession.user_id == user_id)
         .order_by(ChatSession.updated_at.desc())
     )
     return list(result.scalars().all())

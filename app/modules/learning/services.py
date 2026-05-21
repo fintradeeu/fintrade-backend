@@ -4,8 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
+from sqlalchemy import func
+
 from app.modules.learning.models import LessonCompletion
-from app.modules.courses.models import CourseEnrollment, Course, Lesson
+from app.modules.courses.models import CourseEnrollment, Course, CourseModule, Lesson
 from app.modules.lectures.models import Lecture
 from app.modules.learning.schemas import LearningDashboardResponse, EnrolledCourseProgress, CompletedLessonItem, UpcomingLectureItem
 
@@ -101,8 +103,29 @@ async def mark_lesson_completed(db: AsyncSession, user_id: int, course_id: int, 
     enrollment = enroll_res.scalar_one_or_none()
     
     if enrollment:
-        # naive +5% for demo, real implementation counts lessons
-        enrollment.progress_percent = min(100.0, enrollment.progress_percent + 5.0)
+        # Real calculation: count completed lessons / total published lessons
+        total_lessons_stmt = (
+            select(func.count(Lesson.id))
+            .join(CourseModule, Lesson.module_id == CourseModule.id)
+            .where(CourseModule.course_id == course_id, Lesson.is_published == True)
+        )
+        total_res = await db.execute(total_lessons_stmt)
+        total_lessons = total_res.scalar() or 1
+
+        completed_stmt = select(func.count(LessonCompletion.id)).where(
+            LessonCompletion.user_id == user_id,
+            LessonCompletion.course_id == course_id,
+        )
+        completed_res = await db.execute(completed_stmt)
+        completed_count = completed_res.scalar() or 0
+
+        enrollment.progress_percent = round((completed_count / total_lessons) * 100, 2)
+
+        if enrollment.progress_percent >= 100.0:
+            enrollment.progress_percent = 100.0
+            if not enrollment.completed_at:
+                from datetime import datetime, timezone
+                enrollment.completed_at = datetime.now(timezone.utc)
     
     await db.commit()
     return True

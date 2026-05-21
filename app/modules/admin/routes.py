@@ -406,6 +406,93 @@ async def get_exam_questions(
     return result
 
 
+@router.put("/exams/questions/{question_id}")
+async def update_question(
+    question_id: int,
+    body: dict,
+    is_course: bool = Query(False),
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a single question and its options (admin/faculty only)."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from fastapi import HTTPException
+    from sqlalchemy.exc import IntegrityError
+    from app.modules.exams.models import ExamQuestion, CourseExamQuestion, ExamOption, CourseExamOption
+    
+    QuestionModel = CourseExamQuestion if is_course else ExamQuestion
+    OptionModel = CourseExamOption if is_course else ExamOption
+    
+    result = await db.execute(
+        select(QuestionModel).options(selectinload(QuestionModel.options)).where(QuestionModel.id == question_id)
+    )
+    question = result.scalars().first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    # Update question fields
+    for field in ["question_text", "question_type", "marks", "negative_marks", "category", "explanation"]:
+        if field in body:
+            setattr(question, field, body[field])
+    
+    # Update options if provided
+    if "options" in body:
+        existing_options = {opt.id: opt for opt in question.options}
+        
+        for i, opt_data in enumerate(body["options"]):
+            if "id" in opt_data and opt_data["id"] in existing_options:
+                opt = existing_options[opt_data["id"]]
+                opt.option_text = opt_data["option_text"]
+                opt.is_correct = opt_data.get("is_correct", False)
+                opt.order = i
+                del existing_options[opt.id]
+            else:
+                new_opt = OptionModel(
+                    question_id=question.id,
+                    option_text=opt_data["option_text"],
+                    is_correct=opt_data.get("is_correct", False),
+                    order=i,
+                )
+                db.add(new_opt)
+                
+        # Remove remaining options
+        for opt in existing_options.values():
+            try:
+                await db.delete(opt)
+                await db.flush()
+            except IntegrityError:
+                await db.rollback()
+                raise HTTPException(status_code=400, detail=f"Cannot delete option '{opt.option_text}' because it has already been selected in student exam attempts.")
+    
+    await db.commit()
+    await db.refresh(question)
+    return {"message": "Question updated successfully"}
+
+
+@router.delete("/exams/questions/{question_id}")
+async def delete_question(
+    question_id: int,
+    is_course: bool = Query(False),
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a single question and its options (admin/faculty only)."""
+    from sqlalchemy import select
+    from fastapi import HTTPException
+    from app.modules.exams.models import ExamQuestion, CourseExamQuestion
+    
+    QuestionModel = CourseExamQuestion if is_course else ExamQuestion
+    result = await db.execute(select(QuestionModel).where(QuestionModel.id == question_id))
+    question = result.scalars().first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    await db.delete(question)  # cascade deletes options
+    await db.flush()
+    return {"message": "Question deleted successfully"}
+
+
 @router.post("/exams/questions", response_model=schemas.MessageResponse, status_code=201)
 async def add_questions(
     exam_id: int = Query(..., description="Exam to add questions to"),
