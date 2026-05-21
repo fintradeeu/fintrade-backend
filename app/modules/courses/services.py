@@ -96,6 +96,17 @@ async def update_course(db: AsyncSession, course_id: int, data: dict) -> Course:
     logger.info("course_updated", course_id=course.id, title=course.title)
     return course
 
+async def delete_course(db: AsyncSession, course_id: int) -> None:
+    """Delete a course and all its related content."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    await db.delete(course)
+    await db.flush()
+    logger.info("course_deleted", course_id=course_id)
+
 # ── Modules ──────────────────────────────────────────────────────────
 async def create_module(db: AsyncSession, data: dict) -> CourseModule:
     """Admin creates a module for a course."""

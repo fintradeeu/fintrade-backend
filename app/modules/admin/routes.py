@@ -194,6 +194,17 @@ async def update_course(
     return course_schemas.CourseDetailResponse.model_validate(course)
 
 
+@router.delete("/courses/{course_id}", response_model=schemas.MessageResponse)
+async def delete_course(
+    course_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a course (admin/faculty only)."""
+    await course_services.delete_course(db, course_id)
+    return schemas.MessageResponse(message="Course deleted successfully")
+
+
 @router.post("/modules", response_model=course_schemas.ModuleResponse, status_code=201)
 async def create_module(
     body: course_schemas.ModuleCreate,
