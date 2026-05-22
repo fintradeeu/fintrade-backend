@@ -186,7 +186,7 @@ async def publish_all_courses(
 async def update_course(
     course_id: int,
     body: course_schemas.CourseUpdate,
-    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    _admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a course (admin only)."""
