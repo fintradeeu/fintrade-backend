@@ -176,6 +176,7 @@ class AssignmentCreate(BaseModel):
     description: Optional[str] = None
     due_date: Optional[datetime] = None
     max_score: float = 100.0
+    resources: Optional[List[Dict[str, Any]]] = None
 
 class AssignmentResponse(BaseModel):
     id: int
@@ -185,6 +186,7 @@ class AssignmentResponse(BaseModel):
     description: Optional[str] = None
     due_date: Optional[datetime] = None
     max_score: float
+    resources: Optional[List[Dict[str, Any]]] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

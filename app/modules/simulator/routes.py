@@ -12,6 +12,35 @@ from app.modules.simulator import schemas, services
 
 router = APIRouter(prefix="/simulator", tags=["Trading Simulator"])
 
+import random
+
+@router.get("/market-data")
+async def get_market_data():
+    """Simulated randomized live market data feed."""
+    base_prices = {
+        "NIFTY 50": 58720,
+        "BANK NIFTY": 42580,
+        "RELIANCE": 2456,
+        "HDFC BANK": 1650,
+        "TCS": 3800
+    }
+    
+    data = []
+    for symbol, base in base_prices.items():
+        # Fluctuate by +/- 1%
+        fluctuation = base * 0.01 * random.uniform(-1, 1)
+        current = round(base + fluctuation, 2)
+        change_pct = round((fluctuation / base) * 100, 2)
+        volume = f"{random.randint(10, 300)}M"
+        data.append({
+            "symbol": symbol,
+            "price": current,
+            "change": change_pct,
+            "volume": volume
+        })
+    return data
+
+
 
 @router.post("/start", response_model=schemas.SimulatorAccountResponse, status_code=201)
 async def start_simulator(

@@ -122,6 +122,7 @@ class Assignment(Base):
     description = Column(Text, nullable=True)
     due_date = Column(DateTime(timezone=True), nullable=True)
     max_score = Column(Float, default=100.0)
+    resources = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # relationships

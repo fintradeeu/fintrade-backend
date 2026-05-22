@@ -326,12 +326,18 @@ async def create_assignment(db: AsyncSession, data: dict) -> Assignment:
         title=data["title"],
         description=data.get("description"),
         due_date=data.get("due_date"),
-        max_score=data.get("max_score", 100.0)
+        max_score=data.get("max_score", 100.0),
+        resources=data.get("resources")
     )
     db.add(assignment)
     await db.flush()
     await db.refresh(assignment)
     return assignment
+
+
+async def get_all_assignments(db: AsyncSession) -> List[Assignment]:
+    result = await db.execute(select(Assignment))
+    return result.scalars().all()
 
 async def get_course_assignments(db: AsyncSession, course_id: int) -> List[Assignment]:
     result = await db.execute(
@@ -342,6 +348,12 @@ async def get_course_assignments(db: AsyncSession, course_id: int) -> List[Assig
 async def get_assignment_submissions(db: AsyncSession, assignment_id: int) -> List[AssignmentSubmission]:
     result = await db.execute(
         select(AssignmentSubmission).where(AssignmentSubmission.assignment_id == assignment_id)
+    )
+    return list(result.scalars().all())
+
+async def get_user_assignment_submissions(db: AsyncSession, user_id: int) -> List[AssignmentSubmission]:
+    result = await db.execute(
+        select(AssignmentSubmission).where(AssignmentSubmission.user_id == user_id)
     )
     return list(result.scalars().all())
 

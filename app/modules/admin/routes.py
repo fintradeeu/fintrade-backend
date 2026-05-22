@@ -285,6 +285,16 @@ async def delete_lesson(
     return schemas.MessageResponse(message="Lesson deleted successfully")
 
 
+
+@router.get("/assignments", response_model=List[course_schemas.AssignmentResponse])
+async def list_all_assignments(
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all assignments across all courses (admin/faculty only)."""
+    assignments = await course_services.get_all_assignments(db)
+    return [course_schemas.AssignmentResponse.model_validate(a) for a in assignments]
+
 @router.post("/assignments", response_model=course_schemas.AssignmentResponse, status_code=201)
 async def create_assignment(
     body: course_schemas.AssignmentCreate,
@@ -836,3 +846,50 @@ async def delete_faq(faq_id: int, db: AsyncSession = Depends(get_db)):
 async def toggle_simulator(status: bool, db: AsyncSession = Depends(get_db)):
     # Basic toggle placeholder
     return {'status': 'ok', 'simulator_active': status}
+
+
+# In-memory mock for Admin Roles
+mock_admins = [
+    {
+      "id": 1,
+      "name": "Rajesh Mehta",
+      "email": "rajesh.mehta@fintrade.in",
+      "role": "Super Admin",
+      "status": "Active",
+      "permissions": {
+        "manageCourses": True,
+        "manageStudents": True,
+        "managePayments": True,
+        "manageContent": True,
+        "manageExams": True,
+        "manageAdmins": True,
+        "canViewRevenue": True,
+      },
+      "lastActive": "2026-04-16"
+    }
+]
+
+@router.get("/roles")
+async def get_admin_roles(_admin: User = Depends(require_roles(["admin"]))):
+    return mock_admins
+
+@router.post("/roles")
+async def create_admin_role(data: dict, _admin: User = Depends(require_roles(["admin"]))):
+    data["id"] = len(mock_admins) + 1
+    mock_admins.append(data)
+    return data
+
+@router.put("/roles/{role_id}")
+async def update_admin_role(role_id: int, data: dict, _admin: User = Depends(require_roles(["admin"]))):
+    for i, a in enumerate(mock_admins):
+        if a["id"] == role_id:
+            data["id"] = role_id
+            mock_admins[i] = data
+            return data
+    return {"error": "Not found"}
+
+@router.delete("/roles/{role_id}")
+async def delete_admin_role(role_id: int, _admin: User = Depends(require_roles(["admin"]))):
+    global mock_admins
+    mock_admins = [a for a in mock_admins if a["id"] != role_id]
+    return {"success": True}
