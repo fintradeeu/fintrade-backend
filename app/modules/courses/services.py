@@ -60,6 +60,7 @@ async def create_course(db: AsyncSession, data: dict, created_by: int) -> Course
         short_description=data.get("short_description"),
         thumbnail_url=data.get("thumbnail_url"),
         price=data.get("price", 0.0),
+        original_price=data.get("original_price"),
         difficulty_level=data.get("difficulty_level", "beginner"),
         duration_hours=data.get("duration_hours"),
         is_published=data.get("is_published", False),
@@ -144,6 +145,20 @@ async def update_module(db: AsyncSession, module_id: int, data: dict) -> CourseM
     await db.refresh(module)
     logger.info("module_updated", module_id=module.id)
     return module
+
+async def reorder_modules(db: AsyncSession, course_id: int, module_ids: List[int]) -> None:
+    """Bulk update module orders based on array index."""
+    result = await db.execute(select(CourseModule).where(CourseModule.course_id == course_id))
+    modules = result.scalars().all()
+    
+    # Create a map of module_id to order index
+    order_map = {mod_id: idx for idx, mod_id in enumerate(module_ids)}
+    
+    for module in modules:
+        if module.id in order_map:
+            module.order = order_map[module.id]
+            
+    await db.flush()
 
 
 # ── Lessons ──────────────────────────────────────────────────────────
@@ -321,6 +336,12 @@ async def create_assignment(db: AsyncSession, data: dict) -> Assignment:
 async def get_course_assignments(db: AsyncSession, course_id: int) -> List[Assignment]:
     result = await db.execute(
         select(Assignment).where(Assignment.course_id == course_id)
+    )
+    return list(result.scalars().all())
+
+async def get_assignment_submissions(db: AsyncSession, assignment_id: int) -> List[AssignmentSubmission]:
+    result = await db.execute(
+        select(AssignmentSubmission).where(AssignmentSubmission.assignment_id == assignment_id)
     )
     return list(result.scalars().all())
 

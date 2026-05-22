@@ -2,7 +2,9 @@
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File
+import os
+import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import PaginationParams
@@ -144,3 +146,20 @@ async def submit_assignment(
     """Student submits an assignment file."""
     submission = await services.submit_assignment(db, body.model_dump(), current_user.id)
     return schemas.AssignmentSubmissionResponse.model_validate(submission)
+
+@router.post("/assignments/upload", response_model=dict, status_code=201)
+async def upload_assignment_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Student uploads an assignment file."""
+    os.makedirs("uploads/assignments", exist_ok=True)
+    ext = os.path.splitext(file.filename)[1] if file.filename else ""
+    unique_name = f"{uuid.uuid4()}{ext}"
+    filepath = os.path.join("uploads/assignments", unique_name)
+    
+    with open(filepath, "wb") as f:
+        content = await file.read()
+        f.write(content)
+        
+    return {"url": f"/uploads/assignments/{unique_name}"}

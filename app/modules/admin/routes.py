@@ -186,10 +186,10 @@ async def publish_all_courses(
 async def update_course(
     course_id: int,
     body: course_schemas.CourseUpdate,
-    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    _admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a course (admin/faculty only)."""
+    """Update a course (admin only)."""
     course = await course_services.update_course(db, course_id, body.model_dump(exclude_unset=True))
     return course_schemas.CourseDetailResponse.model_validate(course)
 
@@ -197,10 +197,10 @@ async def update_course(
 @router.delete("/courses/{course_id}", response_model=schemas.MessageResponse)
 async def delete_course(
     course_id: int,
-    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    _admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a course (admin/faculty only)."""
+    """Delete a course (admin only)."""
     await course_services.delete_course(db, course_id)
     return schemas.MessageResponse(message="Course deleted successfully")
 
@@ -262,6 +262,18 @@ async def delete_module(
     return schemas.MessageResponse(message="Module deleted successfully")
 
 
+@router.put("/courses/{course_id}/modules/reorder", response_model=schemas.MessageResponse)
+async def reorder_modules(
+    course_id: int,
+    body: course_schemas.ModuleReorder,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reorder modules within a course."""
+    await course_services.reorder_modules(db, course_id, body.module_ids)
+    return schemas.MessageResponse(message="Modules reordered successfully")
+
+
 @router.delete("/lessons/{lesson_id}", response_model=schemas.MessageResponse)
 async def delete_lesson(
     lesson_id: int,
@@ -282,6 +294,16 @@ async def create_assignment(
     """Create a new assignment for a course (admin/faculty only)."""
     assignment = await course_services.create_assignment(db, body.model_dump())
     return course_schemas.AssignmentResponse.model_validate(assignment)
+
+@router.get("/assignments/{assignment_id}/submissions", response_model=List[course_schemas.AssignmentSubmissionResponse])
+async def list_assignment_submissions(
+    assignment_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all submissions for a specific assignment (admin/faculty only)."""
+    submissions = await course_services.get_assignment_submissions(db, assignment_id)
+    return [course_schemas.AssignmentSubmissionResponse.model_validate(s) for s in submissions]
 
 @router.post("/assignments/grade", response_model=course_schemas.AssignmentSubmissionResponse)
 async def grade_assignment(

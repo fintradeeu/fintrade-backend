@@ -64,6 +64,9 @@ class ModuleUpdate(BaseModel):
     order: Optional[int] = None
     is_published: Optional[bool] = None
 
+class ModuleReorder(BaseModel):
+    module_ids: List[int]
+
 
 class ModuleResponse(BaseModel):
     id: int
