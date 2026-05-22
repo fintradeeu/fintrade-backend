@@ -186,7 +186,7 @@ async def publish_all_courses(
 async def update_course(
     course_id: int,
     body: course_schemas.CourseUpdate,
-    _admin: User = Depends(require_roles(["admin"])),
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a course (admin only)."""
@@ -681,6 +681,26 @@ async def create_lecture(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=traceback.format_exc())
 
+@router.put("/lectures/{lecture_id}", response_model=lecture_schemas.LectureResponse)
+async def update_lecture(
+    lecture_id: int,
+    body: lecture_schemas.LectureUpdate,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a scheduled lecture (admin/faculty only)."""
+    lecture = await lecture_services.update_lecture(db, lecture_id, body.model_dump(exclude_unset=True))
+    return lecture_schemas.LectureResponse.model_validate(lecture)
+
+@router.delete("/lectures/{lecture_id}", status_code=204)
+async def delete_lecture(
+    lecture_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a scheduled lecture (admin/faculty only)."""
+    await lecture_services.delete_lecture(db, lecture_id)
+
 @router.put("/lectures/{lecture_id}/start", response_model=lecture_schemas.LectureResponse)
 async def start_lecture(
     lecture_id: int,
@@ -770,3 +790,49 @@ async def admin_simulator(
     data = await services.get_admin_simulator(db)
     return schemas.AdminSimulatorResponse(**data)
 
+
+
+# --- AI FAQ Management ---
+
+from app.modules.ai.models import FAQEntry
+from app.modules.ai import schemas as ai_schemas
+from sqlalchemy import select
+
+@router.get('/ai/faqs', response_model=list[ai_schemas.FAQResponse])
+async def get_faqs(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(FAQEntry).order_by(FAQEntry.frequency.desc()))
+    return result.scalars().all()
+
+@router.post('/ai/faqs', response_model=ai_schemas.FAQResponse)
+async def create_faq(body: ai_schemas.FAQCreate, db: AsyncSession = Depends(get_db)):
+    faq = FAQEntry(**body.model_dump())
+    db.add(faq)
+    await db.commit()
+    await db.refresh(faq)
+    return faq
+
+@router.put('/ai/faqs/{faq_id}', response_model=ai_schemas.FAQResponse)
+async def update_faq(faq_id: int, body: ai_schemas.FAQUpdate, db: AsyncSession = Depends(get_db)):
+    faq = await db.get(FAQEntry, faq_id)
+    if not faq:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail='FAQ not found')
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(faq, k, v)
+    await db.commit()
+    await db.refresh(faq)
+    return faq
+
+@router.delete('/ai/faqs/{faq_id}')
+async def delete_faq(faq_id: int, db: AsyncSession = Depends(get_db)):
+    faq = await db.get(FAQEntry, faq_id)
+    if faq:
+        await db.delete(faq)
+        await db.commit()
+    return {'status': 'ok'}
+
+# --- Simulator Admin ---
+@router.post('/simulator/toggle')
+async def toggle_simulator(status: bool, db: AsyncSession = Depends(get_db)):
+    # Basic toggle placeholder
+    return {'status': 'ok', 'simulator_active': status}

@@ -38,12 +38,32 @@ class ChatSessionResponse(BaseModel):
 
 
 class ChatHistoryResponse(BaseModel):
-    sessions: List[ChatSessionResponse] = []
+    sessions: List[ChatSessionResponse]
+
+
+class FAQCreate(BaseModel):
+    question: str
+    answer: str
+    category_id: Optional[int] = None
+    course_id: Optional[int] = None
+    is_active: bool = True
+
+
+class FAQUpdate(BaseModel):
+    question: Optional[str] = None
+    answer: Optional[str] = None
+    category_id: Optional[int] = None
+    course_id: Optional[int] = None
+    is_active: Optional[bool] = None
+
 
 class FAQResponse(BaseModel):
     id: int
     question: str
     answer: str
+    category_id: Optional[int] = None
+    course_id: Optional[int] = None
+    is_active: bool
     frequency: int
     created_at: datetime
     
