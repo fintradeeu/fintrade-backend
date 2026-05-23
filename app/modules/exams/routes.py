@@ -112,6 +112,20 @@ async def list_all_exams(
         logger.error(f"Error in student list_all_exams: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/entrance/pay", response_model=schemas.MessageResponse)
+async def pay_entrance_exam_fee(
+    req: schemas.EntranceExamPaymentRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        await services.process_entrance_exam_payment(db, current_user.id, req.entrance_exam_id, req.amount)
+        return schemas.MessageResponse(message="Entrance exam payment processed successfully")
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=404, detail="Invalid entrance exam ID")
+
+
 
 
 @router.post("/start", response_model=schemas.AttemptStartResponse)

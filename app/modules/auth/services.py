@@ -19,11 +19,9 @@ from app.core.security import (
 from app.config import settings
 from app.modules.auth.models import OTPCode, Role, Session, User
 from app.utils.logger import get_logger
-from app.utils.aws_notifications import (
+from app.utils.smtp_notifications import (
     build_otp_email_html,
-    build_otp_sms_message,
     send_email,
-    send_sms,
 )
 
 logger = get_logger(__name__)
@@ -121,13 +119,13 @@ async def generate_and_send_otp(db: AsyncSession, user: User) -> dict:
         user_id=user.id,
         code=code,
         otp_token=otp_token,
-        channel="both",
+        channel="email",
         expires_at=expires_at,
     )
     db.add(otp)
     await db.flush()
 
-    # Send via both channels
+    # Send via email channel
     channels_sent = []
 
     # Email — always sent (email is mandatory in registration)
@@ -140,16 +138,8 @@ async def generate_and_send_otp(db: AsyncSession, user: User) -> dict:
     if email_sent:
         channels_sent.append("email")
 
-    # SMS — only if phone number exists
-    if user.phone:
-        phone = user.phone if user.phone.startswith("+") else f"+91{user.phone}"
-        sms_message = build_otp_sms_message(code)
-        sms_sent = await send_sms(phone_number=phone, message=sms_message)
-        if sms_sent:
-            channels_sent.append("sms")
-
     if not channels_sent:
-        # Neither channel worked — log but don't block (for dev/testing)
+        # Email failed — log but don't block (for dev/testing)
         logger.warning("otp_delivery_failed", user_id=user.id, code=code)
 
     logger.info("otp_generated", user_id=user.id, channels=channels_sent)
@@ -195,7 +185,7 @@ async def verify_otp(db: AsyncSession, otp_token: str, code: str) -> User:
             detail="Too many incorrect attempts. Please request a new code.",
         )
 
-    if otp.code != code:
+    if otp.code != code.strip():
         otp.attempts += 1
         await db.flush()
         remaining = MAX_OTP_ATTEMPTS - otp.attempts

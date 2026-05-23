@@ -54,7 +54,17 @@ class Settings(BaseSettings):
     CASHFREE_SECRET_KEY: str = ""
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
-    ACTIVE_PAYMENT_GATEWAY: str = "cashfree"  # Or razorpay
+    ACTIVE_PAYMENT_GATEWAY: str = "easebuzz"  # Or cashfree, razorpay
+
+    # ── Easebuzz ─────────────────────────────────────────────────────
+    EASEBUZZ_KEY: str = ""
+    EASEBUZZ_SALT: str = ""
+    EASEBUZZ_ENV: str = "test"  # 'test' or 'prod'
+
+    @property
+    def easebuzz_base_url(self) -> str:
+        return "https://pay.easebuzz.in" if self.EASEBUZZ_ENV == "prod" else "https://testpay.easebuzz.in"
+
 
     # ── TradingView API ──────────────────────────────────────────────
     TRADINGVIEW_WEBHOOK_SECRET: str = ""

@@ -28,6 +28,7 @@ from app.modules.kyc.routes import router as kyc_router
 from app.modules.roles.routes import router as roles_router
 from app.modules.news.routes import router as news_router
 from app.modules.settings.routes import router as settings_router
+from app.modules.payments.routes import router as payments_router
 from app.modules.dashboard.routes import router as dashboard_router
 
 
@@ -89,6 +90,7 @@ app.include_router(kyc_router)
 app.include_router(roles_router)
 app.include_router(news_router)
 app.include_router(settings_router)
+app.include_router(payments_router)
 
 
 import os

@@ -91,3 +91,13 @@ async def get_faculty_reports(
     """Get aggregated performance reports for the faculty member's courses and students."""
     reports = await services.get_faculty_reports(db, current_user.id)
     return schemas.FacultyReportsResponse(**reports)
+
+@router.get("/students/{student_id}/progress")
+async def get_student_progress(
+    student_id: int,
+    current_user: User = Depends(require_roles(["faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get detailed progress of a specific student."""
+    from app.modules.learning.progress import get_student_progress_details
+    return await get_student_progress_details(db, student_id)

@@ -45,20 +45,38 @@ async def login(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Step 1 — Validate credentials and bypass OTP for all users (Development Mode)."""
+    """Step 1 - Validate credentials and send OTP via email. (Admins bypass OTP)"""
     user = await services.authenticate_user(db, body.email, body.password)
     
-    # TEMPORARY: Bypass OTP for ALL users while waiting on AWS verification
-    tokens = await services.create_session(
-        db,
-        user,
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-    )
-    return schemas.TokenResponse(
-        access_token=tokens["access_token"],
-        refresh_token=tokens["refresh_token"],
-        user=schemas.UserResponse.model_validate(user),
+    # Check if user has admin or super_admin role
+    is_admin = False
+    for role in user.roles:
+        if role.name in ["admin", "super_admin"]:
+            is_admin = True
+            break
+            
+    if is_admin:
+        # Bypass OTP, generate session immediately
+        tokens = await services.create_session(
+            db,
+            user,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+        return schemas.TokenResponse(
+            access_token=tokens["access_token"],
+            refresh_token=tokens["refresh_token"],
+            user=schemas.UserResponse.model_validate(user),
+        )
+    
+    # Normal user flow: Generate OTP
+    otp_result = await services.generate_and_send_otp(db, user)
+    
+    return schemas.OTPPendingResponse(
+        message="Verification code sent to your email.",
+        otp_token=otp_result["otp_token"],
+        expires_in_seconds=otp_result["expires_in_seconds"],
+        channels=otp_result["channels"],
     )
 
 

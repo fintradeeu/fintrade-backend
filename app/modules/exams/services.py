@@ -24,44 +24,65 @@ REATTEMPT_DAYS = 30
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
-async def _check_reattempt_allowed(db: AsyncSession, user_id: int, exam_id: int) -> None:
-    """Raise 403 if the student failed and must wait 30 days."""
+async def _check_reattempt_allowed(db: AsyncSession, user_id: int, exam: EntranceExam) -> None:
+    """Raise 403 if the student failed and must wait cooldown_days, or 402 if fee is unpaid."""
     # Find the most recent completed attempt
     result = await db.execute(
         select(ExamAttempt)
         .where(
             ExamAttempt.user_id == user_id,
-            ExamAttempt.exam_id == exam_id,
+            ExamAttempt.exam_id == exam.id,
             ExamAttempt.is_submitted == True,  # noqa: E712
         )
         .order_by(ExamAttempt.submitted_at.desc())
         .limit(1)
     )
     last_attempt = result.scalar_one_or_none()
-    if last_attempt is None:
-        return  # first attempt — allowed
-
-    # Check if the last attempt passed
-    result_row = await db.execute(
-        select(ExamResult).where(ExamResult.attempt_id == last_attempt.id)
-    )
-    exam_result = result_row.scalar_one_or_none()
-
-    if exam_result and exam_result.passed:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="You have already passed this exam.",
+    
+    if last_attempt:
+        # Check if the last attempt passed
+        result_row = await db.execute(
+            select(ExamResult).where(ExamResult.attempt_id == last_attempt.id)
         )
-
-    # Failed — enforce 30-day wait
-    if last_attempt.submitted_at:
-        next_allowed = last_attempt.submitted_at + timedelta(days=REATTEMPT_DAYS)
-        if datetime.now(timezone.utc) < next_allowed:
-            days_left = (next_allowed - datetime.now(timezone.utc)).days
+        exam_result = result_row.scalar_one_or_none()
+    
+        if exam_result and exam_result.passed:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"You must wait {days_left} more day(s) before reattempting. Next attempt allowed after {next_allowed.strftime('%Y-%m-%d')}.",
+                status_code=status.HTTP_409_CONFLICT,
+                detail="You have already passed this exam.",
             )
+    
+        # Failed — enforce dynamic cooldown
+        if last_attempt.submitted_at and exam.cooldown_days > 0:
+            next_allowed = last_attempt.submitted_at + timedelta(days=exam.cooldown_days)
+            if datetime.now(timezone.utc) < next_allowed:
+                days_left = (next_allowed - datetime.now(timezone.utc)).days
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"You must wait {days_left} more day(s) before reattempting. Next attempt allowed after {next_allowed.strftime('%Y-%m-%d')}.",
+                )
+
+    # Check fee payment if fee > 0
+    if exam.fee > 0.0:
+        from app.modules.exams.models import EntranceExamPayment
+        payment_result = await db.execute(
+            select(EntranceExamPayment).where(
+                EntranceExamPayment.user_id == user_id,
+                EntranceExamPayment.entrance_exam_id == exam.id,
+                EntranceExamPayment.status == "paid",
+                EntranceExamPayment.is_used == False,
+            )
+        )
+        valid_payment = payment_result.scalars().first()
+        if not valid_payment:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=f"Payment of {exam.fee} is required to start this exam."
+            )
+        # Mark payment as used for this attempt
+        valid_payment.is_used = True
+        await db.flush()
+
 
 
 # ── Admin: create exam ──────────────────────────────────────────────
@@ -336,7 +357,7 @@ async def start_exam(db: AsyncSession, user_id: int, exam_id: int) -> dict:
             detail="You already have an in-progress attempt for this exam.",
         )
 
-    await _check_reattempt_allowed(db, user_id, exam_id)
+    await _check_reattempt_allowed(db, user_id, exam)
 
     # Count questions
     q_count_result = await db.execute(
@@ -696,6 +717,20 @@ async def process_exam_payment(db: AsyncSession, user_id: int, exam_id: int, amo
     db.add(payment)
     await db.flush()
     return payment
+
+async def process_entrance_exam_payment(db: AsyncSession, user_id: int, entrance_exam_id: int, amount: float):
+    from app.modules.exams.models import EntranceExamPayment
+    payment = EntranceExamPayment(
+        user_id=user_id,
+        entrance_exam_id=entrance_exam_id,
+        amount=amount,
+        status="paid",
+        is_used=False
+    )
+    db.add(payment)
+    await db.flush()
+    return payment
+
 
 async def verify_course_exam_attempt_allowed(db: AsyncSession, user_id: int, exam_id: int) -> None:
     """Check if the user can start a new course exam attempt."""

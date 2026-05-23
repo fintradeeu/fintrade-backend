@@ -893,3 +893,13 @@ async def delete_admin_role(role_id: int, _admin: User = Depends(require_roles([
     global mock_admins
     mock_admins = [a for a in mock_admins if a["id"] != role_id]
     return {"success": True}
+
+@router.get("/students/{student_id}/progress")
+async def get_student_progress(
+    student_id: int,
+    current_user: User = Depends(require_roles(["admin", "super_admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get detailed progress of a specific student for Admins."""
+    from app.modules.learning.progress import get_student_progress_details
+    return await get_student_progress_details(db, student_id)

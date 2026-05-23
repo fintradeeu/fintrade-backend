@@ -244,6 +244,30 @@ async def enroll_user(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Already enrolled in this course")
 
+    # Entrance Exam Prerequisite Check
+    from app.modules.exams.models import EntranceExam, ExamResult
+    entrance_res = await db.execute(
+        select(EntranceExam).where(
+            EntranceExam.course_id == course_id,
+            EntranceExam.is_active == True
+        )
+    )
+    entrance_exam = entrance_res.scalar_one_or_none()
+    if entrance_exam:
+        # Check if user has passed this entrance exam
+        passed_res = await db.execute(
+            select(ExamResult).where(
+                ExamResult.user_id == user_id,
+                ExamResult.exam_id == entrance_exam.id,
+                ExamResult.passed == True
+            )
+        )
+        if not passed_res.scalars().first():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You must pass the entrance exam before enrolling in this course."
+            )
+
     # Distributor referral logic
     discount_amount = 0.0
     original_price = course.price or 0.0
