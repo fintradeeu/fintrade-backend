@@ -83,6 +83,10 @@ async def initiate_payment(db: AsyncSession, user: User, course_id: int, base_ur
     hashed = generate_hash(hash_string)
 
     base_url = base_url.rstrip('/')
+    # Force https in production to prevent 301 redirects that drop POST data
+    if "api.thefintrade.com" in base_url and base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://")
+        
     payload = {
         "key": settings.EASEBUZZ_KEY,
         "txnid": txnid,
