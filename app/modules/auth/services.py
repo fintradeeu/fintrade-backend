@@ -24,6 +24,8 @@ from app.utils.smtp_notifications import (
     send_email,
 )
 
+import httpx
+
 logger = get_logger(__name__)
 
 MAX_OTP_ATTEMPTS = 5  # Lock after 5 wrong attempts
@@ -73,6 +75,104 @@ async def register_user(
     return user
 
 
+async def verify_google_token(token: str) -> dict:
+    """Verify a Google ID token and return user info."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": token},
+            timeout=10.0,
+        )
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google token",
+        )
+    data = resp.json()
+    # Verify the token was issued for our app
+    if data.get("aud") != settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google token audience",
+        )
+    if data.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google token issuer",
+        )
+    return data
+
+
+async def authenticate_or_register_google_user(
+    db: AsyncSession,
+    token: str,
+    phone: Optional[str] = None,
+) -> User:
+    """Verify Google token and either login existing user or register a new one."""
+    google_data = await verify_google_token(token)
+    google_id = google_data.get("sub")
+    email = google_data.get("email")
+    full_name = google_data.get("name") or email.split("@")[0]
+    avatar_url = google_data.get("picture")
+
+    if not google_id or not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google token missing required fields",
+        )
+
+    # 1. Try to find user by google_id
+    result = await db.execute(
+        select(User).options(selectinload(User.roles)).where(User.google_id == google_id)
+    )
+    user = result.scalar_one_or_none()
+    if user:
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is deactivated",
+            )
+        # Update avatar if changed
+        if avatar_url and user.avatar_url != avatar_url:
+            user.avatar_url = avatar_url
+            await db.flush()
+        return user
+
+    # 2. Try to find user by email (link Google to existing account)
+    result = await db.execute(
+        select(User).options(selectinload(User.roles)).where(User.email == email)
+    )
+    user = result.scalar_one_or_none()
+    if user:
+        user.google_id = google_id
+        if avatar_url:
+            user.avatar_url = avatar_url
+        await db.flush()
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is deactivated",
+            )
+        return user
+
+    # 3. Create new user with student role
+    role = await get_or_create_role(db, "student")
+    user = User(
+        email=email,
+        full_name=full_name,
+        phone=phone,
+        google_id=google_id,
+        avatar_url=avatar_url,
+        is_verified=True,  # Google email is verified
+    )
+    user.roles.append(role)
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
+    logger.info("user_registered_google", user_id=user.id, email=email)
+    return user
+
+
 async def authenticate_user(db: AsyncSession, email: str, password: str) -> User:
     """Verify credentials and return the user."""
     result = await db.execute(
@@ -93,6 +193,32 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
 
 
 # ── OTP helpers ──────────────────────────────────────────────────────
+
+async def update_user_profile(
+    db: AsyncSession,
+    user: User,
+    email: str,
+    full_name: str,
+    phone: Optional[str] = None,
+) -> User:
+    """Update editable profile fields for the current user."""
+    normalized_email = email.strip().lower()
+    if normalized_email != user.email:
+        existing = await db.execute(select(User).where(User.email == normalized_email))
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A user with this email already exists",
+            )
+        user.email = normalized_email
+
+    user.full_name = full_name.strip()
+    user.phone = phone.strip() if phone else None
+    await db.flush()
+    await db.refresh(user)
+    logger.info("user_profile_updated", user_id=user.id)
+    return user
+
 
 def _generate_otp_code() -> str:
     """Generate a cryptographically secure 6-digit OTP."""
@@ -294,3 +420,39 @@ async def revoke_session(db: AsyncSession, user_id: int, token: str):
         session.is_active = False
         await db.flush()
         logger.info("session_revoked", user_id=user_id)
+
+
+async def initiate_forgot_password(db: AsyncSession, email: str) -> dict:
+    """Validate user exists and send OTP to their email for password reset."""
+    result = await db.execute(
+        select(User).options(selectinload(User.roles)).where(User.email == email)
+    )
+    user = result.scalar_one_or_none()
+    
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User with this email not found.",
+        )
+        
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is deactivated.",
+        )
+        
+    return await generate_and_send_otp(db, user)
+
+
+async def complete_reset_password(db: AsyncSession, otp_token: str, code: str, new_password: str) -> dict:
+    """Verify OTP and update user's password."""
+    # verify_otp raises HTTPException if validation fails
+    user = await verify_otp(db, otp_token, code)
+    
+    # Update password
+    user.hashed_password = hash_password(new_password)
+    await db.flush()
+    await db.commit()
+    logger.info("password_reset_success", user_id=user.id)
+    
+    return {"message": "Password reset successful. You can now login with your new password."}

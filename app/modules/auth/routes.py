@@ -39,6 +39,31 @@ async def register(
     )
 
 
+@router.post("/google", response_model=schemas.TokenResponse)
+async def google_auth(
+    body: schemas.GoogleAuthRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Authenticate or register via Google OAuth ID token."""
+    user = await services.authenticate_or_register_google_user(
+        db,
+        token=body.token,
+        phone=body.phone,
+    )
+    tokens = await services.create_session(
+        db,
+        user,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return schemas.TokenResponse(
+        access_token=tokens["access_token"],
+        refresh_token=tokens["refresh_token"],
+        user=schemas.UserResponse.model_validate(user),
+    )
+
+
 @router.post("/login", response_model=Union[schemas.TokenResponse, schemas.OTPPendingResponse])
 async def login(
     body: schemas.LoginRequest,
@@ -122,6 +147,80 @@ async def me(current_user: User = Depends(get_current_user)):
     return schemas.UserResponse.model_validate(current_user)
 
 
+@router.get("/my-profile", response_model=schemas.UserResponse)
+async def my_profile(current_user: User = Depends(get_current_user)):
+    """Return the currently authenticated user's profile."""
+    return schemas.UserResponse.model_validate(current_user)
+
+
+@router.put("/me", response_model=schemas.UserResponse)
+async def update_me(
+    body: schemas.ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the currently authenticated user's profile."""
+    user = await services.update_user_profile(
+        db,
+        current_user,
+        email=body.email,
+        full_name=body.full_name,
+        phone=body.phone,
+    )
+    return schemas.UserResponse.model_validate(user)
+
+
+@router.put("/my-profile", response_model=schemas.UserResponse)
+async def update_my_profile(
+    body: schemas.ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the currently authenticated user's profile."""
+    user = await services.update_user_profile(
+        db,
+        current_user,
+        email=body.email,
+        full_name=body.full_name,
+        phone=body.phone,
+    )
+    return schemas.UserResponse.model_validate(user)
+
+
+@router.post("/me", response_model=schemas.UserResponse)
+async def update_me_post(
+    body: schemas.ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the current user's profile. Kept for clients/proxies that reject PUT."""
+    user = await services.update_user_profile(
+        db,
+        current_user,
+        email=body.email,
+        full_name=body.full_name,
+        phone=body.phone,
+    )
+    return schemas.UserResponse.model_validate(user)
+
+
+@router.post("/my-profile", response_model=schemas.UserResponse)
+async def update_my_profile_post(
+    body: schemas.ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the current user's profile. Kept for clients/proxies that reject PUT."""
+    user = await services.update_user_profile(
+        db,
+        current_user,
+        email=body.email,
+        full_name=body.full_name,
+        phone=body.phone,
+    )
+    return schemas.UserResponse.model_validate(user)
+
+
 @router.post("/logout", response_model=schemas.MessageResponse)
 async def logout(
     token: str = Depends(oauth2_scheme),
@@ -131,3 +230,32 @@ async def logout(
     """Revoke the current session."""
     await services.revoke_session(db, current_user.id, token)
     return schemas.MessageResponse(message="Logged out successfully")
+
+
+@router.post("/forgot-password", response_model=schemas.OTPPendingResponse)
+async def forgot_password(
+    body: schemas.ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Step 1 - Send password reset OTP to email."""
+    otp_result = await services.initiate_forgot_password(db, body.email)
+    return schemas.OTPPendingResponse(
+        message="Verification code sent to your email for password reset.",
+        otp_token=otp_result["otp_token"],
+        expires_in_seconds=otp_result["expires_in_seconds"],
+        channels=otp_result["channels"],
+    )
+
+
+@router.post("/reset-password", response_model=schemas.MessageResponse)
+async def reset_password(
+    body: schemas.ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Step 2 - Verify OTP and update user's password."""
+    return await services.complete_reset_password(
+        db,
+        otp_token=body.otp_token,
+        code=body.code,
+        new_password=body.new_password,
+    )

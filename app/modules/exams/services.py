@@ -26,6 +26,20 @@ REATTEMPT_DAYS = 30
 # ── Helpers ──────────────────────────────────────────────────────────
 async def _check_reattempt_allowed(db: AsyncSession, user_id: int, exam: EntranceExam) -> None:
     """Raise 403 if the student failed and must wait cooldown_days, or 402 if fee is unpaid."""
+    submitted_count_result = await db.execute(
+        select(func.count(ExamAttempt.id)).where(
+            ExamAttempt.user_id == user_id,
+            ExamAttempt.exam_id == exam.id,
+            ExamAttempt.is_submitted == True,  # noqa: E712
+        )
+    )
+    submitted_count = submitted_count_result.scalar() or 0
+    if exam.max_attempts and exam.max_attempts > 0 and submitted_count >= exam.max_attempts:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You have used all {exam.max_attempts} attempt(s) for this exam.",
+        )
+
     # Find the most recent completed attempt
     result = await db.execute(
         select(ExamAttempt)
@@ -94,6 +108,7 @@ async def create_exam(db: AsyncSession, data: dict) -> EntranceExam:
         course_id=data["course_id"],
         duration_minutes=data.get("duration_minutes", 60),
         passing_score=data.get("passing_score", 60.0),
+        max_attempts=data.get("max_attempts", 3),
         is_active=data.get("is_active", True),
         start_time=data.get("start_time"),
         end_time=data.get("end_time"),
@@ -342,20 +357,40 @@ async def start_exam(db: AsyncSession, user_id: int, exam_id: int) -> dict:
     if exam is None or not exam.is_active:
         raise HTTPException(status_code=404, detail="Exam not found or inactive")
 
-    # Check in-progress attempt
+    # Reuse a still-valid in-progress attempt so a tab refresh/close does not
+    # block the student with "already in-progress".
     result = await db.execute(
         select(ExamAttempt).where(
             ExamAttempt.user_id == user_id,
             ExamAttempt.exam_id == exam_id,
             ExamAttempt.is_submitted == False,  # noqa: E712
-        )
+        ).order_by(ExamAttempt.started_at.desc())
     )
-    existing = result.scalar_one_or_none()
+    existing = result.scalars().first()
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="You already have an in-progress attempt for this exam.",
-        )
+        now = datetime.now(timezone.utc)
+        duration_minutes = exam.duration_minutes or 60
+        expires_at = existing.started_at + timedelta(minutes=duration_minutes) if existing.started_at else now
+        if now < expires_at:
+            q_count_result = await db.execute(
+                select(func.count(ExamQuestion.id)).where(ExamQuestion.exam_id == exam_id)
+            )
+            total_questions = q_count_result.scalar() or 0
+            display_count = total_questions
+            if exam.questions_per_attempt and exam.questions_per_attempt > 0:
+                display_count = min(exam.questions_per_attempt, total_questions)
+            return {
+                "attempt_id": existing.id,
+                "exam_id": exam_id,
+                "started_at": existing.started_at,
+                "duration_minutes": max(1, int((expires_at - now).total_seconds() // 60)),
+                "total_questions": display_count,
+            }
+
+        existing.is_submitted = True
+        existing.submitted_at = now
+        existing.time_spent_seconds = duration_minutes * 60
+        await db.flush()
 
     await _check_reattempt_allowed(db, user_id, exam)
 

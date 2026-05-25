@@ -31,6 +31,7 @@ class EntranceExamCreate(BaseModel):
     duration_minutes: int = 60
     passing_score: float = 60.0
     is_active: bool = True
+    max_attempts: int = 3
     fee: float = 0.0
     cooldown_days: int = 0
     questions_per_attempt: Optional[int] = None  # null = use all questions
@@ -91,6 +92,7 @@ class EntranceExamResponse(BaseModel):
     course_id: int
     duration_minutes: int
     passing_score: float
+    max_attempts: int = 3
     is_active: bool
     fee: float = 0.0
     cooldown_days: int = 0
