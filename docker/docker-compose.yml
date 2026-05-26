@@ -28,7 +28,7 @@ services:
     container_name: lms_backend
     restart: unless-stopped
     env_file:
-      - ../.env.example
+      - ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://lms_user:lms_password@postgres:5432/lms_db
     ports:

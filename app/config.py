@@ -155,8 +155,8 @@ class Settings(BaseSettings):
     ):
         return (
             init_settings,
-            dotenv_settings,
             env_settings,
+            dotenv_settings,
             file_secret_settings,
         )
 
