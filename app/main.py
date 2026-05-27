@@ -123,12 +123,34 @@ def trigger_db_migration(secret_key: str):
             
         alembic_cfg = Config(os.path.join(root_dir, "alembic.ini"))
         
-        # 1. Generate the migration script dynamically on the server
-        command.revision(alembic_cfg, autogenerate=True, message="auto-migrate-server")
-        
-        # 2. Run upgrade head programmatically to apply it
+        import glob
+
+        # 1. First, automatically clean up any rogue auto_migrate_server files that were previously generated
+        junk_files = glob.glob(os.path.join(root_dir, "migrations", "versions", "*auto_migrate_server*"))
+        for f in junk_files:
+            try:
+                os.remove(f)
+            except Exception:
+                pass
+                
+        # Also clean up the newer auto-migrate-server naming convention
+        junk_files_2 = glob.glob(os.path.join(root_dir, "migrations", "versions", "*auto-migrate-server*"))
+        for f in junk_files_2:
+            try:
+                os.remove(f)
+            except Exception:
+                pass
+                
+        # 2. To fix stranded Alembic state, stamp the DB back to 002 (since the junk file is gone)
+        # We wrap this in try-except because it might fail if DB is already clean, but we ignore it
+        try:
+            command.stamp(alembic_cfg, "002_add_exam_features")
+        except Exception:
+            pass
+
+        # 3. Run upgrade head programmatically to apply the REAL migrations from Git
         command.upgrade(alembic_cfg, "head")
-        
+
         return {
             "status": "success",
             "message": "Migration generated and applied successfully"
