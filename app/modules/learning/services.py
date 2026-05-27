@@ -9,7 +9,7 @@ from sqlalchemy import func
 from app.modules.learning.models import LessonCompletion
 from app.modules.courses.models import CourseEnrollment, Course, CourseModule, Lesson
 from app.modules.lectures.models import Lecture
-from app.modules.learning.schemas import LearningDashboardResponse, EnrolledCourseProgress, CompletedLessonItem, UpcomingLectureItem
+from app.modules.learning.schemas import LearningDashboardResponse, EnrolledCourseProgress, CompletedLessonItem, UpcomingLectureItem, VideoPolicyItem
 
 async def get_user_dashboard(db: AsyncSession, user_id: int) -> LearningDashboardResponse:
     # 1. Enrolled Courses
@@ -69,12 +69,27 @@ async def get_user_dashboard(db: AsyncSession, user_id: int) -> LearningDashboar
                 topic=l.description or l.title
             ) for l in lectures
         ]
+
+    # 4. Video Policies
+    from app.modules.courses.models import ModuleStudentPolicy
+    policy_stmt = select(ModuleStudentPolicy).where(ModuleStudentPolicy.student_id == user_id)
+    policy_result = await db.execute(policy_stmt)
+    policies = policy_result.scalars().all()
+    
+    video_policies = [
+        VideoPolicyItem(
+            module_id=p.module_id,
+            mandatory=p.mandatory
+        ) for p in policies
+    ]
         
     return LearningDashboardResponse(
         enrolled_courses=enrolled_courses,
         completed_lessons=completed_lessons,
-        upcoming_lectures=upcoming_lectures
+        upcoming_lectures=upcoming_lectures,
+        video_policies=video_policies
     )
+
 
 async def mark_lesson_completed(db: AsyncSession, user_id: int, course_id: int, lesson_id: int) -> bool:
     # Check if already completed

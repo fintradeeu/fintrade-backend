@@ -146,3 +146,17 @@ class AssignmentSubmission(Base):
     # relationships
     assignment = relationship("Assignment", back_populates="submissions")
     user = relationship("User")
+
+
+class ModuleStudentPolicy(Base):
+    __tablename__ = "module_student_policies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    module_id = Column(Integer, ForeignKey("course_modules.id", ondelete="CASCADE"), nullable=False)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    mandatory = Column(Boolean, default=True, nullable=False)
+
+    # relationships
+    module = relationship("CourseModule")
+    student = relationship("User")
+

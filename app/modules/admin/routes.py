@@ -903,3 +903,74 @@ async def get_student_progress(
     """Get detailed progress of a specific student for Admins."""
     from app.modules.learning.progress import get_student_progress_details
     return await get_student_progress_details(db, student_id)
+
+
+@router.get("/modules/{module_id}/students")
+async def get_module_students(
+    module_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.modules.courses.models import CourseModule, CourseEnrollment, ModuleStudentPolicy
+    from app.modules.auth.models import User
+    from sqlalchemy import select
+
+    # Get the module
+    module_stmt = select(CourseModule).where(CourseModule.id == module_id)
+    module_res = await db.execute(module_stmt)
+    module = module_res.scalar_one_or_none()
+    if not module:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Module not found")
+    
+    # Get all enrollments for this module's course
+    enrollments_stmt = (
+        select(CourseEnrollment, User)
+        .join(User, CourseEnrollment.user_id == User.id)
+        .where(CourseEnrollment.course_id == module.course_id)
+    )
+    enrollments_res = await db.execute(enrollments_stmt)
+    enrolled_students = enrollments_res.all()
+
+    # Get existing policies for this module
+    policies_stmt = select(ModuleStudentPolicy).where(ModuleStudentPolicy.module_id == module_id)
+    policies_res = await db.execute(policies_stmt)
+    policies = {p.student_id: p.mandatory for p in policies_res.scalars().all()}
+
+    # Format output
+    result = []
+    for enrollment, user in enrolled_students:
+        result.append({
+            "student_id": user.id,
+            "student_name": user.full_name,
+            "student_email": user.email,
+            "mandatory": policies.get(user.id, True) # Defaults to True (mandatory watch)
+        })
+    return result
+
+
+@router.post("/modules/{module_id}/students-policies")
+async def save_module_students_policies(
+    module_id: int,
+    policies_data: List[dict], # e.g. [{"student_id": 1, "mandatory": false}]
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.modules.courses.models import ModuleStudentPolicy
+    from sqlalchemy import delete
+    
+    # Delete existing policies first to simple upsert
+    delete_stmt = delete(ModuleStudentPolicy).where(ModuleStudentPolicy.module_id == module_id)
+    await db.execute(delete_stmt)
+
+    for item in policies_data:
+        policy = ModuleStudentPolicy(
+            module_id=module_id,
+            student_id=item["student_id"],
+            mandatory=item.get("mandatory", True)
+        )
+        db.add(policy)
+    
+    await db.commit()
+    return {"status": "success", "message": "Policies updated successfully"}
+
