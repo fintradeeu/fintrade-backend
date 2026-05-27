@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers
 revision = '004_add_google_oauth'
-down_revision = '003_make_lecture_course_id_nullable'
+down_revision = '003_lecture_course_nullable'
 branch_labels = None
 depends_on = None
 
