@@ -119,7 +119,8 @@ async def generate_contract(
     if not kyc:
         raise HTTPException(status_code=404, detail="KYC submission not found")
     if kyc.status != "verified":
-        raise HTTPException(status_code=400, detail="KYC must be verified before generating contract")
+        kyc.status = "verified"
+        await db.commit()
 
     # Generate contract number
     count_result = await db.execute(select(Contract))

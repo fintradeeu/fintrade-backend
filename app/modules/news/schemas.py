@@ -1,13 +1,14 @@
 """News module — Pydantic schemas."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
 
 class NewsCreateRequest(BaseModel):
     title: str
+    type: Literal["Blog Story", "Market Update"] = "Blog Story"
     description: Optional[str] = None
     video_type: str = "youtube"  # youtube or uploaded
     video_url: Optional[str] = None
@@ -17,6 +18,7 @@ class NewsCreateRequest(BaseModel):
 
 class NewsUpdateRequest(BaseModel):
     title: Optional[str] = None
+    type: Optional[Literal["Blog Story", "Market Update"]] = None
     description: Optional[str] = None
     video_type: Optional[str] = None
     video_url: Optional[str] = None
@@ -27,6 +29,7 @@ class NewsUpdateRequest(BaseModel):
 class NewsResponse(BaseModel):
     id: int
     title: str
+    type: Literal["Blog Story", "Market Update"] = "Blog Story"
     description: Optional[str] = None
     video_type: str = "youtube"
     video_url: Optional[str] = None

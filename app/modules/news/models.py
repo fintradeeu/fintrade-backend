@@ -21,6 +21,7 @@ class NewsArticle(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(500), nullable=False)
+    type = Column(String(50), default="Blog Story", nullable=False)
     description = Column(Text, nullable=True)
     video_type = Column(
         Enum("youtube", "uploaded", name="video_type"),

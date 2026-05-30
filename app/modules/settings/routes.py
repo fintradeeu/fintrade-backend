@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import require_roles
@@ -46,6 +46,17 @@ async def get_all_settings(
     )
 
 
+@router.put("/admin/settings/landing-page")
+async def update_landing_page(
+    config: Dict[str, Any] = Body(...),
+    admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update landing page CMS configuration (admin only)."""
+    result = await services.update_landing_page_config(db, config, admin.id)
+    return result
+
+
 @router.put("/admin/settings/{key}", response_model=schemas.SettingResponse)
 async def update_setting(
     key: str,
@@ -67,14 +78,3 @@ async def bulk_update_settings(
     """Update multiple settings at once (admin only)."""
     count = await services.bulk_update_settings(db, body.settings, admin.id)
     return schemas.MessageResponse(message=f"Updated {count} settings")
-
-
-@router.put("/admin/settings/landing-page")
-async def update_landing_page(
-    config: Dict[str, Any],
-    admin: User = Depends(require_roles(["admin"])),
-    db: AsyncSession = Depends(get_db),
-):
-    """Update landing page CMS configuration (admin only)."""
-    result = await services.update_landing_page_config(db, config, admin.id)
-    return result
