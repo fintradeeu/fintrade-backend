@@ -17,7 +17,7 @@ jobs:
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
       - name: Deploy Backend
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
             set -e
             echo '---------------- Change Directory ----------------'
             cd ${{ secrets.WORK_DIR }}
@@ -39,7 +39,7 @@ jobs:
             docker restart ${{ secrets.CONT_NAME }}
 
             echo '---------------- Deployment Successful ----------------'
-          "
+          EOF
       - name: Cleanup SSH
         if: always()
         run: |
