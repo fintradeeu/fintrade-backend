@@ -50,6 +50,8 @@ jobs:
             docker restart ${{ secrets.CONT_NAME }}
 
             echo '---------------- Verification Post-Restart ----------------'
+            echo '=== Container Mounts ==='
+            docker inspect ${{ secrets.CONT_NAME }} --format='{{json .Mounts}}' || true
             echo '=== Inside Container settings/routes.py content ==='
             docker exec -i ${{ secrets.CONT_NAME }} grep -n "LandingPageUpdateRequest" /app/app/modules/settings/routes.py || true
             echo '=== Running Containers Post-Restart ==='
