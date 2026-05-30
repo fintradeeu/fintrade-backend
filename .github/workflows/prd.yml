@@ -25,6 +25,11 @@ jobs:
             echo '---------------- Git Pull ----------------'
             git pull origin ${{ secrets.BRANCH }}
 
+            echo '------------- Copy Code to Container -------------'
+            docker cp requirements.txt ${{ secrets.CONT_NAME }}:/app/
+            docker cp app/ ${{ secrets.CONT_NAME }}:/app/
+            docker cp migrations/ ${{ secrets.CONT_NAME }}:/app/
+
             echo '---------------- Upgrade Pip ----------------'
             docker exec -i --user root ${{ secrets.CONT_NAME }} pip install --upgrade pip
 
