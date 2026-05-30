@@ -25,14 +25,8 @@ jobs:
             echo '---------------- Git Pull ----------------'
             git pull origin ${{ secrets.BRANCH }}
 
-            echo '------------- Clean Pycache -------------'
-            find app/ -type d -name "__pycache__" -exec rm -rf {} + || true
-            find migrations/ -type d -name "__pycache__" -exec rm -rf {} + || true
-
-            echo '------------- Copy Code to Container -------------'
-            docker cp requirements.txt ${{ secrets.CONT_NAME }}:/app/
-            docker cp app/ ${{ secrets.CONT_NAME }}:/app/
-            docker cp migrations/ ${{ secrets.CONT_NAME }}:/app/
+            echo '------------- Copy Code to Container (with Exclusions) -------------'
+            tar --exclude='__pycache__' --exclude='*.pyc' -cf - app migrations requirements.txt | docker exec -i ${{ secrets.CONT_NAME }} tar -xf - -C /app/
 
             echo '---------------- Upgrade Pip ----------------'
             docker exec -i --user root ${{ secrets.CONT_NAME }} pip install --upgrade pip
