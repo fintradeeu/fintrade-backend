@@ -25,6 +25,10 @@ jobs:
             echo '---------------- Git Pull ----------------'
             git pull origin ${{ secrets.BRANCH }}
 
+            echo '------------- Clean Pycache -------------'
+            find app/ -type d -name "__pycache__" -exec rm -rf {} + || true
+            find migrations/ -type d -name "__pycache__" -exec rm -rf {} + || true
+
             echo '------------- Copy Code to Container -------------'
             docker cp requirements.txt ${{ secrets.CONT_NAME }}:/app/
             docker cp app/ ${{ secrets.CONT_NAME }}:/app/
