@@ -141,12 +141,17 @@ def trigger_db_migration(secret_key: str):
             except Exception:
                 pass
                 
-        # 2. To fix stranded Alembic state, stamp the DB back to 002 (since the junk file is gone)
-        # We wrap this in try-except because it might fail if DB is already clean, but we ignore it
+        # 2. Proactively clear any duplicate heads in alembic_version table and stamp to 004
         try:
-            command.stamp(alembic_cfg, "002_add_exam_features")
-        except Exception:
-            pass
+            import sqlalchemy as sa
+            sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://").replace("sqlite+aiosqlite://", "sqlite://")
+            sync_engine = sa.create_engine(sync_url)
+            with sync_engine.connect() as conn:
+                conn.execute(sa.text("DELETE FROM alembic_version;"))
+                conn.execute(sa.text("INSERT INTO alembic_version (version_num) VALUES ('004_add_google_oauth');"))
+                conn.commit()
+        except Exception as db_err:
+            print("DB version auto-heal skipped or failed:", db_err)
 
         # 3. Run upgrade head programmatically to apply the REAL migrations from Git
         command.upgrade(alembic_cfg, "head")
