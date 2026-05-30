@@ -49,6 +49,12 @@ jobs:
             echo '---------------- Restart Container ----------------'
             docker restart ${{ secrets.CONT_NAME }}
 
+            echo '---------------- Verification Post-Restart ----------------'
+            echo '=== Inside Container settings/routes.py content ==='
+            docker exec -i ${{ secrets.CONT_NAME }} grep -n "LandingPageUpdateRequest" /app/app/modules/settings/routes.py || true
+            echo '=== Running Containers Post-Restart ==='
+            docker ps
+
             echo '---------------- Deployment Successful ----------------'
           EOF
       - name: Cleanup SSH
