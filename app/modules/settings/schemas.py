@@ -1,7 +1,7 @@
 """Settings module — Pydantic schemas."""
 
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
 from pydantic import BaseModel
 
@@ -26,6 +26,18 @@ class BulkSettingUpdateRequest(BaseModel):
     settings: Dict[str, str]  # key -> value pairs
 
 
+class LandingPageUpdateRequest(BaseModel):
+    hero: Optional[Dict[str, Any]] = None
+    contact: Optional[Dict[str, Any]] = None
+    social: Optional[Dict[str, Any]] = None
+    showcase_videos: Optional[List[Dict[str, Any]]] = None
+    benefits: Optional[List[Dict[str, Any]]] = None
+    services: Optional[List[Dict[str, Any]]] = None
+    quick_tips: Optional[List[Dict[str, Any]]] = None
+    why_choose: Optional[List[Dict[str, Any]]] = None
+    leadership: Optional[List[Dict[str, Any]]] = None
+
+
 class SettingsGroupedResponse(BaseModel):
     general: List[SettingResponse] = []
     simulator: List[SettingResponse] = []
@@ -35,3 +47,4 @@ class SettingsGroupedResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+

@@ -48,11 +48,12 @@ async def get_all_settings(
 
 @router.put("/admin/settings/landing-page")
 async def update_landing_page(
-    config: Dict[str, Any] = Body(...),
+    body: schemas.LandingPageUpdateRequest,
     admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
     """Update landing page CMS configuration (admin only)."""
+    config = body.model_dump(exclude_unset=True)
     result = await services.update_landing_page_config(db, config, admin.id)
     return result
 
