@@ -32,6 +32,7 @@ jobs:
             docker exec -i ${{ secrets.CONT_NAME }} pip install -r requirements.txt
 
             echo '---------------- Alembic Migration ----------------'
+            docker exec -i ${{ secrets.CONT_NAME }} python -c "import sqlalchemy as sa; from app.config import settings; engine=sa.create_engine(settings.DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://').replace('sqlite+aiosqlite://', 'sqlite://')); conn=engine.connect(); conn.execute(sa.text('DELETE FROM alembic_version;')); conn.execute(sa.text(\"INSERT INTO alembic_version (version_num) VALUES ('004_add_google_oauth');\")); conn.commit()" || true
             docker exec -i ${{ secrets.CONT_NAME }} python -m alembic upgrade head
 
             echo '---------------- Restart Container ----------------'
