@@ -22,6 +22,14 @@ jobs:
             echo '---------------- Change Directory ----------------'
             cd ${{ secrets.WORK_DIR }}
 
+            echo '---------------- Diagnostics ----------------'
+            echo '=== Running Containers ==='
+            docker ps
+            echo '=== Docker Compose Status ==='
+            docker compose ps || docker-compose ps || true
+            echo '=== Host Python Processes ==='
+            ps aux | grep -E "uvicorn|gunicorn|python" || true
+
             echo '---------------- Git Pull ----------------'
             git pull origin ${{ secrets.BRANCH }}
 
