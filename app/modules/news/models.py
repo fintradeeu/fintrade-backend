@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column,
     DateTime,
-    Enum,
     ForeignKey,
     Integer,
     String,
@@ -23,18 +22,10 @@ class NewsArticle(Base):
     title = Column(String(500), nullable=False)
     type = Column(String(50), default="Blog Story", nullable=False)
     description = Column(Text, nullable=True)
-    video_type = Column(
-        Enum("youtube", "uploaded", name="video_type"),
-        default="youtube",
-        nullable=False,
-    )
+    video_type = Column(String(50), default="youtube", nullable=False)
     video_url = Column(Text, nullable=True)
     thumbnail_url = Column(Text, nullable=True)
-    status = Column(
-        Enum("published", "draft", name="news_status"),
-        default="published",
-        nullable=False,
-    )
+    status = Column(String(50), default="published", nullable=False)
     views_count = Column(Integer, default=0)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
