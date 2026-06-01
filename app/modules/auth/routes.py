@@ -39,7 +39,6 @@ async def register(
         user=schemas.UserResponse.model_validate(user),
     )
 
-    
 
 
 @router.post("/google", response_model=schemas.TokenResponse)
