@@ -18,7 +18,7 @@ async def register(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Register a new student account and return JWT tokens."""
+    """Register a new student account and return JWT tokens.""" 
     user = await services.register_user(
         db,
         email=body.email,
@@ -26,6 +26,7 @@ async def register(
         password=body.password,
         phone=body.phone,
     )   
+    
     tokens = await services.create_session(
         db,
         user,

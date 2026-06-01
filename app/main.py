@@ -125,21 +125,25 @@ def trigger_db_migration(secret_key: str):
         
         import glob
 
-        # 1. First, automatically clean up any rogue auto_migrate_server files that were previously generated
-        junk_files = glob.glob(os.path.join(root_dir, "migrations", "versions", "*auto_migrate_server*"))
-        for f in junk_files:
-            try:
-                os.remove(f)
-            except Exception:
-                pass
-                
-        # Also clean up the newer auto-migrate-server naming convention
-        junk_files_2 = glob.glob(os.path.join(root_dir, "migrations", "versions", "*auto-migrate-server*"))
-        for f in junk_files_2:
-            try:
-                os.remove(f)
-            except Exception:
-                pass
+        # 1. Clean up rogue generated migration files left on the server.
+        versions_dir = os.path.join(root_dir, "migrations", "versions")
+        known_migrations = {
+            "001_add_distributors_referrals_rbac.py",
+            "002_add_exam_features.py",
+            "003_make_lecture_course_id_nullable.py",
+            "004_add_google_oauth.py",
+            "005_add_news_article_type.py",
+            "006_repair_news_articles_schema.py",
+            ".gitkeep",
+        }
+        for f in glob.glob(os.path.join(versions_dir, "*")):
+            if os.path.isdir(f):
+                continue
+            if os.path.basename(f) not in known_migrations:
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
                 
         # 2. Proactively clear any duplicate heads in alembic_version table and stamp to 004
         try:

@@ -18,6 +18,29 @@ def upgrade() -> None:
     bind = op.get_bind()
     insp = sa.inspect(bind)
 
+    if "news_articles" not in insp.get_table_names():
+        op.create_table(
+            "news_articles",
+            sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
+            sa.Column("title", sa.String(length=500), nullable=False),
+            sa.Column("type", sa.String(length=50), nullable=False, server_default="Blog Story"),
+            sa.Column("description", sa.Text(), nullable=True),
+            sa.Column("video_type", sa.String(length=50), nullable=False, server_default="youtube"),
+            sa.Column("video_url", sa.Text(), nullable=True),
+            sa.Column("thumbnail_url", sa.Text(), nullable=True),
+            sa.Column("status", sa.String(length=50), nullable=False, server_default="published"),
+            sa.Column("views_count", sa.Integer(), nullable=True, server_default="0"),
+            sa.Column("created_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        )
+        op.create_index("ix_news_articles_id", "news_articles", ["id"], unique=False)
+        op.alter_column("news_articles", "type", server_default=None)
+        op.alter_column("news_articles", "video_type", server_default=None)
+        op.alter_column("news_articles", "status", server_default=None)
+        op.alter_column("news_articles", "views_count", server_default=None)
+        return
+
     columns = [column["name"] for column in insp.get_columns("news_articles")]
     if "type" not in columns:
         op.add_column(
