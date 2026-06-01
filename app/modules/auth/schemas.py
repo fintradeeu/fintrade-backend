@@ -16,7 +16,7 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str = Field(..., description="Email Address or Mobile Number")
     password: str
 
 
@@ -33,7 +33,7 @@ class ProfileUpdateRequest(BaseModel):
 
 
 class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
+    email: str = Field(..., description="Email Address or Mobile Number")
 
 
 class ResetPasswordRequest(BaseModel):

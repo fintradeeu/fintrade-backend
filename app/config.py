@@ -119,6 +119,11 @@ class Settings(BaseSettings):
     # ── OTP ──────────────────────────────────────────────────────────
     OTP_EXPIRY_MINUTES: int = 5
 
+    # ── Twilio Verify ─────────────────────────────────────────────────
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_SERVICE_SID: str = ""
+
     @field_validator("DEBUG", mode="before")
     @classmethod
     def parse_debug(cls, value: Any) -> Any:

@@ -25,7 +25,7 @@ async def register(
         full_name=body.full_name,
         password=body.password,
         phone=body.phone,
-    )
+    )   
     tokens = await services.create_session(
         db,
         user,
@@ -239,8 +239,12 @@ async def forgot_password(
 ):
     """Step 1 - Send password reset OTP to email."""
     otp_result = await services.initiate_forgot_password(db, body.email)
+    message_text = "Verification code sent to your email for password reset."
+    if "sms" in otp_result.get("channels", []):
+        message_text = "Verification code sent to your mobile number via SMS for password reset."
+        
     return schemas.OTPPendingResponse(
-        message="Verification code sent to your email for password reset.",
+        message=message_text,
         otp_token=otp_result["otp_token"],
         expires_in_seconds=otp_result["expires_in_seconds"],
         channels=otp_result["channels"],

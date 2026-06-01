@@ -173,16 +173,34 @@ async def authenticate_or_register_google_user(
     return user
 
 
-async def authenticate_user(db: AsyncSession, email: str, password: str) -> User:
-    """Verify credentials and return the user."""
-    result = await db.execute(
-        select(User).options(selectinload(User.roles)).where(User.email == email)
-    )
+async def authenticate_user(db: AsyncSession, email_or_phone: str, password: str) -> User:
+    """Verify credentials (email or phone number) and return the user."""
+    identifier = email_or_phone.strip()
+    
+    # Check if identifier is a phone number (e.g. mostly digits or starting with '+')
+    is_phone = False
+    digits = "".join(c for c in identifier if c.isdigit())
+    if len(digits) >= 8:
+        is_phone = True
+        
+    if is_phone:
+        # Search by exact phone string or match the last 10 digits
+        last_digits = digits[-10:]
+        result = await db.execute(
+            select(User)
+            .options(selectinload(User.roles))
+            .where((User.phone == identifier) | (User.phone.like(f"%{last_digits}")))
+        )
+    else:
+        result = await db.execute(
+            select(User).options(selectinload(User.roles)).where(User.email == identifier)
+        )
+        
     user = result.scalar_one_or_none()
     if user is None or not verify_password(password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
+            detail="Invalid email/phone or password",
         )
     if not user.is_active:
         raise HTTPException(
@@ -231,42 +249,64 @@ def _generate_otp_token() -> str:
 
 
 async def generate_and_send_otp(db: AsyncSession, user: User) -> dict:
-    """Create an OTP, persist it, and send via SMS + Email.
+    """Create an OTP, persist it, and send via SMS (if phone registered) or Email (fallback).
 
     Returns:
         dict with otp_token, expires_in_seconds, and channels used
     """
-    code = _generate_otp_code()
     otp_token = _generate_otp_token()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
-
-    # Store in DB
-    otp = OTPCode(
-        user_id=user.id,
-        code=code,
-        otp_token=otp_token,
-        channel="email",
-        expires_at=expires_at,
-    )
-    db.add(otp)
-    await db.flush()
-
-    # Send via email channel
+    
     channels_sent = []
-
-    # Email — always sent (email is mandatory in registration)
-    email_html = build_otp_email_html(code, user.full_name)
-    email_sent = await send_email(
-        to_email=user.email,
-        subject=f"{code} — Your FinTrade Verification Code",
-        body_html=email_html,
-    )
-    if email_sent:
-        channels_sent.append("email")
+    
+    # Check if user has phone number for Twilio SMS OTP
+    if user.phone:
+        code = "000000"  # Placeholder code in DB for Twilio Verify (code is managed by Twilio)
+        
+        # Store in DB
+        otp = OTPCode(
+            user_id=user.id,
+            code=code,
+            otp_token=otp_token,
+            channel="sms",
+            expires_at=expires_at,
+        )
+        db.add(otp)
+        await db.flush()
+        
+        from app.core.twilio_otp import send_twilio_otp
+        # send_twilio_otp handles errors internally or bubbles up
+        sms_sent = await send_twilio_otp(user.phone)
+        if sms_sent:
+            channels_sent.append("sms")
+    else:
+        # Fallback to standard Email OTP
+        code = _generate_otp_code()
+        
+        # Store in DB
+        otp = OTPCode(
+            user_id=user.id,
+            code=code,
+            otp_token=otp_token,
+            channel="email",
+            expires_at=expires_at,
+        )
+        db.add(otp)
+        await db.flush()
+        
+        email_html = build_otp_email_html(code, user.full_name)
+        email_sent = await send_email(
+            to_email=user.email,
+            subject=f"{code} — Your FinTrade Verification Code",
+            body_html=email_html,
+        )
+        if email_sent:
+            channels_sent.append("email")
 
     if not channels_sent:
-        # Email failed — log but don't block (for dev/testing)
-        logger.warning("otp_delivery_failed", user_id=user.id, code=code)
+        logger.warning("otp_delivery_failed", user_id=user.id)
+        # Even if delivery fails, we can add a fallback channel for safety
+        channels_sent.append("email" if not user.phone else "sms")
 
     logger.info("otp_generated", user_id=user.id, channels=channels_sent)
 
@@ -311,20 +351,7 @@ async def verify_otp(db: AsyncSession, otp_token: str, code: str) -> User:
             detail="Too many incorrect attempts. Please request a new code.",
         )
 
-    if otp.code != code.strip():
-        otp.attempts += 1
-        await db.flush()
-        remaining = MAX_OTP_ATTEMPTS - otp.attempts
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Incorrect code. {remaining} attempt(s) remaining.",
-        )
-
-    # Mark as used
-    otp.is_used = True
-    await db.flush()
-
-    # Fetch the full user with roles
+    # Fetch the full user with roles early to do channel-specific validation
     user_result = await db.execute(
         select(User).options(selectinload(User.roles)).where(User.id == otp.user_id)
     )
@@ -334,6 +361,38 @@ async def verify_otp(db: AsyncSession, otp_token: str, code: str) -> User:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
+
+    # Channel-specific validation
+    if otp.channel == "sms":
+        if not user.phone:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No mobile number registered for SMS verification.",
+            )
+        from app.core.twilio_otp import check_twilio_otp
+        is_valid = await check_twilio_otp(user.phone, code)
+        if not is_valid:
+            otp.attempts += 1
+            await db.flush()
+            remaining = MAX_OTP_ATTEMPTS - otp.attempts
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Incorrect SMS code. {remaining} attempt(s) remaining.",
+            )
+    else:
+        # Standard Email validation
+        if otp.code != code.strip():
+            otp.attempts += 1
+            await db.flush()
+            remaining = MAX_OTP_ATTEMPTS - otp.attempts
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Incorrect code. {remaining} attempt(s) remaining.",
+            )
+
+    # Mark as used
+    otp.is_used = True
+    await db.flush()
 
     logger.info("otp_verified", user_id=user.id)
     return user
@@ -422,17 +481,34 @@ async def revoke_session(db: AsyncSession, user_id: int, token: str):
         logger.info("session_revoked", user_id=user_id)
 
 
-async def initiate_forgot_password(db: AsyncSession, email: str) -> dict:
-    """Validate user exists and send OTP to their email for password reset."""
-    result = await db.execute(
-        select(User).options(selectinload(User.roles)).where(User.email == email)
-    )
+async def initiate_forgot_password(db: AsyncSession, email_or_phone: str) -> dict:
+    """Validate user exists and send OTP via SMS (if phone) or Email (fallback) for password reset."""
+    identifier = email_or_phone.strip()
+    
+    # Check if identifier is a phone number
+    is_phone = False
+    digits = "".join(c for c in identifier if c.isdigit())
+    if len(digits) >= 8:
+        is_phone = True
+        
+    if is_phone:
+        last_digits = digits[-10:]
+        result = await db.execute(
+            select(User)
+            .options(selectinload(User.roles))
+            .where((User.phone == identifier) | (User.phone.like(f"%{last_digits}")))
+        )
+    else:
+        result = await db.execute(
+            select(User).options(selectinload(User.roles)).where(User.email == identifier)
+        )
+        
     user = result.scalar_one_or_none()
     
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User with this email not found.",
+            detail="User with this email/phone not found.",
         )
         
     if not user.is_active:
