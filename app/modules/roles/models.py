@@ -6,7 +6,6 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
-    Enum,
     ForeignKey,
     Integer,
     String,
@@ -21,11 +20,7 @@ class AdminPermission(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    admin_role = Column(
-        Enum("super_admin", "content_admin", "finance_admin", "support_admin", name="admin_role_type"),
-        nullable=False,
-        default="support_admin",
-    )
+    admin_role = Column(String(50), nullable=False, default="support_admin")
     manage_courses = Column(Boolean, default=False)
     manage_students = Column(Boolean, default=False)
     manage_payments = Column(Boolean, default=False)

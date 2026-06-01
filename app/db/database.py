@@ -60,13 +60,6 @@ async def get_db():
 
 
 async def init_db():
-    """Create tables (development convenience — use Alembic in production)."""
-    async with engine.begin() as conn:
-        from app.db.base import import_all_models  # noqa
-        await conn.run_sync(Base.metadata.create_all)
-
-
-async def init_db():
     """Create tables with a short retry window for local Postgres startup."""
     last_error = None
     for attempt in range(1, 6):
@@ -81,4 +74,3 @@ async def init_db():
                 break
             await asyncio.sleep(attempt)
     raise last_error
-
