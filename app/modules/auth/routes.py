@@ -40,7 +40,6 @@ async def register(
     )
 
 
-
 @router.post("/google", response_model=schemas.TokenResponse)
 async def google_auth(
     body: schemas.GoogleAuthRequest,
