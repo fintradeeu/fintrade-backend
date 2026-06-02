@@ -44,10 +44,10 @@ STATEMENTS = [
         WHEN video_url IS NOT NULL AND video_url <> '' THEN 'Market Update'
         ELSE 'Blog Story'
     END
-    WHERE type IS NULL OR type = ''
+    WHERE type IS NULL OR type::varchar = ''
     """,
-    "UPDATE news_articles SET video_type = 'youtube' WHERE video_type IS NULL OR video_type = ''",
-    "UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status = ''",
+    "UPDATE news_articles SET video_type = 'youtube' WHERE video_type IS NULL OR video_type::varchar = ''",
+    "UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status::varchar = ''",
     "UPDATE news_articles SET views_count = 0 WHERE views_count IS NULL",
     "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)",
     "DELETE FROM alembic_version",

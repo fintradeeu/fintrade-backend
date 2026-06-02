@@ -69,14 +69,14 @@ def upgrade() -> None:
                     WHEN video_url IS NOT NULL AND video_url <> '' THEN 'Market Update'
                     ELSE 'Blog Story'
                 END
-                WHERE type IS NULL OR type = ''
+                WHERE type IS NULL OR type::varchar = ''
                 """
             )
         )
     if "video_type" in refreshed_columns:
-        op.execute(sa.text("UPDATE news_articles SET video_type = 'youtube' WHERE video_type IS NULL OR video_type = ''"))
+        op.execute(sa.text("UPDATE news_articles SET video_type = 'youtube' WHERE video_type IS NULL OR video_type::varchar = ''"))
     if "status" in refreshed_columns:
-        op.execute(sa.text("UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status = ''"))
+        op.execute(sa.text("UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status::varchar = ''"))
     if "views_count" in refreshed_columns:
         op.execute(sa.text("UPDATE news_articles SET views_count = 0 WHERE views_count IS NULL"))
 
