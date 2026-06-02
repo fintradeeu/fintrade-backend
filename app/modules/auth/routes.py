@@ -125,7 +125,7 @@ async def verify_otp(
         refresh_token=tokens["refresh_token"],
         user=schemas.UserResponse.model_validate(user),
     )
-
+# ffffff
 
 @router.post("/resend-otp", response_model=schemas.OTPPendingResponse)
 async def resend_otp(
