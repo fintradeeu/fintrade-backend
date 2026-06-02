@@ -8,6 +8,8 @@ databases:
     databaseName: fittrade_lms
     user: fittrade_user
 
+
+
 services:
   - type: web
     name: fittrade-backend
