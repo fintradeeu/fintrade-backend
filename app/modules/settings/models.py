@@ -13,7 +13,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.db.database import Base
+from app.modules.auth.models import User
 
+
+from sqlalchemy.dialects.postgresql import ENUM
 
 class PlatformSetting(Base):
     __tablename__ = "platform_settings"
@@ -21,7 +24,11 @@ class PlatformSetting(Base):
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String(100), unique=True, nullable=False, index=True)
     value = Column(Text, nullable=True)  # Stored as JSON string
-    category = Column(String(50), default="general", nullable=False)
+    category = Column(
+        ENUM("general", "simulator", "exam", "payment", name="setting_category", create_type=False),
+        default="general",
+        nullable=False
+    )
     label = Column(String(255), nullable=True)  # Human-readable label
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_at = Column(
