@@ -38,6 +38,10 @@ class LandingPageUpdateRequest(BaseModel):
     leadership: Optional[List[Dict[str, Any]]] = None
     hero_buttons: Optional[Dict[str, Any]] = None
     carousel_slides: Optional[List[Dict[str, Any]]] = None
+    section_visibility: Optional[Dict[str, Any]] = None
+    live_classes: Optional[List[Dict[str, Any]]] = None
+    emi: Optional[Dict[str, Any]] = None
+    certificate: Optional[Dict[str, Any]] = None
 
 
 class SettingsGroupedResponse(BaseModel):
