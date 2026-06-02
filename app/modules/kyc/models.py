@@ -6,7 +6,6 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
-    Enum,
     ForeignKey,
     Integer,
     String,
@@ -46,11 +45,7 @@ class KYCSubmission(Base):
     biometric_selfie_url = Column(Text, nullable=True)
 
     # Status
-    status = Column(
-        Enum("pending", "verified", "rejected", name="kyc_status"),
-        default="pending",
-        nullable=False,
-    )
+    status = Column(String(50), default="pending", nullable=False)
     rejection_reason = Column(Text, nullable=True)
     reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)

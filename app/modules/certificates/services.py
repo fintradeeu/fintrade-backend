@@ -34,6 +34,30 @@ async def generate_certificate(db: AsyncSession, user_id: int, course_id: int) -
             detail=f"Course not completed. Progress: {enrollment.progress_percent}%",
         )
 
+    # 1.5 Check if course has a final exam, and if so, check if passed
+    from app.modules.exams.models import CourseExam, CourseExamResult
+    final_exam_res = await db.execute(
+        select(CourseExam).where(
+            CourseExam.course_id == course_id,
+            CourseExam.exam_type == "course_final",
+            CourseExam.is_active == True
+        )
+    )
+    final_exam = final_exam_res.scalar_one_or_none()
+    if final_exam:
+        passed_res = await db.execute(
+            select(CourseExamResult).where(
+                CourseExamResult.user_id == user_id,
+                CourseExamResult.exam_id == final_exam.id,
+                CourseExamResult.passed == True
+            )
+        )
+        if not passed_res.scalars().first():
+            raise HTTPException(
+                status_code=403,
+                detail="You must pass the course's final exam to generate the certificate."
+            )
+
     # 2. Check duplicate
     existing = await db.execute(
         select(Certificate).where(

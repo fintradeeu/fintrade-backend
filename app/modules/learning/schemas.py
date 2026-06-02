@@ -35,11 +35,21 @@ class UpcomingLectureItem(BaseModel):
         from_attributes = True
 
 
+class VideoPolicyItem(BaseModel):
+    module_id: int
+    mandatory: bool
+
+    class Config:
+        from_attributes = True
+
+
 class LearningDashboardResponse(BaseModel):
     enrolled_courses: List[EnrolledCourseProgress]
     completed_lessons: List[CompletedLessonItem]
     upcoming_lectures: List[UpcomingLectureItem]
+    video_policies: List[VideoPolicyItem] = []
 
 class MarkLessonCompletedRequest(BaseModel):
     course_id: int
     lesson_id: int
+

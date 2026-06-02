@@ -87,7 +87,10 @@ async def create_user_with_role(
     user.roles.append(role)
     db.add(user)
     await db.flush()
-    await db.refresh(user)
+    # Eager load the roles to prevent MissingGreenlet error in Pydantic schema validation
+    result = await db.execute(select(User).options(selectinload(User.roles)).where(User.id == user.id))
+    user = result.scalar_one()
+    
     logger.info("admin_created_user", user_id=user.id, role=role_name, created_by=created_by)
     return user
 

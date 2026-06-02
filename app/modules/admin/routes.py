@@ -186,12 +186,23 @@ async def publish_all_courses(
 async def update_course(
     course_id: int,
     body: course_schemas.CourseUpdate,
-    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    _admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a course (admin/faculty only)."""
+    """Update a course (admin only)."""
     course = await course_services.update_course(db, course_id, body.model_dump(exclude_unset=True))
     return course_schemas.CourseDetailResponse.model_validate(course)
+
+
+@router.delete("/courses/{course_id}", response_model=schemas.MessageResponse)
+async def delete_course(
+    course_id: int,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a course (admin only)."""
+    await course_services.delete_course(db, course_id)
+    return schemas.MessageResponse(message="Course deleted successfully")
 
 
 @router.post("/modules", response_model=course_schemas.ModuleResponse, status_code=201)
@@ -205,6 +216,18 @@ async def create_module(
     return course_schemas.ModuleResponse.model_validate(module)
 
 
+@router.put("/modules/{module_id}", response_model=course_schemas.ModuleResponse)
+async def update_module(
+    module_id: int,
+    body: course_schemas.ModuleUpdate,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a course module (admin/faculty only)."""
+    module = await course_services.update_module(db, module_id, body.model_dump(exclude_unset=True))
+    return course_schemas.ModuleResponse.model_validate(module)
+
+
 @router.post("/lessons", response_model=course_schemas.LessonResponse, status_code=201)
 async def create_lesson(
     body: course_schemas.LessonCreate,
@@ -215,6 +238,63 @@ async def create_lesson(
     lesson = await course_services.create_lesson(db, body.model_dump())
     return course_schemas.LessonResponse.model_validate(lesson)
 
+
+@router.put("/lessons/{lesson_id}", response_model=course_schemas.LessonResponse)
+async def update_lesson(
+    lesson_id: int,
+    body: course_schemas.LessonUpdate,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a lesson (admin/faculty only)."""
+    lesson = await course_services.update_lesson(db, lesson_id, body.model_dump(exclude_unset=True))
+    return course_schemas.LessonResponse.model_validate(lesson)
+
+
+@router.delete("/modules/{module_id}", response_model=schemas.MessageResponse)
+async def delete_module(
+    module_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a module and all its lessons (admin/faculty only)."""
+    await course_services.delete_module(db, module_id)
+    return schemas.MessageResponse(message="Module deleted successfully")
+
+
+@router.put("/courses/{course_id}/modules/reorder", response_model=schemas.MessageResponse)
+async def reorder_modules(
+    course_id: int,
+    body: course_schemas.ModuleReorder,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reorder modules within a course."""
+    await course_services.reorder_modules(db, course_id, body.module_ids)
+    return schemas.MessageResponse(message="Modules reordered successfully")
+
+
+@router.delete("/lessons/{lesson_id}", response_model=schemas.MessageResponse)
+async def delete_lesson(
+    lesson_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a lesson (admin/faculty only)."""
+    await course_services.delete_lesson(db, lesson_id)
+    return schemas.MessageResponse(message="Lesson deleted successfully")
+
+
+
+@router.get("/assignments", response_model=List[course_schemas.AssignmentResponse])
+async def list_all_assignments(
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all assignments across all courses (admin/faculty only)."""
+    assignments = await course_services.get_all_assignments(db)
+    return [course_schemas.AssignmentResponse.model_validate(a) for a in assignments]
+
 @router.post("/assignments", response_model=course_schemas.AssignmentResponse, status_code=201)
 async def create_assignment(
     body: course_schemas.AssignmentCreate,
@@ -224,6 +304,16 @@ async def create_assignment(
     """Create a new assignment for a course (admin/faculty only)."""
     assignment = await course_services.create_assignment(db, body.model_dump())
     return course_schemas.AssignmentResponse.model_validate(assignment)
+
+@router.get("/assignments/{assignment_id}/submissions", response_model=List[course_schemas.AssignmentSubmissionResponse])
+async def list_assignment_submissions(
+    assignment_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all submissions for a specific assignment (admin/faculty only)."""
+    submissions = await course_services.get_assignment_submissions(db, assignment_id)
+    return [course_schemas.AssignmentSubmissionResponse.model_validate(s) for s in submissions]
 
 @router.post("/assignments/grade", response_model=course_schemas.AssignmentSubmissionResponse)
 async def grade_assignment(
@@ -357,6 +447,93 @@ async def get_exam_questions(
             ]
         })
     return result
+
+
+@router.put("/exams/questions/{question_id}")
+async def update_question(
+    question_id: int,
+    body: dict,
+    is_course: bool = Query(False),
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a single question and its options (admin/faculty only)."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from fastapi import HTTPException
+    from sqlalchemy.exc import IntegrityError
+    from app.modules.exams.models import ExamQuestion, CourseExamQuestion, ExamOption, CourseExamOption
+    
+    QuestionModel = CourseExamQuestion if is_course else ExamQuestion
+    OptionModel = CourseExamOption if is_course else ExamOption
+    
+    result = await db.execute(
+        select(QuestionModel).options(selectinload(QuestionModel.options)).where(QuestionModel.id == question_id)
+    )
+    question = result.scalars().first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    # Update question fields
+    for field in ["question_text", "question_type", "marks", "negative_marks", "category", "explanation"]:
+        if field in body:
+            setattr(question, field, body[field])
+    
+    # Update options if provided
+    if "options" in body:
+        existing_options = {opt.id: opt for opt in question.options}
+        
+        for i, opt_data in enumerate(body["options"]):
+            if "id" in opt_data and opt_data["id"] in existing_options:
+                opt = existing_options[opt_data["id"]]
+                opt.option_text = opt_data["option_text"]
+                opt.is_correct = opt_data.get("is_correct", False)
+                opt.order = i
+                del existing_options[opt.id]
+            else:
+                new_opt = OptionModel(
+                    question_id=question.id,
+                    option_text=opt_data["option_text"],
+                    is_correct=opt_data.get("is_correct", False),
+                    order=i,
+                )
+                db.add(new_opt)
+                
+        # Remove remaining options
+        for opt in existing_options.values():
+            try:
+                await db.delete(opt)
+                await db.flush()
+            except IntegrityError:
+                await db.rollback()
+                raise HTTPException(status_code=400, detail=f"Cannot delete option '{opt.option_text}' because it has already been selected in student exam attempts.")
+    
+    await db.commit()
+    await db.refresh(question)
+    return {"message": "Question updated successfully"}
+
+
+@router.delete("/exams/questions/{question_id}")
+async def delete_question(
+    question_id: int,
+    is_course: bool = Query(False),
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a single question and its options (admin/faculty only)."""
+    from sqlalchemy import select
+    from fastapi import HTTPException
+    from app.modules.exams.models import ExamQuestion, CourseExamQuestion
+    
+    QuestionModel = CourseExamQuestion if is_course else ExamQuestion
+    result = await db.execute(select(QuestionModel).where(QuestionModel.id == question_id))
+    question = result.scalars().first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    await db.delete(question)  # cascade deletes options
+    await db.flush()
+    return {"message": "Question deleted successfully"}
 
 
 @router.post("/exams/questions", response_model=schemas.MessageResponse, status_code=201)
@@ -514,6 +691,26 @@ async def create_lecture(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=traceback.format_exc())
 
+@router.put("/lectures/{lecture_id}", response_model=lecture_schemas.LectureResponse)
+async def update_lecture(
+    lecture_id: int,
+    body: lecture_schemas.LectureUpdate,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a scheduled lecture (admin/faculty only)."""
+    lecture = await lecture_services.update_lecture(db, lecture_id, body.model_dump(exclude_unset=True))
+    return lecture_schemas.LectureResponse.model_validate(lecture)
+
+@router.delete("/lectures/{lecture_id}", status_code=204)
+async def delete_lecture(
+    lecture_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a scheduled lecture (admin/faculty only)."""
+    await lecture_services.delete_lecture(db, lecture_id)
+
 @router.put("/lectures/{lecture_id}/start", response_model=lecture_schemas.LectureResponse)
 async def start_lecture(
     lecture_id: int,
@@ -602,4 +799,178 @@ async def admin_simulator(
     """Get simulator usage stats and top performers."""
     data = await services.get_admin_simulator(db)
     return schemas.AdminSimulatorResponse(**data)
+
+
+
+# --- AI FAQ Management ---
+
+from app.modules.ai.models import FAQEntry
+from app.modules.ai import schemas as ai_schemas
+from sqlalchemy import select
+
+@router.get('/ai/faqs', response_model=list[ai_schemas.FAQResponse])
+async def get_faqs(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(FAQEntry).order_by(FAQEntry.frequency.desc()))
+    return result.scalars().all()
+
+@router.post('/ai/faqs', response_model=ai_schemas.FAQResponse)
+async def create_faq(body: ai_schemas.FAQCreate, db: AsyncSession = Depends(get_db)):
+    faq = FAQEntry(**body.model_dump())
+    db.add(faq)
+    await db.commit()
+    await db.refresh(faq)
+    return faq
+
+@router.put('/ai/faqs/{faq_id}', response_model=ai_schemas.FAQResponse)
+async def update_faq(faq_id: int, body: ai_schemas.FAQUpdate, db: AsyncSession = Depends(get_db)):
+    faq = await db.get(FAQEntry, faq_id)
+    if not faq:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail='FAQ not found')
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(faq, k, v)
+    await db.commit()
+    await db.refresh(faq)
+    return faq
+
+@router.delete('/ai/faqs/{faq_id}')
+async def delete_faq(faq_id: int, db: AsyncSession = Depends(get_db)):
+    faq = await db.get(FAQEntry, faq_id)
+    if faq:
+        await db.delete(faq)
+        await db.commit()
+    return {'status': 'ok'}
+
+# --- Simulator Admin ---
+@router.post('/simulator/toggle')
+async def toggle_simulator(status: bool, db: AsyncSession = Depends(get_db)):
+    # Basic toggle placeholder
+    return {'status': 'ok', 'simulator_active': status}
+
+
+# In-memory mock for Admin Roles
+mock_admins = [
+    {
+      "id": 1,
+      "name": "Rajesh Mehta",
+      "email": "rajesh.mehta@fintrade.in",
+      "role": "Super Admin",
+      "status": "Active",
+      "permissions": {
+        "manageCourses": True,
+        "manageStudents": True,
+        "managePayments": True,
+        "manageContent": True,
+        "manageExams": True,
+        "manageAdmins": True,
+        "canViewRevenue": True,
+      },
+      "lastActive": "2026-04-16"
+    }
+]
+
+@router.get("/roles")
+async def get_admin_roles(_admin: User = Depends(require_roles(["admin"]))):
+    return mock_admins
+
+@router.post("/roles")
+async def create_admin_role(data: dict, _admin: User = Depends(require_roles(["admin"]))):
+    data["id"] = len(mock_admins) + 1
+    mock_admins.append(data)
+    return data
+
+@router.put("/roles/{role_id}")
+async def update_admin_role(role_id: int, data: dict, _admin: User = Depends(require_roles(["admin"]))):
+    for i, a in enumerate(mock_admins):
+        if a["id"] == role_id:
+            data["id"] = role_id
+            mock_admins[i] = data
+            return data
+    return {"error": "Not found"}
+
+@router.delete("/roles/{role_id}")
+async def delete_admin_role(role_id: int, _admin: User = Depends(require_roles(["admin"]))):
+    global mock_admins
+    mock_admins = [a for a in mock_admins if a["id"] != role_id]
+    return {"success": True}
+
+@router.get("/students/{student_id}/progress")
+async def get_student_progress(
+    student_id: int,
+    current_user: User = Depends(require_roles(["admin", "super_admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get detailed progress of a specific student for Admins."""
+    from app.modules.learning.progress import get_student_progress_details
+    return await get_student_progress_details(db, student_id)
+
+
+@router.get("/modules/{module_id}/students")
+async def get_module_students(
+    module_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.modules.courses.models import CourseModule, CourseEnrollment, ModuleStudentPolicy
+    from app.modules.auth.models import User
+    from sqlalchemy import select
+
+    # Get the module
+    module_stmt = select(CourseModule).where(CourseModule.id == module_id)
+    module_res = await db.execute(module_stmt)
+    module = module_res.scalar_one_or_none()
+    if not module:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Module not found")
+    
+    # Get all enrollments for this module's course
+    enrollments_stmt = (
+        select(CourseEnrollment, User)
+        .join(User, CourseEnrollment.user_id == User.id)
+        .where(CourseEnrollment.course_id == module.course_id)
+    )
+    enrollments_res = await db.execute(enrollments_stmt)
+    enrolled_students = enrollments_res.all()
+
+    # Get existing policies for this module
+    policies_stmt = select(ModuleStudentPolicy).where(ModuleStudentPolicy.module_id == module_id)
+    policies_res = await db.execute(policies_stmt)
+    policies = {p.student_id: p.mandatory for p in policies_res.scalars().all()}
+
+    # Format output
+    result = []
+    for enrollment, user in enrolled_students:
+        result.append({
+            "student_id": user.id,
+            "student_name": user.full_name,
+            "student_email": user.email,
+            "mandatory": policies.get(user.id, True) # Defaults to True (mandatory watch)
+        })
+    return result
+
+
+@router.post("/modules/{module_id}/students-policies")
+async def save_module_students_policies(
+    module_id: int,
+    policies_data: List[dict], # e.g. [{"student_id": 1, "mandatory": false}]
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.modules.courses.models import ModuleStudentPolicy
+    from sqlalchemy import delete
+    
+    # Delete existing policies first to simple upsert
+    delete_stmt = delete(ModuleStudentPolicy).where(ModuleStudentPolicy.module_id == module_id)
+    await db.execute(delete_stmt)
+
+    for item in policies_data:
+        policy = ModuleStudentPolicy(
+            module_id=module_id,
+            student_id=item["student_id"],
+            mandatory=item.get("mandatory", True)
+        )
+        db.add(policy)
+    
+    await db.commit()
+    return {"status": "success", "message": "Policies updated successfully"}
 

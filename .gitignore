@@ -22,3 +22,15 @@ uploads/*
 # IDE
 .vscode/
 .idea/
+
+# Testing & Scripts
+test-reports/
+scripts/test-reports/
+test*.py
+tmp_*.py
+check_*.py
+trigger_*.py
+fix_*.py
+inspect_*.py
+generate_*.py
+publish_*.py

@@ -40,13 +40,23 @@ async def kyc_status(
     return schemas.KYCStatusResponse.model_validate(kyc)
 
 
+@router.post("/send-mobile-otp", response_model=schemas.MessageResponse)
+async def send_mobile_otp(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a real SMS OTP via Twilio Verify to the user's KYC mobile number."""
+    await services.send_mobile_otp(db, current_user.id)
+    return schemas.MessageResponse(message="Mobile OTP sent successfully via SMS")
+
+
 @router.post("/verify-mobile-otp", response_model=schemas.MessageResponse)
 async def verify_mobile_otp(
     body: schemas.OTPVerifyRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Verify mobile OTP (demo mode)."""
+    """Verify mobile OTP using Twilio Verify API."""
     await services.verify_otp(db, current_user.id, "mobile", body.otp)
     return schemas.MessageResponse(message="Mobile OTP verified successfully")
 

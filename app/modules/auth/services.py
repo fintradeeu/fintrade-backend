@@ -19,12 +19,12 @@ from app.core.security import (
 from app.config import settings
 from app.modules.auth.models import OTPCode, Role, Session, User
 from app.utils.logger import get_logger
-from app.utils.aws_notifications import (
+from app.utils.smtp_notifications import (
     build_otp_email_html,
-    build_otp_sms_message,
     send_email,
-    send_sms,
 )
+
+import httpx
 
 logger = get_logger(__name__)
 
@@ -75,16 +75,132 @@ async def register_user(
     return user
 
 
-async def authenticate_user(db: AsyncSession, email: str, password: str) -> User:
-    """Verify credentials and return the user."""
+async def verify_google_token(token: str) -> dict:
+    """Verify a Google ID token and return user info."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": token},
+            timeout=10.0,
+        )
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google token",
+        )
+    data = resp.json()
+    # Verify the token was issued for our app
+    if data.get("aud") != settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google token audience",
+        )
+    if data.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google token issuer",
+        )
+    return data
+
+
+async def authenticate_or_register_google_user(
+    db: AsyncSession,
+    token: str,
+    phone: Optional[str] = None,
+) -> User:
+    """Verify Google token and either login existing user or register a new one."""
+    google_data = await verify_google_token(token)
+    google_id = google_data.get("sub")
+    email = google_data.get("email")
+    full_name = google_data.get("name") or email.split("@")[0]
+    avatar_url = google_data.get("picture")
+
+    if not google_id or not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google token missing required fields",
+        )
+
+    # 1. Try to find user by google_id
+    result = await db.execute(
+        select(User).options(selectinload(User.roles)).where(User.google_id == google_id)
+    )
+    user = result.scalar_one_or_none()
+    if user:
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is deactivated",
+            )
+        # Update avatar if changed
+        if avatar_url and user.avatar_url != avatar_url:
+            user.avatar_url = avatar_url
+            await db.flush()
+        return user
+
+    # 2. Try to find user by email (link Google to existing account)
     result = await db.execute(
         select(User).options(selectinload(User.roles)).where(User.email == email)
     )
     user = result.scalar_one_or_none()
+    if user:
+        user.google_id = google_id
+        if avatar_url:
+            user.avatar_url = avatar_url
+        await db.flush()
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is deactivated",
+            )
+        return user
+
+    # 3. Create new user with student role
+    role = await get_or_create_role(db, "student")
+    user = User(
+        email=email,
+        full_name=full_name,
+        phone=phone,
+        google_id=google_id,
+        avatar_url=avatar_url,
+        is_verified=True,  # Google email is verified
+    )
+    user.roles.append(role)
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
+    logger.info("user_registered_google", user_id=user.id, email=email)
+    return user
+
+
+async def authenticate_user(db: AsyncSession, email_or_phone: str, password: str) -> User:
+    """Verify credentials (email or phone number) and return the user."""
+    identifier = email_or_phone.strip()
+    
+    # Check if identifier is a phone number (e.g. mostly digits or starting with '+')
+    is_phone = False
+    digits = "".join(c for c in identifier if c.isdigit())
+    if len(digits) >= 8:
+        is_phone = True
+        
+    if is_phone:
+        # Search by exact phone string or match the last 10 digits
+        last_digits = digits[-10:]
+        result = await db.execute(
+            select(User)
+            .options(selectinload(User.roles))
+            .where((User.phone == identifier) | (User.phone.like(f"%{last_digits}")))
+        )
+    else:
+        result = await db.execute(
+            select(User).options(selectinload(User.roles)).where(User.email == identifier)
+        )
+        
+    user = result.scalar_one_or_none()
     if user is None or not verify_password(password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
+            detail="Invalid email/phone or password",
         )
     if not user.is_active:
         raise HTTPException(
@@ -95,6 +211,32 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
 
 
 # ── OTP helpers ──────────────────────────────────────────────────────
+
+async def update_user_profile(
+    db: AsyncSession,
+    user: User,
+    email: str,
+    full_name: str,
+    phone: Optional[str] = None,
+) -> User:
+    """Update editable profile fields for the current user."""
+    normalized_email = email.strip().lower()
+    if normalized_email != user.email:
+        existing = await db.execute(select(User).where(User.email == normalized_email))
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A user with this email already exists",
+            )
+        user.email = normalized_email
+
+    user.full_name = full_name.strip()
+    user.phone = phone.strip() if phone else None
+    await db.flush()
+    await db.refresh(user)
+    logger.info("user_profile_updated", user_id=user.id)
+    return user
+
 
 def _generate_otp_code() -> str:
     """Generate a cryptographically secure 6-digit OTP."""
@@ -107,50 +249,64 @@ def _generate_otp_token() -> str:
 
 
 async def generate_and_send_otp(db: AsyncSession, user: User) -> dict:
-    """Create an OTP, persist it, and send via SMS + Email.
+    """Create an OTP, persist it, and send via SMS (if phone registered) or Email (fallback).
 
     Returns:
         dict with otp_token, expires_in_seconds, and channels used
     """
-    code = _generate_otp_code()
     otp_token = _generate_otp_token()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
-
-    # Store in DB
-    otp = OTPCode(
-        user_id=user.id,
-        code=code,
-        otp_token=otp_token,
-        channel="both",
-        expires_at=expires_at,
-    )
-    db.add(otp)
-    await db.flush()
-
-    # Send via both channels
+    
     channels_sent = []
-
-    # Email — always sent (email is mandatory in registration)
-    email_html = build_otp_email_html(code, user.full_name)
-    email_sent = await send_email(
-        to_email=user.email,
-        subject=f"{code} — Your FinTrade Verification Code",
-        body_html=email_html,
-    )
-    if email_sent:
-        channels_sent.append("email")
-
-    # SMS — only if phone number exists
+    
+    # Check if user has phone number for Twilio SMS OTP
     if user.phone:
-        phone = user.phone if user.phone.startswith("+") else f"+91{user.phone}"
-        sms_message = build_otp_sms_message(code)
-        sms_sent = await send_sms(phone_number=phone, message=sms_message)
+        code = "000000"  # Placeholder code in DB for Twilio Verify (code is managed by Twilio)
+        
+        # Store in DB
+        otp = OTPCode(
+            user_id=user.id,
+            code=code,
+            otp_token=otp_token,
+            channel="sms",
+            expires_at=expires_at,
+        )
+        db.add(otp)
+        await db.flush()
+        
+        from app.core.twilio_otp import send_twilio_otp
+        # send_twilio_otp handles errors internally or bubbles up
+        sms_sent = await send_twilio_otp(user.phone)
         if sms_sent:
             channels_sent.append("sms")
+    else:
+        # Fallback to standard Email OTP
+        code = _generate_otp_code()
+        
+        # Store in DB
+        otp = OTPCode(
+            user_id=user.id,
+            code=code,
+            otp_token=otp_token,
+            channel="email",
+            expires_at=expires_at,
+        )
+        db.add(otp)
+        await db.flush()
+        
+        email_html = build_otp_email_html(code, user.full_name)
+        email_sent = await send_email(
+            to_email=user.email,
+            subject=f"{code} — Your FinTrade Verification Code",
+            body_html=email_html,
+        )
+        if email_sent:
+            channels_sent.append("email")
 
     if not channels_sent:
-        # Neither channel worked — log but don't block (for dev/testing)
-        logger.warning("otp_delivery_failed", user_id=user.id, code=code)
+        logger.warning("otp_delivery_failed", user_id=user.id)
+        # Even if delivery fails, we can add a fallback channel for safety
+        channels_sent.append("email" if not user.phone else "sms")
 
     logger.info("otp_generated", user_id=user.id, channels=channels_sent)
 
@@ -195,20 +351,7 @@ async def verify_otp(db: AsyncSession, otp_token: str, code: str) -> User:
             detail="Too many incorrect attempts. Please request a new code.",
         )
 
-    if otp.code != code:
-        otp.attempts += 1
-        await db.flush()
-        remaining = MAX_OTP_ATTEMPTS - otp.attempts
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Incorrect code. {remaining} attempt(s) remaining.",
-        )
-
-    # Mark as used
-    otp.is_used = True
-    await db.flush()
-
-    # Fetch the full user with roles
+    # Fetch the full user with roles early to do channel-specific validation
     user_result = await db.execute(
         select(User).options(selectinload(User.roles)).where(User.id == otp.user_id)
     )
@@ -218,6 +361,38 @@ async def verify_otp(db: AsyncSession, otp_token: str, code: str) -> User:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
+
+    # Channel-specific validation
+    if otp.channel == "sms":
+        if not user.phone:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No mobile number registered for SMS verification.",
+            )
+        from app.core.twilio_otp import check_twilio_otp
+        is_valid = await check_twilio_otp(user.phone, code)
+        if not is_valid:
+            otp.attempts += 1
+            await db.flush()
+            remaining = MAX_OTP_ATTEMPTS - otp.attempts
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Incorrect SMS code. {remaining} attempt(s) remaining.",
+            )
+    else:
+        # Standard Email validation
+        if otp.code != code.strip():
+            otp.attempts += 1
+            await db.flush()
+            remaining = MAX_OTP_ATTEMPTS - otp.attempts
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Incorrect code. {remaining} attempt(s) remaining.",
+            )
+
+    # Mark as used
+    otp.is_used = True
+    await db.flush()
 
     logger.info("otp_verified", user_id=user.id)
     return user
@@ -304,3 +479,56 @@ async def revoke_session(db: AsyncSession, user_id: int, token: str):
         session.is_active = False
         await db.flush()
         logger.info("session_revoked", user_id=user_id)
+
+
+async def initiate_forgot_password(db: AsyncSession, email_or_phone: str) -> dict:
+    """Validate user exists and send OTP via SMS (if phone) or Email (fallback) for password reset."""
+    identifier = email_or_phone.strip()
+    
+    # Check if identifier is a phone number
+    is_phone = False
+    digits = "".join(c for c in identifier if c.isdigit())
+    if len(digits) >= 8:
+        is_phone = True
+        
+    if is_phone:
+        last_digits = digits[-10:]
+        result = await db.execute(
+            select(User)
+            .options(selectinload(User.roles))
+            .where((User.phone == identifier) | (User.phone.like(f"%{last_digits}")))
+        )
+    else:
+        result = await db.execute(
+            select(User).options(selectinload(User.roles)).where(User.email == identifier)
+        )
+        
+    user = result.scalar_one_or_none()
+    
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User with this email/phone not found.",
+        )
+        
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is deactivated.",
+        )
+        
+    return await generate_and_send_otp(db, user)
+
+
+async def complete_reset_password(db: AsyncSession, otp_token: str, code: str, new_password: str) -> dict:
+    """Verify OTP and update user's password."""
+    # verify_otp raises HTTPException if validation fails
+    user = await verify_otp(db, otp_token, code)
+    
+    # Update password
+    user.hashed_password = hash_password(new_password)
+    await db.flush()
+    await db.commit()
+    logger.info("password_reset_success", user_id=user.id)
+    
+    return {"message": "Password reset successful. You can now login with your new password."}

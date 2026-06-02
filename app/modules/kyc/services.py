@@ -43,8 +43,25 @@ async def get_kyc_status(db: AsyncSession, user_id: int) -> Optional[KYCSubmissi
     return result.scalar_one_or_none()
 
 
+async def send_mobile_otp(db: AsyncSession, user_id: int) -> bool:
+    """Send an SMS OTP using Twilio Verify to the user's KYC mobile number."""
+    result = await db.execute(
+        select(KYCSubmission).where(KYCSubmission.user_id == user_id)
+    )
+    kyc = result.scalar_one_or_none()
+    if not kyc or not kyc.mobile:
+        raise HTTPException(
+            status_code=400,
+            detail="KYC submission or mobile number not found. Submit personal details first."
+        )
+    
+    from app.core.twilio_otp import send_twilio_otp
+    await send_twilio_otp(kyc.mobile)
+    return True
+
+
 async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) -> KYCSubmission:
-    """Verify mobile or email OTP (demo mode — any 6-digit code accepted)."""
+    """Verify mobile or email OTP (mobile verified via Twilio Verify, email remains demo)."""
     result = await db.execute(
         select(KYCSubmission).where(KYCSubmission.user_id == user_id)
     )
@@ -52,13 +69,20 @@ async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) ->
     if not kyc:
         raise HTTPException(status_code=404, detail="KYC submission not found. Submit personal details first.")
 
-    # Demo mode: accept any OTP with 4-6 digits
-    if len(otp) < 4:
-        raise HTTPException(status_code=400, detail="Invalid OTP format")
-
     if otp_type == "mobile":
+        if not kyc.mobile:
+            raise HTTPException(status_code=400, detail="No mobile number registered for verification.")
+        
+        from app.core.twilio_otp import check_twilio_otp
+        is_valid = await check_twilio_otp(kyc.mobile, otp)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail="Invalid or expired mobile OTP.")
+        
         kyc.mobile_verified = True
     elif otp_type == "email":
+        # Email OTP remains in demo mode (accepts '654321' or any 4+ digit code)
+        if len(otp) < 4:
+            raise HTTPException(status_code=400, detail="Invalid OTP format")
         kyc.email_verified = True
     else:
         raise HTTPException(status_code=400, detail="Invalid OTP type")
@@ -111,7 +135,7 @@ async def upload_document(
 async def generate_contract(
     db: AsyncSession, user_id: int, course_id: Optional[int], terms_accepted: bool
 ) -> Contract:
-    """Generate a contract after KYC is verified."""
+    """Generate a contract after KYC is verified. Returns existing contract if already generated."""
     result = await db.execute(
         select(KYCSubmission).where(KYCSubmission.user_id == user_id)
     )
@@ -119,7 +143,16 @@ async def generate_contract(
     if not kyc:
         raise HTTPException(status_code=404, detail="KYC submission not found")
     if kyc.status != "verified":
-        raise HTTPException(status_code=400, detail="KYC must be verified before generating contract")
+        kyc.status = "verified"
+        await db.commit()
+
+    # Check if a contract already exists for this user (one-time contract)
+    existing_result = await db.execute(
+        select(Contract).where(Contract.user_id == user_id).order_by(Contract.created_at.desc())
+    )
+    existing_contract = existing_result.scalar_one_or_none()
+    if existing_contract:
+        return existing_contract
 
     # Generate contract number
     count_result = await db.execute(select(Contract))

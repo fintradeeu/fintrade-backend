@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import List, Optional
 
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -15,11 +16,31 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str = Field(..., description="Email Address or Mobile Number")
     password: str
 
-class ForgotPasswordRequest(BaseModel):
+
+class GoogleAuthRequest(BaseModel):
+    """Request schema for Google OAuth sign-in."""
+    token: str = Field(..., description="Google ID token from the frontend")
+    phone: Optional[str] = Field(None, max_length=20)
+
+
+class ProfileUpdateRequest(BaseModel):
     email: EmailStr
+    full_name: str = Field(..., min_length=2, max_length=255)
+    phone: Optional[str] = Field(None, max_length=20)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., description="Email Address or Mobile Number")
+
+
+class ResetPasswordRequest(BaseModel):
+    otp_token: str
+    code: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
+    new_password: str = Field(..., min_length=8, max_length=128, description="New password")
+
 
 
 class OTPVerifyRequest(BaseModel):

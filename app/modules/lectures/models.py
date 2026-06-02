@@ -22,7 +22,7 @@ class Lecture(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id", ondelete="SET NULL"), nullable=True)
     instructor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     meeting_link = Column(Text, nullable=True)
     scheduled_at = Column(DateTime(timezone=True), nullable=False)

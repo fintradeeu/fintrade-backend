@@ -1,8 +1,8 @@
 """Settings module — API routes."""
 
-from typing import List
+from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import require_roles
@@ -18,8 +18,15 @@ router = APIRouter(tags=["Platform Settings"])
 @router.get("/settings/public", response_model=List[schemas.SettingResponse])
 async def public_settings(db: AsyncSession = Depends(get_db)):
     """Get public platform settings (course price, platform name, etc.)."""
-    settings = await services.get_public_settings(db)
-    return [schemas.SettingResponse.model_validate(s) for s in settings]
+    settings_list = await services.get_public_settings(db)
+    return [schemas.SettingResponse.model_validate(s) for s in settings_list]
+
+
+@router.get("/settings/landing-page")
+async def get_landing_page(db: AsyncSession = Depends(get_db)):
+    """Get landing page CMS config (public — no auth needed)."""
+    config = await services.get_landing_page_config(db)
+    return config
 
 
 # ── Admin endpoints ─────────────────────────────────────────────────
@@ -37,6 +44,18 @@ async def get_all_settings(
         exam=[schemas.SettingResponse.model_validate(s) for s in grouped.get("exam", [])],
         payment=[schemas.SettingResponse.model_validate(s) for s in grouped.get("payment", [])],
     )
+
+
+@router.put("/admin/settings/landing-page")
+async def update_landing_page(
+    body: schemas.LandingPageUpdateRequest,
+    admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update landing page CMS configuration (admin only)."""
+    config = body.model_dump(exclude_unset=True)
+    result = await services.update_landing_page_config(db, config, admin.id)
+    return result
 
 
 @router.put("/admin/settings/{key}", response_model=schemas.SettingResponse)

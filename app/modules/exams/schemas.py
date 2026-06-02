@@ -31,6 +31,9 @@ class EntranceExamCreate(BaseModel):
     duration_minutes: int = 60
     passing_score: float = 60.0
     is_active: bool = True
+    max_attempts: int = 3
+    fee: float = 0.0
+    cooldown_days: int = 0
     questions_per_attempt: Optional[int] = None  # null = use all questions
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
@@ -89,7 +92,10 @@ class EntranceExamResponse(BaseModel):
     course_id: int
     duration_minutes: int
     passing_score: float
+    max_attempts: int = 3
     is_active: bool
+    fee: float = 0.0
+    cooldown_days: int = 0
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     created_at: datetime
@@ -139,6 +145,20 @@ class MessageResponse(BaseModel):
 
 
 # ── Phase 2 Schemas ───────────────────────────────────────────────────
+
+class EntranceExamPaymentRequest(BaseModel):
+    entrance_exam_id: int
+    amount: float = 50.0
+
+class EntranceExamPaymentResponse(BaseModel):
+    id: int
+    entrance_exam_id: int
+    amount: float
+    status: str
+    is_used: bool
+
+    model_config = {"from_attributes": True}
+
 
 class CourseExamResponse(BaseModel):
     id: int

@@ -10,6 +10,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
 )
@@ -28,9 +29,12 @@ class Course(Base):
     short_description = Column(String(500), nullable=True)
     thumbnail_url = Column(Text, nullable=True)
     price = Column(Float, default=0.0)
+    original_price = Column(Float, nullable=True)  # Strikethrough price on landing page
     is_published = Column(Boolean, default=False)
+    is_featured = Column(Boolean, default=False)  # Show on landing page
     difficulty_level = Column(String(50), default="beginner")  # beginner, intermediate, advanced
     duration_hours = Column(Integer, nullable=True)
+    marketing_highlights = Column(JSON, nullable=True)  # List of bullet points for landing page
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
@@ -118,6 +122,7 @@ class Assignment(Base):
     description = Column(Text, nullable=True)
     due_date = Column(DateTime(timezone=True), nullable=True)
     max_score = Column(Float, default=100.0)
+    resources = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # relationships
@@ -141,3 +146,17 @@ class AssignmentSubmission(Base):
     # relationships
     assignment = relationship("Assignment", back_populates="submissions")
     user = relationship("User")
+
+
+class ModuleStudentPolicy(Base):
+    __tablename__ = "module_student_policies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    module_id = Column(Integer, ForeignKey("course_modules.id", ondelete="CASCADE"), nullable=False)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    mandatory = Column(Boolean, default=True, nullable=False)
+
+    # relationships
+    module = relationship("CourseModule")
+    student = relationship("User")
+

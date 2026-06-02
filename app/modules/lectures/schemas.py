@@ -16,6 +16,17 @@ class LectureCreate(BaseModel):
     duration_minutes: int = 60
     max_participants: int = 0
 
+class LectureUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    course_id: Optional[int] = None
+    instructor_id: Optional[int] = None
+    meeting_link: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
+    max_participants: Optional[int] = None
+    status: Optional[str] = None
+
 class RecordingCreate(BaseModel):
     recording_url: str = Field(..., max_length=1000)
     duration_seconds: Optional[int] = None

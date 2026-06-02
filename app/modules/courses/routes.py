@@ -1,8 +1,10 @@
 """Courses module — API routes."""
 
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, UploadFile, File
+import os
+import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import PaginationParams
@@ -17,10 +19,11 @@ router = APIRouter(prefix="/courses", tags=["Courses"])
 @router.get("", response_model=List[schemas.CourseListResponse])
 async def list_courses(
     pagination: PaginationParams = Depends(),
+    is_featured: Optional[bool] = Query(None, description="Filter by featured status"),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all published courses."""
-    courses = await services.list_courses(db, skip=pagination.skip, limit=pagination.limit)
+    """List all published courses. Use ?is_featured=true for landing page."""
+    courses = await services.list_courses(db, skip=pagination.skip, limit=pagination.limit, is_featured=is_featured)
     return [schemas.CourseListResponse.model_validate(c) for c in courses]
 
 
@@ -125,6 +128,15 @@ async def generate_audio(
     }
 
 # ── Assignments ──────────────────────────────────────────────────────
+@router.get("/assignments/my-submissions", response_model=List[schemas.AssignmentSubmissionResponse])
+async def get_my_submissions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all assignment submissions for the current student."""
+    submissions = await services.get_user_assignment_submissions(db, current_user.id)
+    return [schemas.AssignmentSubmissionResponse.model_validate(s) for s in submissions]
+
 @router.get("/{course_id}/assignments", response_model=List[schemas.AssignmentResponse])
 async def get_course_assignments(
     course_id: int,
@@ -143,3 +155,24 @@ async def submit_assignment(
     """Student submits an assignment file."""
     submission = await services.submit_assignment(db, body.model_dump(), current_user.id)
     return schemas.AssignmentSubmissionResponse.model_validate(submission)
+
+@router.post("/assignments/upload", response_model=dict, status_code=201)
+async def upload_assignment_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Student or Faculty uploads an assignment file."""
+    os.makedirs("uploads/assignments", exist_ok=True)
+    ext = os.path.splitext(file.filename)[1] if file.filename else ""
+    unique_name = f"{uuid.uuid4()}{ext}"
+    filepath = os.path.join("uploads/assignments", unique_name)
+    
+    with open(filepath, "wb") as f:
+        content = await file.read()
+        f.write(content)
+        
+    return {
+        "url": f"/uploads/assignments/{unique_name}",
+        "original_name": file.filename,
+        "content_type": file.content_type or "application/octet-stream"
+    }

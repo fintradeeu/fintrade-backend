@@ -26,7 +26,9 @@ class EntranceExam(Base):
     course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
     duration_minutes = Column(Integer, default=60)
     passing_score = Column(Float, default=60.0)  # percentage
-    max_attempts = Column(Integer, default=0)  # 0 = unlimited (with 30-day restriction)
+    max_attempts = Column(Integer, default=0)  # 0 = unlimited
+    fee = Column(Float, default=0.0)
+    cooldown_days = Column(Integer, default=0)
     questions_per_attempt = Column(Integer, nullable=True)  # null = all questions; otherwise random N from pool
     is_active = Column(Boolean, default=True)
     start_time = Column(DateTime(timezone=True), nullable=True)
@@ -274,6 +276,18 @@ class ExamPayment(Base):
     amount = Column(Float, default=0.0)
     status = Column(String(50), default="pending") # pending, paid
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+class EntranceExamPayment(Base):
+    __tablename__ = "entrance_exam_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    entrance_exam_id = Column(Integer, ForeignKey("entrance_exams.id", ondelete="CASCADE"), nullable=False)
+    amount = Column(Float, default=0.0)
+    status = Column(String(50), default="pending") # pending, paid
+    is_used = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
 
 class ExamViolation(Base):
     __tablename__ = "exam_violations"

@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column,
     DateTime,
-    Enum,
     ForeignKey,
     Integer,
     String,
@@ -14,7 +13,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.db.database import Base
+from app.modules.auth.models import User
 
+
+from sqlalchemy.dialects.postgresql import ENUM
 
 class PlatformSetting(Base):
     __tablename__ = "platform_settings"
@@ -23,9 +25,9 @@ class PlatformSetting(Base):
     key = Column(String(100), unique=True, nullable=False, index=True)
     value = Column(Text, nullable=True)  # Stored as JSON string
     category = Column(
-        Enum("general", "simulator", "exam", "payment", name="setting_category"),
+        ENUM("general", "simulator", "exam", "payment", name="setting_category", create_type=False),
         default="general",
-        nullable=False,
+        nullable=False
     )
     label = Column(String(255), nullable=True)  # Human-readable label
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)

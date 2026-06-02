@@ -74,7 +74,8 @@ async def join_lecture(db: AsyncSession, user_id: int, lecture_id: int) -> dict:
 
 async def start_lecture(db: AsyncSession, lecture_id: int) -> Lecture:
     """Start a lecture (set is_live=True)."""
-    lecture = await db.get(Lecture, lecture_id)
+    result = await db.execute(select(Lecture).options(selectinload(Lecture.recordings)).where(Lecture.id == lecture_id))
+    lecture = result.scalar_one_or_none()
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
     
@@ -88,7 +89,8 @@ async def start_lecture(db: AsyncSession, lecture_id: int) -> Lecture:
 
 async def end_lecture(db: AsyncSession, lecture_id: int) -> Lecture:
     """End a lecture (set is_live=False, is_completed=True)."""
-    lecture = await db.get(Lecture, lecture_id)
+    result = await db.execute(select(Lecture).options(selectinload(Lecture.recordings)).where(Lecture.id == lecture_id))
+    lecture = result.scalar_one_or_none()
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
     
