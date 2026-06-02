@@ -186,6 +186,53 @@ def trigger_db_migration(secret_key: str):
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}\n{error_details}")
 
 
+@app.get("/system/db/inspect", tags=["System"])
+async def inspect_db(secret_key: str):
+    """Temporary diagnostic endpoint to check news_articles schema and query traceback on live server."""
+    if secret_key != "fintrade_migrate_2026":
+        raise HTTPException(status_code=403, detail="Invalid secret key")
+    
+    try:
+        from app.db.database import AsyncSessionLocal
+        import sqlalchemy as sa
+        async with AsyncSessionLocal() as session:
+            # Query table columns
+            res = await session.execute(sa.text("""
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'news_articles'
+            """))
+            columns = [{"column_name": r[0], "data_type": r[1]} for r in res.all()]
+            
+            # Query news articles
+            try:
+                res_data = await session.execute(sa.text("SELECT * FROM news_articles LIMIT 5"))
+                keys = res_data.keys()
+                data = []
+                for row in res_data.all():
+                    row_dict = {}
+                    for k, val in zip(keys, row):
+                        if hasattr(val, "isoformat"):
+                            row_dict[k] = val.isoformat()
+                        else:
+                            row_dict[k] = val
+                    data.append(row_dict)
+                query_error = None
+            except Exception as q_err:
+                import traceback
+                data = None
+                query_error = traceback.format_exc()
+                
+            return {
+                "columns": columns,
+                "data": data,
+                "query_error": query_error
+            }
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "traceback": traceback.format_exc()}
+
+
 def _repair_news_schema(sync_engine):
     """Repair production news schema when Alembic graph is polluted."""
     import sqlalchemy as sa
