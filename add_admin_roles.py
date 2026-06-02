@@ -56,3 +56,4 @@ if '/roles' not in content:
     with open('c:/work/fintrade/fintrade-backend/app/modules/admin/routes.py', 'w', encoding='utf-8') as f:
         f.write(content)
 print("Admin roles mock endpoints added")
+# ffgdf
