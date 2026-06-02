@@ -36,6 +36,8 @@ class LandingPageUpdateRequest(BaseModel):
     quick_tips: Optional[List[Dict[str, Any]]] = None
     why_choose: Optional[List[Dict[str, Any]]] = None
     leadership: Optional[List[Dict[str, Any]]] = None
+    hero_buttons: Optional[Dict[str, Any]] = None
+    carousel_slides: Optional[List[Dict[str, Any]]] = None
 
 
 class SettingsGroupedResponse(BaseModel):

@@ -297,6 +297,33 @@ DEFAULT_LANDING_PAGE_CONFIG = {
                 "NISM & NSE Academy"
             ]
         }
+    ],
+    "hero_buttons": {
+        "btn1_name": "Apply Now",
+        "btn2_name": "Watch: The FinTrade Story",
+        "btn2_youtube_url": "",
+        "btn3_name": "Download Brochure",
+        "btn3_file_url": "/brochure.pdf"
+    },
+    "carousel_slides": [
+        {
+            "title": "Start Your Trading Career",
+            "subtitle": "From beginner to funded professional in 90 days",
+            "buttonText": "Explore Programs",
+            "link": "#courses"
+        },
+        {
+            "title": "Learn from the Best",
+            "subtitle": "Get 1-on-1 mentorship from seasoned market experts",
+            "buttonText": "Meet Mentors",
+            "link": "/about"
+        },
+        {
+            "title": "Trade with Our Capital",
+            "subtitle": "Pass the challenge and unlock live trading accounts up to ₹50 Lakhs",
+            "buttonText": "Learn More",
+            "link": "#courses"
+        }
     ]
 }
 
@@ -402,6 +429,10 @@ async def get_landing_page_config(db: AsyncSession) -> Dict[str, Any]:
             data["why_choose"] = DEFAULT_LANDING_PAGE_CONFIG["why_choose"]
         if "leadership" not in data:
             data["leadership"] = DEFAULT_LANDING_PAGE_CONFIG["leadership"]
+        if "hero_buttons" not in data:
+            data["hero_buttons"] = DEFAULT_LANDING_PAGE_CONFIG["hero_buttons"]
+        if "carousel_slides" not in data:
+            data["carousel_slides"] = DEFAULT_LANDING_PAGE_CONFIG["carousel_slides"]
         return data
     except (json.JSONDecodeError, TypeError):
         return DEFAULT_LANDING_PAGE_CONFIG
