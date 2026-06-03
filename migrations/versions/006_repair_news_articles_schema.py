@@ -35,7 +35,7 @@ def upgrade() -> None:
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         )
-        op.create_index("ix_news_articles_id", "news_articles", ["id"], unique=False)
+        op.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)"))
         op.alter_column("news_articles", "type", server_default=None)
         op.alter_column("news_articles", "video_type", server_default=None)
         op.alter_column("news_articles", "status", server_default=None)
