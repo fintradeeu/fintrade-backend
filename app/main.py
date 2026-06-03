@@ -149,6 +149,8 @@ def trigger_db_migration(secret_key: str):
             "004_add_google_oauth.py",
             "005_add_news_article_type.py",
             "006_repair_news_articles_schema.py",
+            "007_fix_news_enums_drop_video_type.py",
+            "008_add_user_permissions.py",
             ".gitkeep",
         }
         for f in glob.glob(os.path.join(versions_dir, "*")):
