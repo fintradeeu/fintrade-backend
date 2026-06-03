@@ -248,8 +248,8 @@ def _generate_otp_token() -> str:
     return secrets.token_hex(32)
 
 
-async def generate_and_send_otp(db: AsyncSession, user: User) -> dict:
-    """Create an OTP, persist it, and send via SMS (if phone registered) or Email (fallback).
+async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[str] = None) -> dict:
+    """Create an OTP, persist it, and send via SMS or Email based on chosen channel.
 
     Returns:
         dict with otp_token, expires_in_seconds, and channels used
@@ -259,8 +259,16 @@ async def generate_and_send_otp(db: AsyncSession, user: User) -> dict:
     
     channels_sent = []
     
+    use_sms = False
+    if channel == "sms":
+        use_sms = True
+    elif channel == "email":
+        use_sms = False
+    else:
+        use_sms = bool(user.phone)
+        
     # Check if user has phone number for Twilio SMS OTP
-    if user.phone:
+    if use_sms and user.phone:
         code = "000000"  # Placeholder code in DB for Twilio Verify (code is managed by Twilio)
         
         # Store in DB
@@ -517,7 +525,8 @@ async def initiate_forgot_password(db: AsyncSession, email_or_phone: str) -> dic
             detail="Account is deactivated.",
         )
         
-    return await generate_and_send_otp(db, user)
+    channel = "sms" if is_phone else "email"
+    return await generate_and_send_otp(db, user, channel=channel)
 
 
 async def complete_reset_password(db: AsyncSession, otp_token: str, code: str, new_password: str) -> dict:
