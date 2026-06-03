@@ -6,7 +6,8 @@ with open('c:/work/fintrade/fintrade-backend/app/modules/courses/services.py', '
 get_all_func = '''
 async def get_all_assignments(db: AsyncSession) -> List[Assignment]:
     result = await db.execute(select(Assignment))
-    return result.scalars().all()
+    return result.scalars().all()  
+    
 '''
 
 if 'get_all_assignments' not in content:
