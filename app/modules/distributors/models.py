@@ -10,7 +10,7 @@ from sqlalchemy import (
     Integer,
     String,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 
 from app.db.database import Base
 
@@ -26,7 +26,7 @@ class Distributor(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # relationships
-    user = relationship("User", backref="distributor_profile", foreign_keys=[user_id])
+    user = relationship("User", backref=backref("distributor_profile", uselist=False), foreign_keys=[user_id])
     referrals = relationship("StudentReferral", back_populates="distributor", cascade="all, delete-orphan")
 
     def __repr__(self):

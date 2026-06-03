@@ -133,7 +133,12 @@ async def create_module(db: AsyncSession, data: dict) -> CourseModule:
 
 async def update_module(db: AsyncSession, module_id: int, data: dict) -> CourseModule:
     """Update an existing module."""
-    module = await db.get(CourseModule, module_id)
+    result = await db.execute(
+        select(CourseModule)
+        .options(selectinload(CourseModule.lessons))
+        .where(CourseModule.id == module_id)
+    )
+    module = result.scalar_one_or_none()
     if module is None:
         raise HTTPException(status_code=404, detail="Module not found")
 

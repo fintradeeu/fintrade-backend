@@ -32,6 +32,19 @@ class CreateUserRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
     password: str = Field(..., min_length=8, max_length=128)
+    permissions: Optional[dict] = None
+
+
+class UpdateUserRequest(BaseModel):
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = Field(None, min_length=2, max_length=255)
+    phone: Optional[str] = Field(None, max_length=20)
+    is_active: Optional[bool] = None
+    permissions: Optional[dict] = None
+    # For distributor update
+    region: Optional[str] = Field(None, min_length=1, max_length=255)
+    referral_code: Optional[str] = Field(None, min_length=3, max_length=50)
+    discount_percentage: Optional[float] = Field(None, ge=0, le=100)
 
 
 class CreateDistributorRequest(BaseModel):

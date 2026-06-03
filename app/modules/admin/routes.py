@@ -81,6 +81,7 @@ async def create_faculty(
         role_name="faculty",
         created_by=admin.id,
         phone=body.phone,
+        permissions=body.permissions,
     )
     return UserResponse.model_validate(user)
 
@@ -104,6 +105,29 @@ async def create_distributor(
         phone=body.phone,
     )
     return UserResponse.model_validate(user)
+
+
+@router.put("/users/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: int,
+    body: schemas.UpdateUserRequest,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update user details (admin only)."""
+    user = await services.update_user(db, user_id, body.model_dump(exclude_unset=True))
+    return UserResponse.model_validate(user)
+
+
+@router.delete("/users/{user_id}", response_model=schemas.MessageResponse)
+async def delete_user(
+    user_id: int,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a user (admin only)."""
+    await services.delete_user(db, user_id)
+    return schemas.MessageResponse(message="User deleted successfully")
 
 
 # ── Distributor management ──────────────────────────────────────────
@@ -870,28 +894,186 @@ mock_admins = [
 ]
 
 @router.get("/roles")
-async def get_admin_roles(_admin: User = Depends(require_roles(["admin"]))):
-    return mock_admins
+async def get_admin_roles(
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from app.modules.auth.models import Role
+
+    # Fetch all users that have the 'admin' role
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.roles))
+        .join(User.roles)
+        .where(Role.name == "admin")
+    )
+    admins = result.scalars().all()
+
+    res = []
+    for a in admins:
+        perms = a.permissions if isinstance(a.permissions, dict) else {}
+        role_name = perms.get("roleName", "Super Admin" if a.email == "admin@platform.com" else "Admin")
+        is_default_super = a.email == "admin@platform.com"
+        
+        permissions_dict = {
+            "manageCourses": perms.get("manageCourses", True if is_default_super else False),
+            "manageStudents": perms.get("manageStudents", True if is_default_super else False),
+            "managePayments": perms.get("managePayments", True if is_default_super else False),
+            "manageContent": perms.get("manageContent", True if is_default_super else False),
+            "manageExams": perms.get("manageExams", True if is_default_super else False),
+            "manageAdmins": perms.get("manageAdmins", True if is_default_super else False),
+            "canViewRevenue": perms.get("canViewRevenue", True if is_default_super else False),
+        }
+        
+        res.append({
+            "id": a.id,
+            "name": a.full_name,
+            "email": a.email,
+            "phone": a.phone,
+            "role": role_name,
+            "status": "Active" if a.is_active else "Inactive",
+            "permissions": permissions_dict,
+            "lastActive": a.updated_at.isoformat() if a.updated_at else a.created_at.isoformat()
+        })
+    return res
+
 
 @router.post("/roles")
-async def create_admin_role(data: dict, _admin: User = Depends(require_roles(["admin"]))):
-    data["id"] = len(mock_admins) + 1
-    mock_admins.append(data)
-    return data
+async def create_admin_role(
+    data: dict, 
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    from fastapi import HTTPException
+    from sqlalchemy import select
+    from app.core.security import hash_password
+    from app.modules.auth.services import get_or_create_role
+
+    email = data.get("email").strip().lower()
+    existing = await db.execute(select(User).where(User.email == email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Email already exists")
+
+    admin_role = await get_or_create_role(db, "admin")
+    password = data.get("password") or "admin123!"
+
+    perms = data.get("permissions", {})
+    user_perms = {
+        "roleName": data.get("role"),
+        "manageCourses": perms.get("manageCourses", False),
+        "manageStudents": perms.get("manageStudents", False),
+        "managePayments": perms.get("managePayments", False),
+        "manageContent": perms.get("manageContent", False),
+        "manageExams": perms.get("manageExams", False),
+        "manageAdmins": perms.get("manageAdmins", False),
+        "canViewRevenue": perms.get("canViewRevenue", False),
+    }
+
+    new_user = User(
+        email=email,
+        full_name=data.get("name"),
+        phone=data.get("phone"),
+        hashed_password=hash_password(password),
+        is_active=True if data.get("status") == "Active" else False,
+        is_verified=True,
+        permissions=user_perms
+    )
+    new_user.roles.append(admin_role)
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    
+    return {
+        "id": new_user.id,
+        "name": new_user.full_name,
+        "email": new_user.email,
+        "phone": new_user.phone,
+        "role": data.get("role"),
+        "status": data.get("status"),
+        "permissions": perms,
+        "lastActive": new_user.created_at.isoformat()
+    }
+
 
 @router.put("/roles/{role_id}")
-async def update_admin_role(role_id: int, data: dict, _admin: User = Depends(require_roles(["admin"]))):
-    for i, a in enumerate(mock_admins):
-        if a["id"] == role_id:
-            data["id"] = role_id
-            mock_admins[i] = data
-            return data
-    return {"error": "Not found"}
+async def update_admin_role(
+    role_id: int, 
+    data: dict, 
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    from fastapi import HTTPException
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from app.core.security import hash_password
+
+    result = await db.execute(select(User).options(selectinload(User.roles)).where(User.id == role_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Admin user not found")
+
+    user.full_name = data.get("name", user.full_name)
+    user.phone = data.get("phone", user.phone)
+    user.is_active = True if data.get("status") == "Active" else False
+
+    new_email = data.get("email")
+    if new_email:
+        new_email = new_email.strip().lower()
+        if new_email != user.email:
+            existing = await db.execute(select(User).where(User.email == new_email))
+            if existing.scalar_one_or_none():
+                raise HTTPException(status_code=409, detail="Email already exists")
+            user.email = new_email
+
+    password = data.get("password")
+    if password:
+        user.hashed_password = hash_password(password)
+
+    perms = data.get("permissions", {})
+    user.permissions = {
+        "roleName": data.get("role", user.permissions.get("roleName") if user.permissions else "Admin"),
+        "manageCourses": perms.get("manageCourses", False),
+        "manageStudents": perms.get("manageStudents", False),
+        "managePayments": perms.get("managePayments", False),
+        "manageContent": perms.get("manageContent", False),
+        "manageExams": perms.get("manageExams", False),
+        "manageAdmins": perms.get("manageAdmins", False),
+        "canViewRevenue": perms.get("canViewRevenue", False),
+    }
+
+    await db.commit()
+    await db.refresh(user)
+
+    return {
+        "id": user.id,
+        "name": user.full_name,
+        "email": user.email,
+        "phone": user.phone,
+        "role": user.permissions.get("roleName"),
+        "status": "Active" if user.is_active else "Inactive",
+        "permissions": perms,
+        "lastActive": user.updated_at.isoformat()
+    }
+
 
 @router.delete("/roles/{role_id}")
-async def delete_admin_role(role_id: int, _admin: User = Depends(require_roles(["admin"]))):
-    global mock_admins
-    mock_admins = [a for a in mock_admins if a["id"] != role_id]
+async def delete_admin_role(
+    role_id: int, 
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    from fastapi import HTTPException
+    from sqlalchemy import select
+
+    result = await db.execute(select(User).where(User.id == role_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Admin user not found")
+        
+    await db.delete(user)
+    await db.commit()
     return {"success": True}
 
 @router.get("/students/{student_id}/progress")

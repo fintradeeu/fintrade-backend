@@ -11,6 +11,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    JSON,
 )
 from sqlalchemy.orm import relationship
 
@@ -37,6 +38,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
     avatar_url = Column(Text, nullable=True)
+    permissions = Column(JSON, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
