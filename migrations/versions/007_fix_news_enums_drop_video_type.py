@@ -14,7 +14,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "007_fix_news_enums_drop_video_type"
+revision = "007_fix_news_enums"
 down_revision = "006_repair_news_articles_schema"
 branch_labels = None
 depends_on = None
@@ -32,13 +32,16 @@ def upgrade() -> None:
 
     # ── 1. Convert status from ENUM → VARCHAR if needed ───────────────────────
     if "status" in columns:
-        status_type = str(columns["status"]["type"])
-        if "VARCHAR" not in status_type.upper() and "CHARACTER VARYING" not in status_type.upper():
+        status_type = columns["status"]["type"]
+        is_enum = getattr(status_type, "name", None) == "news_status" or "ENUM" in str(type(status_type)).upper()
+        if is_enum:
             # It's an ENUM — convert it
+            op.execute(sa.text("ALTER TABLE news_articles ALTER COLUMN status DROP DEFAULT"))
             op.execute(sa.text(
                 "ALTER TABLE news_articles "
                 "ALTER COLUMN status TYPE VARCHAR(50) USING status::VARCHAR"
             ))
+            op.execute(sa.text("ALTER TABLE news_articles ALTER COLUMN status SET DEFAULT 'published'"))
 
     # ── 2. Drop the stale video_type column if it exists ─────────────────────
     if "video_type" in columns:
