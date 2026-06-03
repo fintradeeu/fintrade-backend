@@ -96,10 +96,20 @@ async def login(
         )
     
     # Normal user flow: Generate OTP
-    otp_result = await services.generate_and_send_otp(db, user)
+    is_phone = False
+    digits = "".join(c for c in body.email if c.isdigit())
+    if len(digits) >= 8:
+        is_phone = True
+
+    channel = "sms" if is_phone else "email"
+    otp_result = await services.generate_and_send_otp(db, user, channel=channel)
     
+    message_text = "Verification code sent to your email."
+    if "sms" in otp_result.get("channels", []):
+        message_text = "Verification code sent to your mobile number via SMS."
+        
     return schemas.OTPPendingResponse(
-        message="Verification code sent to your email.",
+        message=message_text,
         otp_token=otp_result["otp_token"],
         expires_in_seconds=otp_result["expires_in_seconds"],
         channels=otp_result["channels"],
