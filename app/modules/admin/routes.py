@@ -925,6 +925,15 @@ async def get_admin_roles(
             "manageExams": perms.get("manageExams", True if is_default_super else False),
             "manageAdmins": perms.get("manageAdmins", True if is_default_super else False),
             "canViewRevenue": perms.get("canViewRevenue", True if is_default_super else False),
+            "viewDashboard": perms.get("viewDashboard", True),
+            "viewModuleStudents": perms.get("viewModuleStudents", True),
+            "viewLectures": perms.get("viewLectures", True),
+            "viewLoginDetails": perms.get("viewLoginDetails", True),
+            "viewSiteContent": perms.get("viewSiteContent", True),
+            "viewAIChatbot": perms.get("viewAIChatbot", True),
+            "viewSimulator": perms.get("viewSimulator", True),
+            "viewContracts": perms.get("viewContracts", True),
+            "viewSettings": perms.get("viewSettings", True),
         }
         
         res.append({
@@ -969,6 +978,15 @@ async def create_admin_role(
         "manageExams": perms.get("manageExams", False),
         "manageAdmins": perms.get("manageAdmins", False),
         "canViewRevenue": perms.get("canViewRevenue", False),
+        "viewDashboard": perms.get("viewDashboard", True),
+        "viewModuleStudents": perms.get("viewModuleStudents", False),
+        "viewLectures": perms.get("viewLectures", False),
+        "viewLoginDetails": perms.get("viewLoginDetails", False),
+        "viewSiteContent": perms.get("viewSiteContent", False),
+        "viewAIChatbot": perms.get("viewAIChatbot", False),
+        "viewSimulator": perms.get("viewSimulator", False),
+        "viewContracts": perms.get("viewContracts", False),
+        "viewSettings": perms.get("viewSettings", False),
     }
 
     new_user = User(
@@ -1041,6 +1059,15 @@ async def update_admin_role(
         "manageExams": perms.get("manageExams", False),
         "manageAdmins": perms.get("manageAdmins", False),
         "canViewRevenue": perms.get("canViewRevenue", False),
+        "viewDashboard": perms.get("viewDashboard", True),
+        "viewModuleStudents": perms.get("viewModuleStudents", False),
+        "viewLectures": perms.get("viewLectures", False),
+        "viewLoginDetails": perms.get("viewLoginDetails", False),
+        "viewSiteContent": perms.get("viewSiteContent", False),
+        "viewAIChatbot": perms.get("viewAIChatbot", False),
+        "viewSimulator": perms.get("viewSimulator", False),
+        "viewContracts": perms.get("viewContracts", False),
+        "viewSettings": perms.get("viewSettings", False),
     }
 
     await db.commit()
