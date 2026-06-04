@@ -66,15 +66,18 @@ async def _check_reattempt_allowed(db: AsyncSession, user_id: int, exam: Entranc
                 detail="You have already passed this exam.",
             )
     
-        # Failed — enforce dynamic cooldown
-        if last_attempt.submitted_at and exam.cooldown_days > 0:
-            next_allowed = last_attempt.submitted_at + timedelta(days=exam.cooldown_days)
-            if datetime.now(timezone.utc) < next_allowed:
-                days_left = (next_allowed - datetime.now(timezone.utc)).days
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"You must wait {days_left} more day(s) before reattempting. Next attempt allowed after {next_allowed.strftime('%Y-%m-%d')}.",
-                )
+        # Entrance Exam: First 3 attempts are free and immediate.
+        # Starting from attempt 4 (submitted_count >= 3), enforce a 24-hour (1 day) cooldown.
+        if submitted_count >= 3:
+            if last_attempt.submitted_at:
+                next_allowed = last_attempt.submitted_at + timedelta(hours=24)
+                if datetime.now(timezone.utc) < next_allowed:
+                    diff = next_allowed - datetime.now(timezone.utc)
+                    hours_left = max(1, int(diff.total_seconds() / 3600))
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"You must wait {hours_left} more hour(s) before your next attempt. Allowed after {next_allowed.strftime('%Y-%m-%d %H:%M UTC')}.",
+                    )
 
     # Check fee payment if fee > 0
     if exam.fee > 0.0:
@@ -155,6 +158,7 @@ async def create_course_exam(db: AsyncSession, data: dict) -> "CourseExam":
         duration_minutes=data.get("duration_minutes", 60),
         passing_score=data.get("passing_score", 60.0),
         max_attempts=data.get("max_attempts", 3),
+        reattempt_fee=data.get("reattempt_fee", 500.0),
         is_active=data.get("is_active", True),
         start_time=data.get("start_time"),
         end_time=data.get("end_time"),
@@ -207,6 +211,8 @@ async def update_exam(db: AsyncSession, exam_id: int, data: dict, is_course_exam
         exam.passing_score = data["passing_score"]
     if data.get("is_active") is not None:
         exam.is_active = data["is_active"]
+    if is_course_exam and data.get("reattempt_fee") is not None:
+        exam.reattempt_fee = data["reattempt_fee"]
         
     await db.flush()
     await db.refresh(exam)
@@ -819,32 +825,56 @@ async def verify_course_exam_attempt_allowed(db: AsyncSession, user_id: int, exa
     if last_attempt.result and last_attempt.result.passed:
         raise HTTPException(status_code=409, detail="You have already passed this exam.")
 
-    # Failed previously — check max attempts on the exam
+    # Failed previously — check cooldown and max attempts on the exam
     exam = await db.get(CourseExam, exam_id)
-    if exam and exam.max_attempts > 0:
+    if exam:
         # Count total submitted attempts
         count_res = await db.execute(
             select(func.count(CourseExamAttempt.id)).where(
                 CourseExamAttempt.user_id == user_id,
                 CourseExamAttempt.exam_id == exam_id,
-                CourseExamAttempt.is_submitted == True,  # noqa: E712
+                CourseExamAttempt.is_submitted == True,
             )
         )
-        total = count_res.scalar() or 0
-        if total >= exam.max_attempts:
-            # Check if payment was made for reattempt
-            pay_result = await db.execute(
-                select(ExamPayment).where(
-                    ExamPayment.user_id == user_id,
-                    ExamPayment.exam_id == exam_id,
-                    ExamPayment.status == "paid"
+        total_attempts = count_res.scalar() or 0
+
+        # Cooldown & payments: apply rules if total attempts taken is 3 or more
+        if total_attempts >= 3:
+            # Cooldown: 72 hours for Course Final, 24 hours for others
+            cooldown_hours = 72 if exam.exam_type == "course_final" else 24
+            
+            if last_attempt.submitted_at:
+                next_allowed = last_attempt.submitted_at + timedelta(hours=cooldown_hours)
+                if datetime.now(timezone.utc) < next_allowed:
+                    diff = next_allowed - datetime.now(timezone.utc)
+                    hours_left = max(1, int(diff.total_seconds() / 3600))
+                    if hours_left > 24:
+                        days_left = int(hours_left / 24) + 1
+                        detail_msg = f"You must wait {days_left} more day(s) before reattempting. Next attempt allowed after {next_allowed.strftime('%Y-%m-%d %H:%M UTC')}."
+                    else:
+                        detail_msg = f"You must wait {hours_left} more hour(s) before reattempting. Next attempt allowed after {next_allowed.strftime('%Y-%m-%d %H:%M UTC')}."
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=detail_msg,
+                    )
+
+            # Payment validation: only for Course Final exams
+            if exam.exam_type == "course_final":
+                pay_result = await db.execute(
+                    select(func.count(ExamPayment.id)).where(
+                        ExamPayment.user_id == user_id,
+                        ExamPayment.exam_id == exam_id,
+                        ExamPayment.status == "paid"
+                    )
                 )
-            )
-            if not pay_result.scalars().first():
-                raise HTTPException(
-                    status_code=402,
-                    detail=f"You have used all {exam.max_attempts} attempts. Payment required to reattempt."
-                )
+                payments_count = pay_result.scalar() or 0
+                
+                required_payments = total_attempts - 2
+                if payments_count < required_payments:
+                    raise HTTPException(
+                        status_code=402,
+                        detail=f"You have used all 3 free attempts. Payment of Rs.{exam.reattempt_fee or 500.0} is required to start your next attempt."
+                    )
 
 
 async def start_course_exam(db: AsyncSession, user_id: int, exam_id: int, device_id: str) -> dict:

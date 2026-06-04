@@ -161,6 +161,7 @@ class CourseExam(Base):
     duration_minutes = Column(Integer, default=60)
     passing_score = Column(Float, default=60.0)  # percentage
     max_attempts = Column(Integer, default=3)
+    reattempt_fee = Column(Float, default=500.0)
     questions_per_attempt = Column(Integer, nullable=True)  # null = all questions; otherwise random N from pool
     is_active = Column(Boolean, default=True)
     start_time = Column(DateTime(timezone=True), nullable=True)

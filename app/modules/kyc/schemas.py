@@ -93,8 +93,20 @@ class AdminContractListItem(BaseModel):
     user_id: int
     user_name: Optional[str] = None
     user_email: Optional[str] = None
+    user_mobile: Optional[str] = None
+    user_aadhaar: Optional[str] = None
+    user_pan: Optional[str] = None
+    user_dob: Optional[str] = None
+    user_qualification: Optional[str] = None
+    user_address: Optional[str] = None
+    aadhaar_doc_url: Optional[str] = None
+    pan_doc_url: Optional[str] = None
+    photo_url: Optional[str] = None
+    signature_url: Optional[str] = None
+    biometric_selfie_url: Optional[str] = None
     kyc_status: Optional[str] = None
     course_id: Optional[int] = None
+    course_title: Optional[str] = None
     signed_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
 

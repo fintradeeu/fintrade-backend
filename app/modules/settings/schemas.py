@@ -42,6 +42,8 @@ class LandingPageUpdateRequest(BaseModel):
     live_classes: Optional[List[Dict[str, Any]]] = None
     emi: Optional[Dict[str, Any]] = None
     certificate: Optional[Dict[str, Any]] = None
+    program_modules: Optional[List[Dict[str, Any]]] = None
+    hero_backgrounds: Optional[List[str]] = None
 
 
 class SettingsGroupedResponse(BaseModel):

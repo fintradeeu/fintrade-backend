@@ -21,6 +21,53 @@ async def list_entrance_exams(db: AsyncSession = Depends(get_db)):
     exams = await services.get_entrance_exams(db)
     return [schemas.EntranceExamResponse.model_validate(e) for e in exams]
 
+@router.get("/check-enrollment")
+async def check_enrollment_eligibility(
+    course_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Check if the current student has passed any active entrance exam for the given course.
+    Returns: { has_entrance_exam: bool, passed: bool }
+    """
+    from app.modules.exams.models import EntranceExam, ExamAttempt, ExamResult
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    # Find all active entrance exams for this course
+    res = await db.execute(
+        select(EntranceExam).where(
+            EntranceExam.course_id == course_id,
+            EntranceExam.is_active == True
+        )
+    )
+    exams = res.scalars().all()
+
+    if not exams:
+        return {"has_entrance_exam": False, "passed": False}
+
+    exam_ids = [e.id for e in exams]
+
+    # Check if student has passed any of these exams
+    attempts_res = await db.execute(
+        select(ExamAttempt)
+        .options(selectinload(ExamAttempt.result))
+        .where(
+            ExamAttempt.user_id == current_user.id,
+            ExamAttempt.exam_id.in_(exam_ids)
+        )
+    )
+    attempts = attempts_res.scalars().all()
+
+    passed = any(
+        a.result and a.result.passed
+        for a in attempts
+    )
+
+    return {"has_entrance_exam": True, "passed": passed}
+
+
 @router.get("/all")
 async def list_all_exams(
     current_user: User = Depends(get_current_user),

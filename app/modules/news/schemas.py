@@ -37,6 +37,7 @@ class NewsResponse(BaseModel):
     thumbnail_url: Optional[str] = None
     status: str
     views_count: int = 0
+    created_by: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

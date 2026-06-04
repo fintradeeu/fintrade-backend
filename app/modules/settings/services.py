@@ -29,6 +29,11 @@ DEFAULT_LANDING_PAGE_CONFIG = {
         "subtitle": "We are not building another trading course company. We are building India's first Trader-to-Funded Professional Pipeline — where every student has a pathway to professional capital.",
         "badge": "🎯 India's Premier Trading Education",
     },
+    "hero_backgrounds": [
+        "/background.jpg",
+        "/backgroundimage-1.avif",
+        "/backgroundimage-2.avif"
+    ],
     "contact": {
         "phone": "+91 98765 43210",
         "phone_href": "tel:+919876543210",
@@ -324,6 +329,53 @@ DEFAULT_LANDING_PAGE_CONFIG = {
             "buttonText": "Learn More",
             "link": "#courses"
         }
+    ],
+    "program_modules": [
+        {
+            "title": "PROFESSIONAL TRADING MINDSET FOUNDATION",
+            "duration": "2 Days",
+            "modules": [
+                { "num": 1, "title": "Trader’s Mindset & Market Psychology", "overview": "Psychology foundation for retail and professional trading." },
+                { "num": 2, "title": "Professional Trading Mindset Foundation", "overview": "Developing discipline and professional trading habits." }
+            ]
+        },
+        {
+            "title": "FINANCIAL MARKET FOUNDATION",
+            "duration": "30 Days",
+            "modules": [
+                { "num": 1, "title": "Introduction to Financial Market", "overview": "Understanding how financial markets work." },
+                { "num": 2, "title": "Understanding Security Market", "overview": "Market participants, stock exchanges, and demat accounts." },
+                { "num": 3, "title": "Methods of analysing Financial Security", "overview": "Overview of technical and fundamental analysis." }
+            ]
+        },
+        {
+            "title": "MARKET ANALYSIS AND TRADING STRATEGY DEVELOPMENT",
+            "duration": "30 Days",
+            "modules": [
+                { "num": 1, "title": "Fundamental Analysis Framework", "overview": "Evaluating balance sheets and cash flows." },
+                { "num": 2, "title": "Application of Fundamental Analysis", "overview": "Valuation methodologies and DCF models." },
+                { "num": 3, "title": "Technical Analysis for Trading and Investing", "overview": "Candlesticks, trends, indicators, and chart patterns." },
+                { "num": 4, "title": "Trading & Analytics Software", "overview": "Using charting software and trading terminals." }
+            ]
+        },
+        {
+            "title": "ADVANCED INSTITUTIONAL TRADING AND RISK MANAGEMENT",
+            "duration": "30 Days",
+            "modules": [
+                { "num": 1, "title": "Applied Technical Analysis", "overview": "Advanced indicators and order book dynamics." },
+                { "num": 2, "title": "Mechanics of Derivative Market", "overview": "Introduction to Futures & Options trading." },
+                { "num": 3, "title": "Options & Futures Strategies", "overview": "Spreads, straddles, hedging, and Greeks." },
+                { "num": 4, "title": "Professional Risk Management", "overview": "Position sizing, risk manual, and drawdown control." }
+            ]
+        },
+        {
+            "title": "MARKET APPLICATION AND EXECUTION",
+            "duration": "5 Days",
+            "modules": [
+                { "num": 1, "title": "Trading Lab & Back testing Mastery", "overview": "Testing strategy rules on historical data." },
+                { "num": 2, "title": "Real World Market Execution", "overview": "Live trading execution under guidance." }
+            ]
+        }
     ]
 }
 
@@ -421,6 +473,10 @@ async def get_landing_page_config(db: AsyncSession) -> Dict[str, Any]:
             return DEFAULT_LANDING_PAGE_CONFIG
         if "benefits" not in data:
             data["benefits"] = DEFAULT_LANDING_PAGE_CONFIG["benefits"]
+        if "showcase_videos" not in data:
+            data["showcase_videos"] = DEFAULT_LANDING_PAGE_CONFIG["showcase_videos"]
+        if "program_modules" not in data:
+            data["program_modules"] = DEFAULT_LANDING_PAGE_CONFIG["program_modules"]
         if "services" not in data:
             data["services"] = DEFAULT_LANDING_PAGE_CONFIG["services"]
         if "quick_tips" not in data:
@@ -433,6 +489,8 @@ async def get_landing_page_config(db: AsyncSession) -> Dict[str, Any]:
             data["hero_buttons"] = DEFAULT_LANDING_PAGE_CONFIG["hero_buttons"]
         if "carousel_slides" not in data:
             data["carousel_slides"] = DEFAULT_LANDING_PAGE_CONFIG["carousel_slides"]
+        if "hero_backgrounds" not in data:
+            data["hero_backgrounds"] = DEFAULT_LANDING_PAGE_CONFIG["hero_backgrounds"]
         return data
     except (json.JSONDecodeError, TypeError):
         return DEFAULT_LANDING_PAGE_CONFIG
