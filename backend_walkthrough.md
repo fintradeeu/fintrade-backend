@@ -42,7 +42,7 @@ curl http://localhost:8000/health
 |----------|---------|-------------|
 | `DATABASE_URL` | `postgresql+asyncpg://lms_user:lms_password@postgres:5432/lms_db` | Async DB connection |
 | `JWT_SECRET_KEY` | `change-me-in-production` | JWT signing key |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | `60` | Token TTL |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `360` | Token TTL |
 | `OPENAI_API_KEY` | (empty) | Required for AI chatbot |
 | `DEBUG` | `True` | SQLAlchemy echo |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8000` | Allowed origins |
