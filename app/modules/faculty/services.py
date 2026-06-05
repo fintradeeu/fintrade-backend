@@ -327,7 +327,7 @@ async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student
     from sqlalchemy.orm import selectinload
     from app.modules.auth.models import User
     from app.modules.courses.models import Course, CourseEnrollment, Assignment, AssignmentSubmission
-    from app.modules.exams.models import ExamResult, CourseExamResult, ExamAttempt, ExamAnswer
+    from app.modules.exams.models import ExamResult, CourseExamResult, ExamAttempt, ExamAnswer, ExamQuestion, ExamOption, CourseExamAttempt, CourseExamAnswer, CourseExamQuestion, CourseExamOption
 
     # Check if student exists and faculty has access (student must be enrolled in at least one course taught by faculty)
     user_stmt = select(User).where(User.id == student_id)
@@ -389,15 +389,15 @@ async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student
         .join(EntranceExam, ExamResult.exam_id == EntranceExam.id)\
         .join(ExamAttempt, ExamResult.attempt_id == ExamAttempt.id)\
         .join(Course, EntranceExam.course_id == Course.id)\
-        .options(selectinload(ExamAttempt.answers).selectinload(ExamAnswer.question).selectinload(ExamAnswer.question.options))\
+        .options(selectinload(ExamAttempt.answers).selectinload(ExamAnswer.question).selectinload(ExamQuestion.options))\
         .where(ExamResult.user_id == student_id, EntranceExam.course_id.in_(faculty_courses))
     ent_res = await db.execute(ent_exam_stmt)
 
-    course_exam_stmt = select(CourseExamResult, CourseExam, ExamAttempt, Course).select_from(CourseExamResult)\
+    course_exam_stmt = select(CourseExamResult, CourseExam, CourseExamAttempt, Course).select_from(CourseExamResult)\
         .join(CourseExam, CourseExamResult.exam_id == CourseExam.id)\
-        .join(ExamAttempt, CourseExamResult.attempt_id == ExamAttempt.id)\
+        .join(CourseExamAttempt, CourseExamResult.attempt_id == CourseExamAttempt.id)\
         .join(Course, CourseExam.course_id == Course.id)\
-        .options(selectinload(ExamAttempt.answers).selectinload(ExamAnswer.question).selectinload(ExamAnswer.question.options))\
+        .options(selectinload(CourseExamAttempt.answers).selectinload(CourseExamAnswer.question).selectinload(CourseExamQuestion.options))\
         .where(CourseExamResult.user_id == student_id, CourseExam.course_id.in_(faculty_courses))
     course_res = await db.execute(course_exam_stmt)
 
