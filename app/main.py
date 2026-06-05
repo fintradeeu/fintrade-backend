@@ -46,14 +46,7 @@ async def lifespan(app: FastAPI):
         import logging
         logging.getLogger(__name__).warning(f"Seed skipped or failed: {e}")
 
-    # Auto-repair news schema on startup to prevent UndefinedColumnError on fresh deployments
-    try:
-        from app.db.database import AsyncSessionLocal
-        async with AsyncSessionLocal() as session:
-            await _repair_news_schema_async(session)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"News schema auto-repair skipped or failed: {e}")
+    # News schema auto-repair removed — schema is stable, migrations handle everything.
 
     yield
 
@@ -151,6 +144,8 @@ def trigger_db_migration(secret_key: str):
             "006_repair_news_articles_schema.py",
             "007_fix_news_enums_drop_video_type.py",
             "008_add_user_permissions.py",
+            "009_force_drop_video_type.py",
+            "621bf7ebb607_add_feedback_forms.py",
             ".gitkeep",
         }
         for f in glob.glob(os.path.join(versions_dir, "*")):
@@ -162,28 +157,8 @@ def trigger_db_migration(secret_key: str):
                 except Exception:
                     pass
                 
-        # 2. Proactively clear any duplicate heads in alembic_version table and stamp to 004
-        import sqlalchemy as sa
-        sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://").replace("sqlite+aiosqlite://", "sqlite://")
-        sync_engine = sa.create_engine(sync_url)
-        try:
-            with sync_engine.connect() as conn:
-                conn.execute(sa.text("DELETE FROM alembic_version;"))
-                conn.execute(sa.text("INSERT INTO alembic_version (version_num) VALUES ('004_add_google_oauth');"))
-                conn.commit()
-        except Exception as db_err:
-            print("DB version auto-heal skipped or failed:", db_err)
-
-        # 3. Run upgrade head programmatically to apply the REAL migrations from Git
-        try:
-            command.upgrade(alembic_cfg, "head")
-        except Exception as migration_err:
-            # Some live deployments have a stale generated migration revision
-            # in the Alembic graph. Repair the news schema directly so the
-            # admin content API can recover without manual DB console access.
-            if "4968c3161755" not in str(migration_err):
-                raise
-            _repair_news_schema(sync_engine)
+        # 2. Run upgrade head programmatically to apply migrations from Git
+        command.upgrade(alembic_cfg, "head")
 
         return {
             "status": "success",
@@ -241,115 +216,10 @@ async def inspect_db(secret_key: str):
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 
-def _repair_news_schema(sync_engine):
-    """Repair production news schema when Alembic graph is polluted."""
-    import sqlalchemy as sa
-
-    statements = [
-        """
-        CREATE TABLE IF NOT EXISTS news_articles (
-            id SERIAL PRIMARY KEY,
-            title VARCHAR(500) NOT NULL,
-            type VARCHAR(50) NOT NULL DEFAULT 'Blog Story',
-            description TEXT,
-            video_url TEXT,
-            thumbnail_url TEXT,
-            status VARCHAR(50) NOT NULL DEFAULT 'published',
-            views_count INTEGER DEFAULT 0,
-            created_by INTEGER REFERENCES users(id),
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-        """,
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS type VARCHAR(50) NOT NULL DEFAULT 'Blog Story'",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS description TEXT",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS video_url TEXT",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS thumbnail_url TEXT",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'published'",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 0",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
-        """
-        UPDATE news_articles
-        SET type = CASE
-            WHEN video_url IS NOT NULL AND video_url <> '' THEN 'Market Update'
-            ELSE 'Blog Story'
-        END
-        WHERE type IS NULL OR type::varchar = ''
-        """,
-        "UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status::varchar = ''",
-        "UPDATE news_articles SET views_count = 0 WHERE views_count IS NULL",
-        "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)",
-        "DELETE FROM alembic_version",
-        "INSERT INTO alembic_version (version_num) VALUES ('006_repair_news_articles_schema')"
-    ]
-
-    for statement in statements:
-        try:
-            with sync_engine.begin() as conn:
-                conn.execute(sa.text(statement))
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(
-                f"News schema repair statement failed: {statement.strip()[:60]}... error: {e}"
-            )
-
-
-async def _repair_news_schema_async(db):
-    """Repair production news schema asynchronously."""
-    import sqlalchemy as sa
-
-    statements = [
-        """
-        CREATE TABLE IF NOT EXISTS news_articles (
-            id SERIAL PRIMARY KEY,
-            title VARCHAR(500) NOT NULL,
-            type VARCHAR(50) NOT NULL DEFAULT 'Blog Story',
-            description TEXT,
-            video_url TEXT,
-            thumbnail_url TEXT,
-            status VARCHAR(50) NOT NULL DEFAULT 'published',
-            views_count INTEGER DEFAULT 0,
-            created_by INTEGER REFERENCES users(id),
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-        """,
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS type VARCHAR(50) NOT NULL DEFAULT 'Blog Story'",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS description TEXT",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS video_url TEXT",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS thumbnail_url TEXT",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'published'",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 0",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
-        """
-        UPDATE news_articles
-        SET type = CASE
-            WHEN video_url IS NOT NULL AND video_url <> '' THEN 'Market Update'
-            ELSE 'Blog Story'
-        END
-        WHERE type IS NULL OR type::varchar = ''
-        """,
-        "UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status::varchar = ''",
-        "UPDATE news_articles SET views_count = 0 WHERE views_count IS NULL",
-        "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)",
-        "DELETE FROM alembic_version",
-        "INSERT INTO alembic_version (version_num) VALUES ('006_repair_news_articles_schema')"
-    ]
-
-    for statement in statements:
-        try:
-            await db.execute(sa.text(statement))
-            await db.commit()
-        except Exception as e:
-            await db.rollback()
-            import logging
-            logging.getLogger(__name__).warning(
-                f"News schema repair statement failed: {statement.strip()[:60]}... error: {e}"
-            )
+# _repair_news_schema and _repair_news_schema_async removed.
+# The news_articles schema is stable and fully managed by Alembic migrations.
+# These functions were destructively resetting alembic_version and re-adding
+# dropped columns on every server restart, causing 500 errors.
 
 # Mount static uploads
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
