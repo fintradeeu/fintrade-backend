@@ -29,7 +29,7 @@ services:
       - key: JWT_ALGORITHM
         value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
-        value: "60"
+        value: "360"
       - key: REFRESH_TOKEN_EXPIRE_DAYS
         value: "7"
       - key: APP_NAME
