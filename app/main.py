@@ -66,19 +66,9 @@ app = FastAPI(
 )
 
 # ── CORS ─────────────────────────────────────────────────────────────
-origins = settings.cors_origins_list
-
-# Force allow production domains (in case .env overrides the default and misses them)
-for domain in ["https://www.thefintrade.com", "https://thefintrade.com", "https://api.thefintrade.com"]:
-    if domain not in origins:
-        origins.append(domain)
-
-allow_all = "*" in origins
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[] if allow_all else origins,
-    allow_origin_regex=".*" if allow_all else None,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
