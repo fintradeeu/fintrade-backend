@@ -12,6 +12,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=2, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
+    city: Optional[str] = Field(None, max_length=100)
     password: str = Field(..., min_length=8, max_length=128)
 
 
@@ -30,6 +31,7 @@ class ProfileUpdateRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=2, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
+    city: Optional[str] = Field(None, max_length=100)
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -75,6 +77,7 @@ class UserResponse(BaseModel):
     email: str
     full_name: str
     phone: Optional[str] = None
+    city: Optional[str] = None
     is_active: bool
     is_verified: bool
     avatar_url: Optional[str] = None
@@ -92,6 +95,7 @@ class UserResponse(BaseModel):
                 "email": data.email,
                 "full_name": data.full_name,
                 "phone": data.phone,
+                "city": data.city,
                 "is_active": data.is_active,
                 "is_verified": data.is_verified,
                 "avatar_url": data.avatar_url,

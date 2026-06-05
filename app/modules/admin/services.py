@@ -64,6 +64,7 @@ async def create_user_with_role(
     role_name: str,
     created_by: int,
     phone: Optional[str] = None,
+    city: Optional[str] = None,
     permissions: Optional[dict] = None,
 ) -> User:
     """Admin creates a user with a specific role."""
@@ -81,6 +82,7 @@ async def create_user_with_role(
         email=email,
         full_name=full_name,
         phone=phone,
+        city=city,
         hashed_password=hash_password(password),
         is_verified=True,  # Admin-created accounts are pre-verified
         created_by=created_by,
@@ -107,6 +109,7 @@ async def create_distributor_user(
     discount_percentage: float,
     created_by: int,
     phone: Optional[str] = None,
+    city: Optional[str] = None,
 ) -> tuple:
     """Admin creates a distributor: user + distributor profile."""
     # Check referral code uniqueness
@@ -120,7 +123,7 @@ async def create_distributor_user(
         )
 
     user = await create_user_with_role(
-        db, email, full_name, password, "distributor", created_by, phone
+        db, email, full_name, password, "distributor", created_by, phone, city
     )
 
     distributor = Distributor(
@@ -160,7 +163,7 @@ async def update_user(db: AsyncSession, user_id: int, data: dict) -> User:
             )
             
     # Update user fields
-    for field in ["email", "full_name", "phone", "is_active", "permissions"]:
+    for field in ["email", "full_name", "phone", "city", "is_active", "permissions"]:
         if field in data and data[field] is not None:
             setattr(user, field, data[field])
             

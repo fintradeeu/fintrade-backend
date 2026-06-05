@@ -34,6 +34,7 @@ class User(Base):
     full_name = Column(String(255), nullable=False)
     phone = Column(String(20), nullable=True)
     hashed_password = Column(Text, nullable=True)
+    city = Column(String(100), nullable=True)
     google_id = Column(String(255), unique=True, nullable=True, index=True)
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)

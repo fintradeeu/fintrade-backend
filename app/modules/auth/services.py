@@ -48,6 +48,7 @@ async def register_user(
     full_name: str,
     password: str,
     phone: Optional[str] = None,
+    city: Optional[str] = None,
     role_name: str = "student",
 ) -> User:
     """Create a new user with the given role."""
@@ -65,6 +66,7 @@ async def register_user(
         email=email,
         full_name=full_name,
         phone=phone,
+        city=city,
         hashed_password=hash_password(password),
     )
     user.roles.append(role)
@@ -218,6 +220,7 @@ async def update_user_profile(
     email: str,
     full_name: str,
     phone: Optional[str] = None,
+    city: Optional[str] = None,
 ) -> User:
     """Update editable profile fields for the current user."""
     normalized_email = email.strip().lower()
@@ -232,6 +235,8 @@ async def update_user_profile(
 
     user.full_name = full_name.strip()
     user.phone = phone.strip() if phone else None
+    if city is not None:
+        user.city = city.strip()
     await db.flush()
     await db.refresh(user)
     logger.info("user_profile_updated", user_id=user.id)

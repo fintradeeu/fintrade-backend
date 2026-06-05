@@ -62,6 +62,7 @@ async def create_admin(
         role_name="admin",
         created_by=admin.id,
         phone=body.phone,
+        city=body.city,
     )
     return UserResponse.model_validate(user)
 
@@ -81,6 +82,7 @@ async def create_faculty(
         role_name="faculty",
         created_by=admin.id,
         phone=body.phone,
+        city=body.city,
         permissions=body.permissions,
     )
     return UserResponse.model_validate(user)
@@ -103,6 +105,7 @@ async def create_distributor(
         discount_percentage=body.discount_percentage,
         created_by=admin.id,
         phone=body.phone,
+        city=body.city,
     )
     return UserResponse.model_validate(user)
 

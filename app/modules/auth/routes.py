@@ -25,6 +25,7 @@ async def register(
         full_name=body.full_name,
         password=body.password,
         phone=body.phone,
+        city=body.city,
     )   
     
     tokens = await services.create_session(
@@ -177,6 +178,7 @@ async def update_me(
         email=body.email,
         full_name=body.full_name,
         phone=body.phone,
+        city=body.city,
     )
     return schemas.UserResponse.model_validate(user)
 
@@ -194,6 +196,7 @@ async def update_my_profile(
         email=body.email,
         full_name=body.full_name,
         phone=body.phone,
+        city=body.city,
     )
     return schemas.UserResponse.model_validate(user)
 
@@ -211,6 +214,7 @@ async def update_me_post(
         email=body.email,
         full_name=body.full_name,
         phone=body.phone,
+        city=body.city,
     )
     return schemas.UserResponse.model_validate(user)
 
@@ -228,6 +232,7 @@ async def update_my_profile_post(
         email=body.email,
         full_name=body.full_name,
         phone=body.phone,
+        city=body.city,
     )
     return schemas.UserResponse.model_validate(user)
 

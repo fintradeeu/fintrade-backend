@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 class LectureCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
-    course_id: int
+    course_id: Optional[int] = None
     instructor_id: Optional[int] = None
     meeting_link: Optional[str] = None
     scheduled_at: datetime
@@ -47,7 +47,7 @@ class LectureResponse(BaseModel):
     id: int
     title: str
     description: Optional[str] = None
-    course_id: int
+    course_id: Optional[int] = None
     instructor_id: Optional[int] = None
     meeting_link: Optional[str] = None
     scheduled_at: datetime
