@@ -395,6 +395,34 @@ async def update_course_exam(
     exam = await exam_services.update_exam(db, exam_id, body.model_dump(exclude_unset=True), is_course_exam=True)
     return exam_schemas.CourseExamResponse.model_validate(exam)
 
+@router.delete("/exams/{exam_id}", response_model=schemas.MessageResponse)
+async def delete_entrance_exam(
+    exam_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.modules.exams.models import EntranceExam
+    exam = await db.get(EntranceExam, exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    await db.delete(exam)
+    await db.commit()
+    return schemas.MessageResponse(message="Exam deleted successfully")
+
+@router.delete("/course-exams/{exam_id}", response_model=schemas.MessageResponse)
+async def delete_course_exam(
+    exam_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.modules.exams.models import CourseExam
+    exam = await db.get(CourseExam, exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    await db.delete(exam)
+    await db.commit()
+    return schemas.MessageResponse(message="Exam deleted successfully")
+
 @router.get("/exams/all", response_model=dict)
 async def list_all_exams(
     _admin: User = Depends(require_roles(["admin", "faculty"])),
