@@ -85,6 +85,28 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+
+# ── Global exception handler ────────────────────────────────────────
+# When an unhandled exception causes a raw 500, FastAPI skips the CORS
+# middleware, so the browser reports "CORS error" instead of the real error.
+# This handler catches ALL unhandled errors and returns a proper JSONResponse
+# which flows back through the CORS middleware and gets the right headers.
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+import traceback as _tb
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_detail = str(exc)
+    tb = _tb.format_exc()
+    import logging
+    logging.getLogger("uvicorn.error").error(f"Unhandled error on {request.method} {request.url}: {error_detail}\n{tb}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {error_detail}"},
+    )
+
+
 # ── Register routers ────────────────────────────────────────────────
 app.include_router(auth_router)
 app.include_router(courses_router)
