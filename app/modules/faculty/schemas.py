@@ -77,3 +77,5 @@ class FacultyReportsResponse(BaseModel):
     student_progress: List[StudentProgressDetail] = []
     exam_scores: List[ExamScoreDetail] = []
     assignment_submissions: List[AssignmentSubmissionDetail] = []
+#Faculty
+# Temp line for commit trigger

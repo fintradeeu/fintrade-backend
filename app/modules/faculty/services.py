@@ -178,6 +178,8 @@ async def get_faculty_reports(db: AsyncSession, faculty_id: int) -> dict:
     from app.modules.exams.models import CategoryScore
     from app.modules.courses.models import AssignmentSubmission, Assignment
 
+
+    # Temp line for commit trigger
     # Get enrollments for these courses
     enrollment_res = await db.execute(
         select(CourseEnrollment)
