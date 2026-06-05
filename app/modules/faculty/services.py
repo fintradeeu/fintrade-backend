@@ -357,7 +357,7 @@ async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student
             "title": e.course.title,
             "enrolled_at": e.enrolled_at,
             "completed_at": e.completed_at,
-            "progress_percent": e.progress_percent
+            "progress_percent": e.progress_percent or 0.0
         })
 
     # 2. Assignment Submissions
@@ -377,8 +377,8 @@ async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student
             "submitted_at": sub.submitted_at,
             "status": sub.status,
             "score": sub.score,
-            "max_score": assignment.max_score,
-            "file_url": sub.file_url,
+            "max_score": assignment.max_score or 100.0,
+            "file_url": sub.file_url or "",
             "teacher_feedback": sub.teacher_feedback
         })
 
@@ -420,10 +420,10 @@ async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student
             "exam_id": exam.id,
             "title": exam.title,
             "exam_type": "Entrance" if isinstance(exam, EntranceExam) else "Course",
-            "course_title": course.title,
-            "score": res.score,
-            "total_marks": res.total_marks,
-            "passed": res.passed,
+            "course_title": course.title if course else None,
+            "score": res.score or 0.0,
+            "total_marks": res.total_marks or 0.0,
+            "passed": res.passed or False,
             "submitted_at": attempt.submitted_at,
             "answers": answers_data
         })

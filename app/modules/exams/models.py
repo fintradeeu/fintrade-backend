@@ -120,6 +120,7 @@ class ExamAnswer(Base):
 
     # relationships
     attempt = relationship("ExamAttempt", back_populates="answers")
+    question = relationship("ExamQuestion")
 
     def __repr__(self):
         return f"<ExamAnswer attempt={self.attempt_id} question={self.question_id}>"
@@ -240,6 +241,7 @@ class CourseExamAnswer(Base):
     answered_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     attempt = relationship("CourseExamAttempt", back_populates="answers")
+    question = relationship("CourseExamQuestion")
 
 class CourseExamResult(Base):
     __tablename__ = "course_exam_results"
