@@ -19,6 +19,7 @@ class NewsArticle(Base):
     thumbnail_url= Column(Text,        nullable=True)
     status       = Column(String(50),  nullable=False, default="published")    # "published" | "draft"
     views_count  = Column(Integer,     nullable=False, default=0)
+    author_name  = Column(String(255), nullable=True)
     created_by   = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at   = Column(

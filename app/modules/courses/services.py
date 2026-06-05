@@ -133,7 +133,12 @@ async def create_module(db: AsyncSession, data: dict) -> CourseModule:
 
 async def update_module(db: AsyncSession, module_id: int, data: dict) -> CourseModule:
     """Update an existing module."""
-    module = await db.get(CourseModule, module_id)
+    result = await db.execute(
+        select(CourseModule)
+        .options(selectinload(CourseModule.lessons))
+        .where(CourseModule.id == module_id)
+    )
+    module = result.scalar_one_or_none()
     if module is None:
         raise HTTPException(status_code=404, detail="Module not found")
 
@@ -252,13 +257,14 @@ async def enroll_user(
             EntranceExam.is_active == True
         )
     )
-    entrance_exam = entrance_res.scalar_one_or_none()
-    if entrance_exam:
-        # Check if user has passed this entrance exam
+    exams = entrance_res.scalars().all()
+    if exams:
+        exam_ids = [e.id for e in exams]
+        # Check if user has passed any of these entrance exams
         passed_res = await db.execute(
             select(ExamResult).where(
                 ExamResult.user_id == user_id,
-                ExamResult.exam_id == entrance_exam.id,
+                ExamResult.exam_id.in_(exam_ids),
                 ExamResult.passed == True
             )
         )

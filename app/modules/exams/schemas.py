@@ -48,6 +48,7 @@ class CourseExamCreate(BaseModel):
     duration_minutes: int = 60
     passing_score: float = 60.0
     max_attempts: int = 3
+    reattempt_fee: Optional[float] = 500.0
     is_active: bool = True
     questions_per_attempt: Optional[int] = None  # null = use all questions
     start_time: Optional[datetime] = None
@@ -60,6 +61,7 @@ class ExamUpdate(BaseModel):
     duration_minutes: Optional[int] = None
     passing_score: Optional[float] = None
     is_active: Optional[bool] = None
+    reattempt_fee: Optional[float] = None
 
 
 # ── Response schemas ─────────────────────────────────────────────────
@@ -170,6 +172,7 @@ class CourseExamResponse(BaseModel):
     duration_minutes: int
     passing_score: float
     max_attempts: int
+    reattempt_fee: float = 500.0
     is_active: bool
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None

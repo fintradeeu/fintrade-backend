@@ -66,18 +66,36 @@ app = FastAPI(
 )
 
 # ── CORS ─────────────────────────────────────────────────────────────
-origins = settings.cors_origins_list
-allow_all = "*" in origins
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[] if allow_all else origins,
-    allow_origin_regex=".*" if allow_all else None,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+
+# ── Global exception handler ────────────────────────────────────────
+# When an unhandled exception causes a raw 500, FastAPI skips the CORS
+# middleware, so the browser reports "CORS error" instead of the real error.
+# This handler catches ALL unhandled errors and returns a proper JSONResponse
+# which flows back through the CORS middleware and gets the right headers.
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+import traceback as _tb
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_detail = str(exc)
+    tb = _tb.format_exc()
+    import logging
+    logging.getLogger("uvicorn.error").error(f"Unhandled error on {request.method} {request.url}: {error_detail}\n{tb}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {error_detail}"},
+    )
+
 
 # ── Register routers ────────────────────────────────────────────────
 app.include_router(auth_router)
@@ -143,6 +161,8 @@ def trigger_db_migration(secret_key: str):
             "004_add_google_oauth.py",
             "005_add_news_article_type.py",
             "006_repair_news_articles_schema.py",
+            "007_fix_news_enums_drop_video_type.py",
+            "008_add_user_permissions.py",
             ".gitkeep",
         }
         for f in glob.glob(os.path.join(versions_dir, "*")):
@@ -244,7 +264,6 @@ def _repair_news_schema(sync_engine):
             title VARCHAR(500) NOT NULL,
             type VARCHAR(50) NOT NULL DEFAULT 'Blog Story',
             description TEXT,
-            video_type VARCHAR(50) NOT NULL DEFAULT 'youtube',
             video_url TEXT,
             thumbnail_url TEXT,
             status VARCHAR(50) NOT NULL DEFAULT 'published',
@@ -256,7 +275,6 @@ def _repair_news_schema(sync_engine):
         """,
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS type VARCHAR(50) NOT NULL DEFAULT 'Blog Story'",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS description TEXT",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS video_type VARCHAR(50) NOT NULL DEFAULT 'youtube'",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS video_url TEXT",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS thumbnail_url TEXT",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'published'",
@@ -272,7 +290,6 @@ def _repair_news_schema(sync_engine):
         END
         WHERE type IS NULL OR type::varchar = ''
         """,
-        "UPDATE news_articles SET video_type = 'youtube' WHERE video_type IS NULL OR video_type::varchar = ''",
         "UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status::varchar = ''",
         "UPDATE news_articles SET views_count = 0 WHERE views_count IS NULL",
         "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)",
@@ -302,7 +319,6 @@ async def _repair_news_schema_async(db):
             title VARCHAR(500) NOT NULL,
             type VARCHAR(50) NOT NULL DEFAULT 'Blog Story',
             description TEXT,
-            video_type VARCHAR(50) NOT NULL DEFAULT 'youtube',
             video_url TEXT,
             thumbnail_url TEXT,
             status VARCHAR(50) NOT NULL DEFAULT 'published',
@@ -314,7 +330,6 @@ async def _repair_news_schema_async(db):
         """,
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS type VARCHAR(50) NOT NULL DEFAULT 'Blog Story'",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS description TEXT",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS video_type VARCHAR(50) NOT NULL DEFAULT 'youtube'",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS video_url TEXT",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS thumbnail_url TEXT",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'published'",
@@ -330,7 +345,6 @@ async def _repair_news_schema_async(db):
         END
         WHERE type IS NULL OR type::varchar = ''
         """,
-        "UPDATE news_articles SET video_type = 'youtube' WHERE video_type IS NULL OR video_type::varchar = ''",
         "UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status::varchar = ''",
         "UPDATE news_articles SET views_count = 0 WHERE views_count IS NULL",
         "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)",

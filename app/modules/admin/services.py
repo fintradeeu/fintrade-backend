@@ -45,7 +45,7 @@ async def list_users(db: AsyncSession, skip: int = 0, limit: int = 50) -> dict:
     """List all users for admin dashboard."""
     result = await db.execute(
         select(User)
-        .options(selectinload(User.roles))
+        .options(selectinload(User.roles), selectinload(User.distributor_profile))
         .offset(skip)
         .limit(limit)
         .order_by(User.created_at.desc())
@@ -64,6 +64,8 @@ async def create_user_with_role(
     role_name: str,
     created_by: int,
     phone: Optional[str] = None,
+    city: Optional[str] = None,
+    permissions: Optional[dict] = None,
 ) -> User:
     """Admin creates a user with a specific role."""
     # Check uniqueness
@@ -80,15 +82,17 @@ async def create_user_with_role(
         email=email,
         full_name=full_name,
         phone=phone,
+        city=city,
         hashed_password=hash_password(password),
         is_verified=True,  # Admin-created accounts are pre-verified
         created_by=created_by,
+        permissions=permissions,
     )
     user.roles.append(role)
     db.add(user)
     await db.flush()
-    # Eager load the roles to prevent MissingGreenlet error in Pydantic schema validation
-    result = await db.execute(select(User).options(selectinload(User.roles)).where(User.id == user.id))
+    # Eager load the roles and distributor profile to prevent MissingGreenlet error in Pydantic schema validation
+    result = await db.execute(select(User).options(selectinload(User.roles), selectinload(User.distributor_profile)).where(User.id == user.id))
     user = result.scalar_one()
     
     logger.info("admin_created_user", user_id=user.id, role=role_name, created_by=created_by)
@@ -105,6 +109,7 @@ async def create_distributor_user(
     discount_percentage: float,
     created_by: int,
     phone: Optional[str] = None,
+    city: Optional[str] = None,
 ) -> tuple:
     """Admin creates a distributor: user + distributor profile."""
     # Check referral code uniqueness
@@ -118,7 +123,7 @@ async def create_distributor_user(
         )
 
     user = await create_user_with_role(
-        db, email, full_name, password, "distributor", created_by, phone
+        db, email, full_name, password, "distributor", created_by, phone, city
     )
 
     distributor = Distributor(
@@ -132,6 +137,84 @@ async def create_distributor_user(
     await db.refresh(distributor)
     logger.info("distributor_created", distributor_id=distributor.id, referral_code=referral_code)
     return user, distributor
+
+
+async def update_user(db: AsyncSession, user_id: int, data: dict) -> User:
+    """Update a user's details and their distributor profile if applicable."""
+    # 1. Fetch user
+    result = await db.execute(
+        select(User).options(selectinload(User.roles)).where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+        
+    # Check email uniqueness if changed
+    new_email = data.get("email")
+    if new_email and new_email != user.email:
+        existing = await db.execute(select(User).where(User.email == new_email))
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A user with this email already exists",
+            )
+            
+    # Update user fields
+    for field in ["email", "full_name", "phone", "city", "is_active", "permissions"]:
+        if field in data and data[field] is not None:
+            setattr(user, field, data[field])
+            
+    # Check if user is a distributor and update distributor fields
+    is_distributor = any(role.name == "distributor" for role in user.roles)
+    if is_distributor:
+        dist_result = await db.execute(
+            select(Distributor).where(Distributor.user_id == user.id)
+        )
+        distributor = dist_result.scalar_one_or_none()
+        
+        if distributor:
+            # Check referral code uniqueness if changed
+            new_ref_code = data.get("referral_code")
+            if new_ref_code and new_ref_code != distributor.referral_code:
+                existing_code = await db.execute(
+                    select(Distributor).where(Distributor.referral_code == new_ref_code)
+                )
+                if existing_code.scalar_one_or_none():
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Referral code already exists",
+                    )
+            
+            for field in ["region", "referral_code", "discount_percentage"]:
+                if field in data and data[field] is not None:
+                    setattr(distributor, field, data[field])
+                    
+    await db.flush()
+    # Re-fetch with roles and distributor profile loaded
+    result = await db.execute(
+        select(User).options(selectinload(User.roles), selectinload(User.distributor_profile)).where(User.id == user_id)
+    )
+    user = result.scalar_one()
+    
+    logger.info("admin_updated_user", user_id=user.id)
+    return user
+
+
+async def delete_user(db: AsyncSession, user_id: int) -> None:
+    """Delete a user account."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    await db.delete(user)
+    await db.flush()
+    logger.info("admin_deleted_user", user_id=user_id)
 
 
 # ── Distributor management ───────────────────────────────────────────

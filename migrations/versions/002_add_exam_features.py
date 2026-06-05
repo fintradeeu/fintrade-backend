@@ -21,32 +21,36 @@ def upgrade() -> None:
     insp = inspect(bind)
     
     def col_exists(table, col):
+        if not insp.has_table(table):
+            return False
         return any(c['name'] == col for c in insp.get_columns(table))
 
     # 1. Add missing columns to entrance_exams
-    for col in ['questions_per_attempt', 'is_active', 'start_time', 'end_time', 'updated_at']:
-        if not col_exists('entrance_exams', col):
-            if col == 'is_active':
-                op.add_column('entrance_exams', sa.Column(col, sa.Boolean(), server_default='true', nullable=False))
-            elif col == 'questions_per_attempt':
-                op.add_column('entrance_exams', sa.Column(col, sa.Integer(), nullable=True))
-            else:
-                op.add_column('entrance_exams', sa.Column(col, sa.DateTime(timezone=True), nullable=True))
+    if insp.has_table('entrance_exams'):
+        for col in ['questions_per_attempt', 'is_active', 'start_time', 'end_time', 'updated_at']:
+            if not col_exists('entrance_exams', col):
+                if col == 'is_active':
+                    op.add_column('entrance_exams', sa.Column(col, sa.Boolean(), server_default='true', nullable=False))
+                elif col == 'questions_per_attempt':
+                    op.add_column('entrance_exams', sa.Column(col, sa.Integer(), nullable=True))
+                else:
+                    op.add_column('entrance_exams', sa.Column(col, sa.DateTime(timezone=True), nullable=True))
 
     # 2. Add missing columns to course_exams
-    for col in ['questions_per_attempt', 'is_active', 'start_time', 'end_time', 'updated_at']:
-        if not col_exists('course_exams', col):
-            if col == 'is_active':
-                op.add_column('course_exams', sa.Column(col, sa.Boolean(), server_default='true', nullable=False))
-            elif col == 'questions_per_attempt':
-                op.add_column('course_exams', sa.Column(col, sa.Integer(), nullable=True))
-            else:
-                op.add_column('course_exams', sa.Column(col, sa.DateTime(timezone=True), nullable=True))
+    if insp.has_table('course_exams'):
+        for col in ['questions_per_attempt', 'is_active', 'start_time', 'end_time', 'updated_at']:
+            if not col_exists('course_exams', col):
+                if col == 'is_active':
+                    op.add_column('course_exams', sa.Column(col, sa.Boolean(), server_default='true', nullable=False))
+                elif col == 'questions_per_attempt':
+                    op.add_column('course_exams', sa.Column(col, sa.Integer(), nullable=True))
+                else:
+                    op.add_column('course_exams', sa.Column(col, sa.DateTime(timezone=True), nullable=True))
 
     # 3. Add is_correct to exam_answers and course_exam_answers
-    if not col_exists('exam_answers', 'is_correct'):
+    if insp.has_table('exam_answers') and not col_exists('exam_answers', 'is_correct'):
         op.add_column('exam_answers', sa.Column('is_correct', sa.Boolean(), nullable=True))
-    if not col_exists('course_exam_answers', 'is_correct'):
+    if insp.has_table('course_exam_answers') and not col_exists('course_exam_answers', 'is_correct'):
         op.add_column('course_exam_answers', sa.Column('is_correct', sa.Boolean(), nullable=True))
 
     # 4. Create exam_violations table

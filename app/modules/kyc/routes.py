@@ -3,6 +3,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user, require_roles
@@ -70,6 +71,16 @@ async def verify_email_otp(
     """Verify email OTP (demo mode)."""
     await services.verify_otp(db, current_user.id, "email", body.otp)
     return schemas.MessageResponse(message="Email OTP verified successfully")
+
+
+@router.post("/send-email-otp", response_model=schemas.MessageResponse)
+async def send_email_otp(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate and send an email OTP to the user's registered email address."""
+    await services.send_email_otp(db, current_user)
+    return schemas.MessageResponse(message="Email OTP sent successfully via email")
 
 
 @router.post("/upload-document", response_model=schemas.KYCStatusResponse)
@@ -157,6 +168,20 @@ async def get_submission(
     return schemas.KYCStatusResponse.model_validate(kyc)
 
 
+@router.get("/admin/user/{user_id}", response_model=schemas.KYCStatusResponse)
+async def get_user_kyc_detail(
+    user_id: int,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get full KYC details for a specific user by user_id (admin only)."""
+    from fastapi import HTTPException
+    kyc = await services.get_kyc_status(db, user_id)
+    if not kyc:
+        raise HTTPException(status_code=404, detail="No KYC submission found for this user.")
+    return schemas.KYCStatusResponse.model_validate(kyc)
+
+
 @router.put("/admin/submissions/{kyc_id}/approve", response_model=schemas.KYCStatusResponse)
 async def approve_submission(
     kyc_id: int,
@@ -193,14 +218,35 @@ async def list_contracts(
     for c in contracts:
         # Get KYC status for each contract
         kyc = await services.get_kyc_detail(db, c.kyc_id)
+        
+        course_title = None
+        if c.course_id:
+            from app.modules.courses.models import Course
+            course_res = await db.execute(select(Course).where(Course.id == c.course_id))
+            course_obj = course_res.scalar_one_or_none()
+            if course_obj:
+                course_title = course_obj.title
+                
         items.append(schemas.AdminContractListItem(
             id=c.id,
             contract_number=c.contract_number,
             user_id=c.user_id,
             user_name=c.user.full_name if c.user else None,
             user_email=c.user.email if c.user else None,
+            user_mobile=kyc.mobile if kyc else None,
+            user_aadhaar=kyc.aadhaar_number if kyc else None,
+            user_pan=kyc.pan_number if kyc else None,
+            user_dob=kyc.dob if kyc else None,
+            user_qualification=kyc.qualification if kyc else None,
+            user_address=kyc.address if kyc else None,
+            aadhaar_doc_url=kyc.aadhaar_doc_url if kyc else None,
+            pan_doc_url=kyc.pan_doc_url if kyc else None,
+            photo_url=kyc.photo_url if kyc else None,
+            signature_url=kyc.signature_url if kyc else None,
+            biometric_selfie_url=kyc.biometric_selfie_url if kyc else None,
             kyc_status=kyc.status if kyc else None,
             course_id=c.course_id,
+            course_title=course_title,
             signed_at=c.signed_at,
             created_at=c.created_at,
         ))

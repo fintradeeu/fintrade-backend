@@ -12,7 +12,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, synonym
 
 from app.db.database import Base
 
@@ -136,6 +136,7 @@ class ExamResult(Base):
     correct_answers = Column(Integer, default=0)
     total_marks = Column(Float, default=0.0)
     obtained_marks = Column(Float, default=0.0)
+    score = synonym("obtained_marks")
     percentage = Column(Float, default=0.0)
     passed = Column(Boolean, default=False)
     evaluated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -161,6 +162,7 @@ class CourseExam(Base):
     duration_minutes = Column(Integer, default=60)
     passing_score = Column(Float, default=60.0)  # percentage
     max_attempts = Column(Integer, default=3)
+    reattempt_fee = Column(Float, default=500.0)
     questions_per_attempt = Column(Integer, nullable=True)  # null = all questions; otherwise random N from pool
     is_active = Column(Boolean, default=True)
     start_time = Column(DateTime(timezone=True), nullable=True)
@@ -250,6 +252,7 @@ class CourseExamResult(Base):
     correct_answers = Column(Integer, default=0)
     total_marks = Column(Float, default=0.0)
     obtained_marks = Column(Float, default=0.0)
+    score = synonym("obtained_marks")
     percentage = Column(Float, default=0.0)
     passed = Column(Boolean, default=False)
     evaluated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

@@ -90,20 +90,46 @@ async def create_article(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a Market Update or Blog Story (admin only)."""
-    article = await services.create_article(db, body.model_dump(), admin.id)
-    return schemas.NewsResponse.model_validate(article)
+    try:
+        data = body.model_dump()
+        perms = admin.permissions if isinstance(admin.permissions, dict) else {}
+        is_super = admin.email == "admin@platform.com" or perms.get("roleName") == "Super Admin"
+        direct_publish = perms.get("directPublish", True if is_super else False)
+        if not direct_publish:
+            data["status"] = "draft"
+        article = await services.create_article(db, data, admin.id)
+        return schemas.NewsResponse.model_validate(article)
+    except Exception as e:
+        import traceback
+        from fastapi import HTTPException
+        err = traceback.format_exc()
+        print("ERROR IN create_article:", err)
+        raise HTTPException(status_code=400, detail=f"Create Article Error: {err}")
 
 
 @router.put("/admin/news/{article_id}", response_model=schemas.NewsResponse)
 async def update_article(
     article_id: int,
     body: schemas.NewsUpdateRequest,
-    _admin: User = Depends(require_roles(["admin"])),
+    admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a Market Update or Blog Story (admin only)."""
-    article = await services.update_article(db, article_id, body.model_dump(exclude_unset=True))
-    return schemas.NewsResponse.model_validate(article)
+    try:
+        data = body.model_dump(exclude_unset=True)
+        perms = admin.permissions if isinstance(admin.permissions, dict) else {}
+        is_super = admin.email == "admin@platform.com" or perms.get("roleName") == "Super Admin"
+        direct_publish = perms.get("directPublish", True if is_super else False)
+        if not direct_publish:
+            data["status"] = "draft"
+        article = await services.update_article(db, article_id, data)
+        return schemas.NewsResponse.model_validate(article)
+    except Exception as e:
+        import traceback
+        from fastapi import HTTPException
+        err = traceback.format_exc()
+        print("ERROR IN update_article:", err)
+        raise HTTPException(status_code=400, detail=f"Update Article Error: {err}")
 
 
 @router.delete("/admin/news/{article_id}", response_model=schemas.MessageResponse)

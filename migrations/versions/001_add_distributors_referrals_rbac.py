@@ -21,25 +21,29 @@ def upgrade() -> None:
     insp = inspect(bind)
     
     def col_exists(table, col):
+        if not insp.has_table(table):
+            return False
         return any(c['name'] == col for c in insp.get_columns(table))
 
     # ── Add created_by to users ──────────────────────────────────────
-    if not col_exists('users', 'created_by'):
+    if insp.has_table('users') and not col_exists('users', 'created_by'):
         op.add_column('users', sa.Column('created_by', sa.Integer(), sa.ForeignKey('users.id'), nullable=True))
 
     # ── Add columns to offers ────────────────────────────────────────
-    if not col_exists('offers', 'created_by_admin'):
-        op.add_column('offers', sa.Column('created_by_admin', sa.Integer(), sa.ForeignKey('users.id'), nullable=True))
-    if not col_exists('offers', 'distributor_id'):
-        op.add_column('offers', sa.Column('distributor_id', sa.Integer(), sa.ForeignKey('distributors.id', ondelete='SET NULL'), nullable=True))
+    if insp.has_table('offers'):
+        if not col_exists('offers', 'created_by_admin'):
+            op.add_column('offers', sa.Column('created_by_admin', sa.Integer(), sa.ForeignKey('users.id'), nullable=True))
+        if not col_exists('offers', 'distributor_id'):
+            op.add_column('offers', sa.Column('distributor_id', sa.Integer(), sa.ForeignKey('distributors.id', ondelete='SET NULL'), nullable=True))
 
     # ── Add columns to course_enrollments ────────────────────────────
-    if not col_exists('course_enrollments', 'discount_applied'):
-        op.add_column('course_enrollments', sa.Column('discount_applied', sa.Float(), server_default='0.0', nullable=True))
-    if not col_exists('course_enrollments', 'price_paid'):
-        op.add_column('course_enrollments', sa.Column('price_paid', sa.Float(), nullable=True))
-    if not col_exists('course_enrollments', 'distributor_id'):
-        op.add_column('course_enrollments', sa.Column('distributor_id', sa.Integer(), sa.ForeignKey('distributors.id', ondelete='SET NULL'), nullable=True))
+    if insp.has_table('course_enrollments'):
+        if not col_exists('course_enrollments', 'discount_applied'):
+            op.add_column('course_enrollments', sa.Column('discount_applied', sa.Float(), server_default='0.0', nullable=True))
+        if not col_exists('course_enrollments', 'price_paid'):
+            op.add_column('course_enrollments', sa.Column('price_paid', sa.Float(), nullable=True))
+        if not col_exists('course_enrollments', 'distributor_id'):
+            op.add_column('course_enrollments', sa.Column('distributor_id', sa.Integer(), sa.ForeignKey('distributors.id', ondelete='SET NULL'), nullable=True))
 
 
 def downgrade() -> None:
