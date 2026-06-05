@@ -178,16 +178,16 @@ async def get_faculty_reports(db: AsyncSession, faculty_id: int) -> dict:
     from app.modules.exams.models import CategoryScore
     from app.modules.courses.models import AssignmentSubmission, Assignment
 
-
     # Temp line for commit trigger
     # Get enrollments for these courses
     enrollment_res = await db.execute(
-        select(CourseEnrollment)
-        .options(selectinload(CourseEnrollment.course), selectinload(CourseEnrollment.user))
+        select(CourseEnrollment, User)
+        .join(User, CourseEnrollment.user_id == User.id)
+        .options(selectinload(CourseEnrollment.course))
         .where(CourseEnrollment.course_id.in_(course_ids))
         .order_by(CourseEnrollment.enrolled_at.desc())
     )
-    enrollments = list(enrollment_res.scalars().all())
+    enrollments_with_users = enrollment_res.all()
 
     # Get exam results for these courses
     # CourseExamResult -> CourseExamAttempt -> CourseExam -> Course
@@ -205,12 +205,12 @@ async def get_faculty_reports(db: AsyncSession, faculty_id: int) -> dict:
     pass_rate = int((passed_exams / total_exams) * 100) if total_exams else 85
     
     # Calculate Completion Rate
-    completed_enrollments = sum(1 for e in enrollments if e.completed_at is not None)
-    total_enrollments = len(enrollments)
+    completed_enrollments = sum(1 for e, _ in enrollments_with_users if e.completed_at is not None)
+    total_enrollments = len(enrollments_with_users)
     completion_rate = int((completed_enrollments / total_enrollments) * 100) if total_enrollments else 45
     
     # At risk students: Progress < 30% or failed an exam
-    at_risk_students = sum(1 for e in enrollments if (e.progress_percent or 0) < 30)
+    at_risk_students = sum(1 for e, _ in enrollments_with_users if (e.progress_percent or 0) < 30)
     
     # Weak topics from CategoryScore
     cat_q = (
@@ -267,10 +267,10 @@ async def get_faculty_reports(db: AsyncSession, faculty_id: int) -> dict:
     }
 
     # Populate student progress
-    for e in enrollments:
+    for e, u in enrollments_with_users:
         reports["student_progress"].append({
-            "student_name": e.user.full_name if e.user else "Unknown",
-            "student_email": e.user.email if e.user else "",
+            "student_name": u.full_name if u else "Unknown",
+            "student_email": u.email if u else "",
             "course_title": e.course.title if e.course else "",
             "enrolled_at": e.enrolled_at,
             "progress_percent": e.progress_percent or 0.0
