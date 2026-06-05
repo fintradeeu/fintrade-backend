@@ -252,7 +252,6 @@ def _repair_news_schema(sync_engine):
             title VARCHAR(500) NOT NULL,
             type VARCHAR(50) NOT NULL DEFAULT 'Blog Story',
             description TEXT,
-            video_type VARCHAR(50) NOT NULL DEFAULT 'youtube',
             video_url TEXT,
             thumbnail_url TEXT,
             status VARCHAR(50) NOT NULL DEFAULT 'published',
@@ -264,7 +263,6 @@ def _repair_news_schema(sync_engine):
         """,
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS type VARCHAR(50) NOT NULL DEFAULT 'Blog Story'",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS description TEXT",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS video_type VARCHAR(50) NOT NULL DEFAULT 'youtube'",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS video_url TEXT",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS thumbnail_url TEXT",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'published'",
@@ -280,7 +278,6 @@ def _repair_news_schema(sync_engine):
         END
         WHERE type IS NULL OR type::varchar = ''
         """,
-        "UPDATE news_articles SET video_type = 'youtube' WHERE video_type IS NULL OR video_type::varchar = ''",
         "UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status::varchar = ''",
         "UPDATE news_articles SET views_count = 0 WHERE views_count IS NULL",
         "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)",
@@ -310,7 +307,6 @@ async def _repair_news_schema_async(db):
             title VARCHAR(500) NOT NULL,
             type VARCHAR(50) NOT NULL DEFAULT 'Blog Story',
             description TEXT,
-            video_type VARCHAR(50) NOT NULL DEFAULT 'youtube',
             video_url TEXT,
             thumbnail_url TEXT,
             status VARCHAR(50) NOT NULL DEFAULT 'published',
@@ -322,7 +318,6 @@ async def _repair_news_schema_async(db):
         """,
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS type VARCHAR(50) NOT NULL DEFAULT 'Blog Story'",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS description TEXT",
-        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS video_type VARCHAR(50) NOT NULL DEFAULT 'youtube'",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS video_url TEXT",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS thumbnail_url TEXT",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'published'",
@@ -338,7 +333,6 @@ async def _repair_news_schema_async(db):
         END
         WHERE type IS NULL OR type::varchar = ''
         """,
-        "UPDATE news_articles SET video_type = 'youtube' WHERE video_type IS NULL OR video_type::varchar = ''",
         "UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status::varchar = ''",
         "UPDATE news_articles SET views_count = 0 WHERE views_count IS NULL",
         "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)",
