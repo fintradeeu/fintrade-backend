@@ -35,6 +35,29 @@ from app.modules.dashboard.routes import router as dashboard_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
+    import asyncio
+    import logging
+    logger = logging.getLogger(__name__)
+
+    def run_alembic_upgrade():
+        try:
+            import os
+            from alembic.config import Config
+            from alembic import command
+            
+            logger.info("Running automated database migrations on startup...")
+            root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if not os.path.exists(os.path.join(root_dir, "alembic.ini")):
+                root_dir = os.getcwd()
+                
+            alembic_cfg = Config(os.path.join(root_dir, "alembic.ini"))
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Database migrations completed successfully.")
+        except Exception as e:
+            logger.error(f"Automated database migrations failed: {e}")
+
+    await asyncio.to_thread(run_alembic_upgrade)
+
     setup_logging(debug=settings.DEBUG)
     await init_db()
 
