@@ -34,3 +34,15 @@ async def join_lecture(
     """Join a lecture and get the meeting link."""
     result = await services.join_lecture(db, current_user.id, lecture_id)
     return schemas.LectureJoinResponse(**result)
+
+
+@router.post("/register", response_model=schemas.LectureRegistrationResponse)
+async def register_live_class(
+    data: schemas.LectureRegistrationCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Register for a live class. Public endpoint."""
+    # We could try to extract user_id if we have an optional current_user,
+    # but since this is a public form we will just accept the data.
+    registration = await services.register_for_lecture(db, data.model_dump(exclude_unset=True))
+    return schemas.LectureRegistrationResponse.model_validate(registration)

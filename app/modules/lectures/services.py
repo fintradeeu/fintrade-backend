@@ -117,3 +117,35 @@ async def add_recording(db: AsyncSession, lecture_id: int, recording_url: str) -
     await db.refresh(recording)
     logger.info("lecture_recording_added", lecture_id=lecture.id, recording_id=recording.id)
     return recording
+
+async def register_for_lecture(db: AsyncSession, data: dict, user_id: int | None = None) -> dict:
+    from app.modules.lectures.models import LectureRegistration
+    
+    # Try to resolve lecture title if lecture_id is passed and title is missing
+    lecture_title = data.get("lecture_title")
+    lecture_id = data.get("lecture_id")
+    if lecture_id and not lecture_title:
+        lecture = await db.get(Lecture, lecture_id)
+        if lecture:
+            lecture_title = lecture.title
+            
+    registration = LectureRegistration(
+        lecture_id=lecture_id,
+        lecture_title=lecture_title,
+        full_name=data["full_name"],
+        email=data["email"],
+        mobile_no=data["mobile_no"],
+        city=data.get("city"),
+        user_id=user_id
+    )
+    db.add(registration)
+    await db.commit()
+    await db.refresh(registration)
+    logger.info("lecture_registration_created", reg_id=registration.id, email=registration.email)
+    return registration
+
+async def get_all_lecture_registrations(db: AsyncSession) -> List[dict]:
+    from app.modules.lectures.models import LectureRegistration
+    query = select(LectureRegistration).order_by(LectureRegistration.registered_at.desc())
+    result = await db.execute(query)
+    return list(result.scalars().all())
