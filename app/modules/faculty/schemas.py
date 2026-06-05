@@ -40,6 +40,31 @@ class DistributionData(BaseModel):
     category: str
     value: int
 
+class StudentProgressDetail(BaseModel):
+    student_name: str
+    student_email: str
+    course_title: str
+    enrolled_at: datetime
+    progress_percent: float
+
+class ExamScoreDetail(BaseModel):
+    student_name: str
+    exam_title: str
+    course_title: str
+    obtained_marks: float
+    total_marks: float
+    percentage: float
+    passed: bool
+    evaluated_at: datetime
+
+class AssignmentSubmissionDetail(BaseModel):
+    student_name: str
+    assignment_title: str
+    course_title: str
+    status: str
+    score: Optional[float] = None
+    submitted_at: datetime
+
 class FacultyReportsResponse(BaseModel):
     avg_class_score: int
     pass_rate: int
@@ -49,3 +74,6 @@ class FacultyReportsResponse(BaseModel):
     weak_topics: List[TopicData]
     module_completion: List[ModuleData]
     student_distribution: List[DistributionData]
+    student_progress: List[StudentProgressDetail] = []
+    exam_scores: List[ExamScoreDetail] = []
+    assignment_submissions: List[AssignmentSubmissionDetail] = []

@@ -172,23 +172,28 @@ async def get_faculty_reports(db: AsyncSession, faculty_id: int) -> dict:
                 "performance_trend": [], "weak_topics": [], "module_completion": [], "student_distribution": []
             }
 
+    import sqlalchemy as sa
     from sqlalchemy import func
     from app.modules.exams.models import CourseExamResult, CourseExamAttempt, CourseExam
     from app.modules.exams.models import CategoryScore
+    from app.modules.courses.models import AssignmentSubmission, Assignment
 
     # Get enrollments for these courses
     enrollment_res = await db.execute(
-        select(CourseEnrollment).where(CourseEnrollment.course_id.in_(course_ids))
+        select(CourseEnrollment)
+        .options(selectinload(CourseEnrollment.course), selectinload(CourseEnrollment.user))
+        .where(CourseEnrollment.course_id.in_(course_ids))
+        .order_by(CourseEnrollment.enrolled_at.desc())
     )
     enrollments = list(enrollment_res.scalars().all())
 
     # Get exam results for these courses
     # CourseExamResult -> CourseExamAttempt -> CourseExam -> Course
     result_q = (
-        select(func.avg(CourseExamResult.score), func.count(CourseExamResult.id), func.sum(func.cast(CourseExamResult.passed, func.Integer())))
+        select(func.avg(CourseExamResult.percentage), func.count(CourseExamResult.id), func.sum(sa.cast(CourseExamResult.passed, sa.Integer)))
         .select_from(CourseExamResult)
         .join(CourseExamAttempt, CourseExamResult.attempt_id == CourseExamAttempt.id)
-        .join(CourseExam, CourseExamAttempt.course_exam_id == CourseExam.id)
+        .join(CourseExam, CourseExamAttempt.exam_id == CourseExam.id)
         .where(CourseExam.course_id.in_(course_ids))
     )
     stats_res = await db.execute(result_q)
@@ -235,7 +240,7 @@ async def get_faculty_reports(db: AsyncSession, faculty_id: int) -> dict:
             {"category": "Psychology", "value": 72}
         ]
 
-    return {
+    reports = {
         "avg_class_score": avg_class_score,
         "pass_rate": pass_rate,
         "completion_rate": completion_rate,
@@ -253,5 +258,65 @@ async def get_faculty_reports(db: AsyncSession, faculty_id: int) -> dict:
             {"module": "Module 2", "completion": 85},
             {"module": "Module 3", "completion": completion_rate},
         ],
-        "student_distribution": student_distribution
+        "student_distribution": student_distribution,
+        "student_progress": [],
+        "exam_scores": [],
+        "assignment_submissions": []
     }
+
+    # Populate student progress
+    for e in enrollments:
+        reports["student_progress"].append({
+            "student_name": e.user.full_name if e.user else "Unknown",
+            "student_email": e.user.email if e.user else "",
+            "course_title": e.course.title if e.course else "",
+            "enrolled_at": e.enrolled_at,
+            "progress_percent": e.progress_percent or 0.0
+        })
+
+    # Populate detailed exam scores
+    exam_q = (
+        select(CourseExamResult, User, CourseExam, Course)
+        .select_from(CourseExamResult)
+        .join(User, CourseExamResult.user_id == User.id)
+        .join(CourseExamAttempt, CourseExamResult.attempt_id == CourseExamAttempt.id)
+        .join(CourseExam, CourseExamAttempt.exam_id == CourseExam.id)
+        .join(Course, CourseExam.course_id == Course.id)
+        .where(Course.id.in_(course_ids))
+        .order_by(CourseExamResult.evaluated_at.desc())
+    )
+    exams_res = await db.execute(exam_q)
+    for res, usr, exam, course in exams_res.all():
+        reports["exam_scores"].append({
+            "student_name": usr.full_name,
+            "exam_title": exam.title,
+            "course_title": course.title,
+            "obtained_marks": res.obtained_marks,
+            "total_marks": res.total_marks,
+            "percentage": res.percentage,
+            "passed": res.passed,
+            "evaluated_at": res.evaluated_at
+        })
+
+    # Populate detailed assignment submissions
+    asm_q = (
+        select(AssignmentSubmission, User, Assignment, Course)
+        .select_from(AssignmentSubmission)
+        .join(User, AssignmentSubmission.user_id == User.id)
+        .join(Assignment, AssignmentSubmission.assignment_id == Assignment.id)
+        .join(Course, Assignment.course_id == Course.id)
+        .where(Course.id.in_(course_ids))
+        .order_by(AssignmentSubmission.submitted_at.desc())
+    )
+    asm_res = await db.execute(asm_q)
+    for asm, usr, assignment, course in asm_res.all():
+        reports["assignment_submissions"].append({
+            "student_name": usr.full_name,
+            "assignment_title": assignment.title,
+            "course_title": course.title,
+            "status": asm.status,
+            "score": asm.score,
+            "submitted_at": asm.submitted_at
+        })
+
+    return reports
