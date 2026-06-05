@@ -12,6 +12,7 @@ class NewsCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     type: Literal["Market Update", "Blog Story"] = "Blog Story"
     description: Optional[str] = None
+    author_name: Optional[str] = Field(None, max_length=255)
     video_url: Optional[str] = None        # Only relevant for Market Updates
     thumbnail_url: Optional[str] = None
     status: Literal["published", "draft"] = "published"
@@ -21,6 +22,7 @@ class NewsUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=500)
     type: Optional[Literal["Market Update", "Blog Story"]] = None
     description: Optional[str] = None
+    author_name: Optional[str] = Field(None, max_length=255)
     video_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
     status: Optional[Literal["published", "draft"]] = None
@@ -33,6 +35,7 @@ class NewsResponse(BaseModel):
     title: str
     type: str
     description: Optional[str] = None
+    author_name: Optional[str] = None
     video_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
     status: str
