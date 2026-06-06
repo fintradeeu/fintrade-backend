@@ -262,18 +262,22 @@ async def register_for_lecture_with_otp(db: AsyncSession, data: dict, user_id: i
     db.add(registration)
     await db.flush()
     
-    # 4. Fetch the lecture link from PlatformSettings if config contains it
+    # 4. Fetch the full live class entry from PlatformSettings CMS config
     from app.modules.settings.services import get_landing_page_config
     landing_config = await get_landing_page_config(db)
     live_classes = landing_config.get("live_classes", [])
-    lecture_link = None
+    
     # Case-insensitive/stripped title matching to avoid mismatch bugs
     norm_title = (lecture_title or "").strip().lower()
+    matched_class: dict = {}
     for lc in live_classes:
         lc_title = (lc.get("title") or "").strip().lower()
         if lc_title and lc_title == norm_title:
-            lecture_link = lc.get("lecture_link") or None
+            matched_class = lc
             break
+    
+    lecture_link = matched_class.get("lecture_link") or None
+    
     # Fallback: if lecture_id is known, try meeting_link from the Lecture row itself
     if not lecture_link and lecture_id:
         lec_row = await db.get(Lecture, lecture_id)
@@ -286,38 +290,136 @@ async def register_for_lecture_with_otp(db: AsyncSession, data: dict, user_id: i
         lecture_title=lecture_title,
         lecture_id=lecture_id,
         lecture_link=lecture_link,
+        matched_class=matched_class,
         live_classes_count=len(live_classes),
     )
 
-    confirm_subject = f"Registration Confirmed: {lecture_title or 'Live Class'}"
-    confirm_body = f"""
-    <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #eee; border-radius: 10px; padding: 20px;">
-        <h2 style="color: #D50032; text-align: center;">Registration Successful!</h2>
-        <p>Hello <strong>{data["full_name"]}</strong>,</p>
-        <p>You have successfully registered for the live class: <strong>{lecture_title or 'Live Class'}</strong>.</p>
-    """
+    # ── Build rich confirmation email ──────────────────────────────────
+    instructor = matched_class.get("instructor") or ""
+    class_date = matched_class.get("date") or ""
+    class_time = matched_class.get("time") or ""
+    full_name  = data["full_name"]
+    user_mobile = data.get("mobile_no", "")
+    user_city   = data.get("city", "")
+
+    confirm_subject = f"✅ Registration Confirmed: {lecture_title or 'Live Class'} — FinTrade Academy"
+
+    # Class info rows (only show non-empty values)
+    class_info_rows = ""
+    if instructor:
+        class_info_rows += f"""
+        <tr>
+          <td style="padding:8px 0;color:#555;font-size:14px;font-weight:600;width:130px;">👨‍🏫 Instructor</td>
+          <td style="padding:8px 0;color:#111;font-size:14px;font-weight:700;">{instructor}</td>
+        </tr>"""
+    if class_date:
+        class_info_rows += f"""
+        <tr>
+          <td style="padding:8px 0;color:#555;font-size:14px;font-weight:600;">📅 Date</td>
+          <td style="padding:8px 0;color:#111;font-size:14px;font-weight:700;">{class_date}</td>
+        </tr>"""
+    if class_time:
+        class_info_rows += f"""
+        <tr>
+          <td style="padding:8px 0;color:#555;font-size:14px;font-weight:600;">🕙 Time</td>
+          <td style="padding:8px 0;color:#111;font-size:14px;font-weight:700;">{class_time}</td>
+        </tr>"""
+
+    # Meeting link block
     if lecture_link:
-        confirm_body += f"""
-        <p>Below is your exclusive link to join the lecture:</p>
-        <div style="text-align: center; margin: 25px 0;">
-            <a href="{lecture_link}" style="background-color: #D50032; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block;">Join Live Class</a>
+        meeting_block = f"""
+        <div style="text-align:center;margin:30px 0;">
+          <a href="{lecture_link}"
+             style="background-color:#D50032;color:#fff;padding:14px 32px;
+                    text-decoration:none;font-weight:700;font-size:16px;
+                    border-radius:8px;display:inline-block;letter-spacing:0.5px;">
+            🎥 Join Live Class
+          </a>
         </div>
-        <p style="word-break: break-all; font-size: 13px; color: #555;">If the button doesn't work, copy and paste this link in your browser:<br/><a href="{lecture_link}">{lecture_link}</a></p>
-        """
+        <p style="text-align:center;font-size:12px;color:#888;word-break:break-all;">
+          If the button doesn't work, copy this link:<br/>
+          <a href="{lecture_link}" style="color:#D50032;">{lecture_link}</a>
+        </p>"""
     else:
-        confirm_body += f"""
-        <p>The lecture link will be sent to your email address shortly before the class starts.</p>
-        """
-        
-    confirm_body += f"""
-        <p style="margin-top: 20px;">Best regards,<br/>The FinTrade Team</p>
-        <hr style="border: 0; border-top: 1px solid #eee;" />
-        <p style="color: #999; font-size: 12px; text-align: center;">&copy; 2026 FinTrade. All rights reserved.</p>
+        meeting_block = """
+        <div style="background:#fff8f8;border:1px dashed #D50032;border-radius:8px;
+                    padding:16px;margin:20px 0;text-align:center;">
+          <p style="color:#D50032;font-size:14px;font-weight:600;margin:0;">
+            📩 The meeting link will be sent to your email shortly before the class starts.
+          </p>
+        </div>"""
+
+    confirm_body = f"""
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:560px;margin:0 auto;
+                background:#fff;border:1px solid #f0f0f0;border-radius:12px;overflow:hidden;">
+
+      <!-- Header -->
+      <div style="background:linear-gradient(135deg,#D50032 0%,#8B0000 100%);padding:28px 24px;text-align:center;">
+        <h1 style="color:#fff;margin:0;font-size:22px;font-weight:800;letter-spacing:0.5px;">
+          FinTrade Academy
+        </h1>
+        <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:13px;">
+          Live Class Registration Confirmed
+        </p>
+      </div>
+
+      <!-- Body -->
+      <div style="padding:28px 28px 8px;">
+        <p style="font-size:15px;color:#111;margin:0 0 6px;">Hello <strong>{full_name}</strong>,</p>
+        <p style="font-size:14px;color:#555;margin:0 0 20px;line-height:1.6;">
+          You have successfully registered for our upcoming live class. Here are all the details:
+        </p>
+
+        <!-- Class Details Card -->
+        <div style="background:#fafafa;border:1px solid #eee;border-radius:10px;padding:20px 20px 10px;">
+          <h2 style="color:#D50032;font-size:17px;font-weight:800;margin:0 0 14px;
+                     border-bottom:2px solid #D50032/20;padding-bottom:10px;">
+            {lecture_title or 'Live Class'}
+          </h2>
+          <table style="width:100%;border-collapse:collapse;">
+            {class_info_rows}
+          </table>
+        </div>
+
+        <!-- Registration Details -->
+        <div style="margin-top:18px;background:#f9f9f9;border-radius:8px;padding:14px 18px;">
+          <p style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;
+                    letter-spacing:1px;margin:0 0 10px;">Your Registration Details</p>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td style="padding:5px 0;color:#777;font-size:13px;width:110px;">👤 Name</td>
+              <td style="padding:5px 0;color:#111;font-size:13px;font-weight:600;">{full_name}</td>
+            </tr>
+            <tr>
+              <td style="padding:5px 0;color:#777;font-size:13px;">📧 Email</td>
+              <td style="padding:5px 0;color:#111;font-size:13px;font-weight:600;">{email}</td>
+            </tr>
+            {"<tr><td style='padding:5px 0;color:#777;font-size:13px;'>📱 Mobile</td><td style='padding:5px 0;color:#111;font-size:13px;font-weight:600;'>"+user_mobile+"</td></tr>" if user_mobile else ""}
+            {"<tr><td style='padding:5px 0;color:#777;font-size:13px;'>🏙️ City</td><td style='padding:5px 0;color:#111;font-size:13px;font-weight:600;'>"+user_city+"</td></tr>" if user_city else ""}
+          </table>
+        </div>
+
+        <!-- Meeting Link / CTA -->
+        {meeting_block}
+      </div>
+
+      <!-- Footer -->
+      <div style="padding:16px 28px 24px;border-top:1px solid #f0f0f0;margin-top:10px;">
+        <p style="font-size:13px;color:#555;margin:0 0 4px;">
+          Best regards,<br/><strong>The FinTrade Team</strong>
+        </p>
+        <p style="font-size:11px;color:#bbb;margin:12px 0 0;text-align:center;">
+          &copy; 2026 FinTrade. All rights reserved.<br/>
+          If you did not register for this class, please ignore this email.
+        </p>
+      </div>
     </div>
     """
-    
+
     await send_email(to_email=email, subject=confirm_subject, body_html=confirm_body)
     await db.commit()
     await db.refresh(registration)
     return registration
+
+
 
