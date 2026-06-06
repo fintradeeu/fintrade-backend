@@ -797,6 +797,15 @@ async def add_lecture_recording(
     recording = await lecture_services.add_recording(db, lecture_id, body.recording_url)
     return lecture_schemas.RecordingResponse.model_validate(recording)
 
+@router.get("/lectures/registrations", response_model=List[lecture_schemas.LectureRegistrationResponse])
+async def list_lecture_registrations(
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all live class registrations (admin/faculty only)."""
+    registrations = await lecture_services.get_all_lecture_registrations(db)
+    return [lecture_schemas.LectureRegistrationResponse.model_validate(r) for r in registrations]
+
 # ── Media Upload ────────────────────────────────────────────────────
 import os
 import uuid

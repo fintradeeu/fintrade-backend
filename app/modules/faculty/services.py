@@ -322,3 +322,117 @@ async def get_faculty_reports(db: AsyncSession, faculty_id: int) -> dict:
         })
 
     return reports
+
+async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student_id: int):
+    from sqlalchemy.orm import selectinload
+    from app.modules.auth.models import User
+    from app.modules.courses.models import Course, CourseEnrollment, Assignment, AssignmentSubmission
+    from app.modules.exams.models import ExamResult, CourseExamResult, ExamAttempt, ExamAnswer, ExamQuestion, ExamOption, CourseExamAttempt, CourseExamAnswer, CourseExamQuestion, CourseExamOption
+
+    # Check if student exists and faculty has access (student must be enrolled in at least one course taught by faculty)
+    user_stmt = select(User).where(User.id == student_id)
+    user = (await db.execute(user_stmt)).scalar_one_or_none()
+    if not user:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    # Get faculty courses
+    faculty_courses_stmt = select(Course.id).where(Course.created_by == faculty_id)
+    faculty_courses = (await db.execute(faculty_courses_stmt)).scalars().all()
+
+    if not faculty_courses:
+        return {"student_id": user.id, "name": user.full_name, "email": user.email, "courses": [], "assignments": [], "exams": []}
+
+    # 1. Enrolled Courses
+    enroll_stmt = select(CourseEnrollment).options(selectinload(CourseEnrollment.course)).where(
+        CourseEnrollment.user_id == student_id,
+        CourseEnrollment.course_id.in_(faculty_courses)
+    )
+    enrollments = (await db.execute(enroll_stmt)).scalars().all()
+    
+    courses_data = []
+    for e in enrollments:
+        courses_data.append({
+            "course_id": e.course_id,
+            "title": e.course.title,
+            "enrolled_at": e.enrolled_at,
+            "completed_at": e.completed_at,
+            "progress_percent": e.progress_percent or 0.0
+        })
+
+    # 2. Assignment Submissions
+    assign_stmt = select(AssignmentSubmission, Assignment, Course).select_from(AssignmentSubmission)\
+        .join(Assignment, AssignmentSubmission.assignment_id == Assignment.id)\
+        .join(Course, Assignment.course_id == Course.id)\
+        .where(AssignmentSubmission.user_id == student_id, Course.id.in_(faculty_courses))
+    assign_res = await db.execute(assign_stmt)
+    
+    assignments_data = []
+    for sub, assignment, course in assign_res:
+        assignments_data.append({
+            "assignment_id": assignment.id,
+            "title": assignment.title,
+            "course_id": course.id,
+            "course_title": course.title,
+            "submitted_at": sub.submitted_at,
+            "status": sub.status,
+            "score": sub.score,
+            "max_score": assignment.max_score or 100.0,
+            "file_url": sub.file_url or "",
+            "teacher_feedback": sub.teacher_feedback
+        })
+
+    # 3. Exam Attempts
+    # Entrance exams linked to courses
+    from app.modules.exams.models import EntranceExam, CourseExam
+    ent_exam_stmt = select(ExamResult, EntranceExam, ExamAttempt, Course).select_from(ExamResult)\
+        .join(EntranceExam, ExamResult.exam_id == EntranceExam.id)\
+        .join(ExamAttempt, ExamResult.attempt_id == ExamAttempt.id)\
+        .join(Course, EntranceExam.course_id == Course.id)\
+        .options(selectinload(ExamAttempt.answers).selectinload(ExamAnswer.question).selectinload(ExamQuestion.options))\
+        .where(ExamResult.user_id == student_id, EntranceExam.course_id.in_(faculty_courses))
+    ent_res = await db.execute(ent_exam_stmt)
+
+    course_exam_stmt = select(CourseExamResult, CourseExam, CourseExamAttempt, Course).select_from(CourseExamResult)\
+        .join(CourseExam, CourseExamResult.exam_id == CourseExam.id)\
+        .join(CourseExamAttempt, CourseExamResult.attempt_id == CourseExamAttempt.id)\
+        .join(Course, CourseExam.course_id == Course.id)\
+        .options(selectinload(CourseExamAttempt.answers).selectinload(CourseExamAnswer.question).selectinload(CourseExamQuestion.options))\
+        .where(CourseExamResult.user_id == student_id, CourseExam.course_id.in_(faculty_courses))
+    course_res = await db.execute(course_exam_stmt)
+
+    exams_data = []
+    for res, exam, attempt, course in ent_res.all() + course_res.all():
+        answers_data = []
+        for ans in attempt.answers:
+            correct_opt = next((o.option_text for o in ans.question.options if o.is_correct), None)
+            selected_opt = next((o.option_text for o in ans.question.options if o.id == ans.selected_option_id), None)
+            answers_data.append({
+                "question_text": ans.question.question_text,
+                "question_type": ans.question.question_type,
+                "marks": ans.question.marks,
+                "correct_option": correct_opt,
+                "selected_option": selected_opt,
+                "is_correct": ans.is_correct
+            })
+        
+        exams_data.append({
+            "exam_id": exam.id,
+            "title": exam.title,
+            "exam_type": "Entrance" if isinstance(exam, EntranceExam) else "Course",
+            "course_title": course.title if course else None,
+            "score": res.obtained_marks or 0.0,
+            "total_marks": res.total_marks or 0.0,
+            "passed": res.passed or False,
+            "submitted_at": attempt.submitted_at,
+            "answers": answers_data
+        })
+
+    return {
+        "student_id": user.id,
+        "name": user.full_name,
+        "email": user.email,
+        "courses": courses_data,
+        "assignments": assignments_data,
+        "exams": exams_data
+    }

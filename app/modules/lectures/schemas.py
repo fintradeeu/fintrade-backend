@@ -69,3 +69,24 @@ class LectureJoinResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+class LectureRegistrationCreate(BaseModel):
+    lecture_id: Optional[int] = None
+    lecture_title: Optional[str] = None
+    full_name: str
+    email: str
+    mobile_no: str
+    city: Optional[str] = None
+
+class LectureRegistrationResponse(BaseModel):
+    id: int
+    lecture_id: Optional[int] = None
+    lecture_title: Optional[str] = None
+    user_id: Optional[int] = None
+    full_name: str
+    email: str
+    mobile_no: str
+    city: Optional[str] = None
+    registered_at: datetime
+    
+    model_config = {"from_attributes": True}

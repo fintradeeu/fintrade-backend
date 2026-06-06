@@ -99,5 +99,22 @@ async def get_student_progress(
     db: AsyncSession = Depends(get_db),
 ):
     """Get detailed progress of a specific student."""
+    """Get detailed progress of a specific student."""
     from app.modules.learning.progress import get_student_progress_details
     return await get_student_progress_details(db, student_id)
+
+@router.get("/students/{student_id}/profile")
+async def get_student_profile(
+    student_id: int,
+    current_user: User = Depends(require_roles(["faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get highly detailed student profile including exams, answers, and assignments."""
+    import traceback
+    try:
+        profile = await services.get_faculty_student_profile(db, current_user.id, student_id)
+        return schemas.StudentProfileResponse(**profile)
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"Error in profile: {str(e)}\n{traceback.format_exc()}")
+

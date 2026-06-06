@@ -79,3 +79,49 @@ class FacultyReportsResponse(BaseModel):
     assignment_submissions: List[AssignmentSubmissionDetail] = []
 #Faculty
 # Temp line for commit trigger
+
+class StudentEnrolledCourseDetail(BaseModel):
+    course_id: int
+    title: str
+    enrolled_at: datetime
+    completed_at: Optional[datetime]
+    progress_percent: float
+
+class StudentAssignmentDetail(BaseModel):
+    assignment_id: int
+    title: str
+    course_id: int
+    course_title: str
+    submitted_at: datetime
+    status: str
+    score: Optional[float]
+    max_score: float
+    file_url: str
+    teacher_feedback: Optional[str]
+
+class ExamAnswerDetail(BaseModel):
+    question_text: str
+    question_type: str
+    marks: float
+    correct_option: Optional[str]
+    selected_option: Optional[str]
+    is_correct: Optional[bool]
+
+class StudentExamDetail(BaseModel):
+    exam_id: int
+    title: str
+    exam_type: str
+    course_title: Optional[str]
+    score: float
+    total_marks: float
+    passed: bool
+    submitted_at: Optional[datetime]
+    answers: List[ExamAnswerDetail]
+
+class StudentProfileResponse(BaseModel):
+    student_id: int
+    name: str
+    email: str
+    courses: List[StudentEnrolledCourseDetail]
+    assignments: List[StudentAssignmentDetail]
+    exams: List[StudentExamDetail]

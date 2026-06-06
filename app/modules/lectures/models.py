@@ -59,3 +59,25 @@ class LectureRecording(Base):
 
     def __repr__(self):
         return f"<LectureRecording lecture={self.lecture_id}>"
+
+class LectureRegistration(Base):
+    __tablename__ = "lecture_registrations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lecture_id = Column(Integer, ForeignKey("lectures.id", ondelete="SET NULL"), nullable=True)
+    lecture_title = Column(String(255), nullable=True)  # Fallback if lecture is a placeholder or deleted
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    
+    full_name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
+    mobile_no = Column(String(50), nullable=False)
+    city = Column(String(100), nullable=True)
+    
+    registered_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # relationships
+    lecture = relationship("Lecture")
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<LectureRegistration {self.full_name} for {self.lecture_title or self.lecture_id}>"
