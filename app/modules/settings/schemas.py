@@ -44,6 +44,11 @@ class LandingPageUpdateRequest(BaseModel):
     certificate: Optional[Dict[str, Any]] = None
     program_modules: Optional[List[Dict[str, Any]]] = None
     hero_backgrounds: Optional[List[str]] = None
+    about_us_slides: Optional[List[str]] = None
+    about_us_stats: Optional[List[Dict[str, Any]]] = None
+    about_us_text: Optional[List[str]] = None
+    about_us_vision: Optional[Dict[str, Any]] = None
+    about_us_mission: Optional[Dict[str, Any]] = None
 
 
 class SettingsGroupedResponse(BaseModel):
