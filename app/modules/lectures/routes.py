@@ -1,8 +1,11 @@
-"""Lectures module — API routes."""
+"""Lectures module - API routes."""
 
+import random
+import time
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user
@@ -12,6 +15,13 @@ from app.modules.lectures import schemas, services
 
 router = APIRouter(prefix="/lectures", tags=["Lectures"])
 
+_lecture_otps: dict = {}
+
+
+class SendOTPRequest(BaseModel):
+    email: str
+    lecture_title: str | None = None
+
 
 @router.get("", response_model=List[schemas.LectureResponse])
 async def list_lectures(
@@ -20,7 +30,6 @@ async def list_lectures(
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """List scheduled lectures."""
     lectures = await services.list_lectures(db, course_id=course_id, skip=skip, limit=limit)
     return [schemas.LectureResponse.model_validate(l) for l in lectures]
 
@@ -31,7 +40,6 @@ async def join_lecture(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Join a lecture and get the meeting link."""
     result = await services.join_lecture(db, current_user.id, lecture_id)
     return schemas.LectureJoinResponse(**result)
 
@@ -41,8 +49,16 @@ async def register_live_class(
     data: schemas.LectureRegistrationCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Register for a live class. Public endpoint."""
-    # We could try to extract user_id if we have an optional current_user,
-    # but since this is a public form we will just accept the data.
     registration = await services.register_for_lecture(db, data.model_dump(exclude_unset=True))
     return schemas.LectureRegistrationResponse.model_validate(registration)
+
+
+@router.post("/send-otp")
+async def send_lecture_otp(data: SendOTPRequest):
+    from app.utils.smtp_notifications import send_email, build_otp_email_html
+    code = str(random.randint(100000, 999999))
+    _lecture_otps[data.email] = {"code": code, "expires_at": time.time() + 300}
+    subject = "{} - Your FinTrade Verification Code".format(code)
+    html = build_otp_email_html(code, data.email)
+    await send_email(to_email=data.email, subject=subject, body_html=html)
+    return {"message": "OTP sent successfully"}
