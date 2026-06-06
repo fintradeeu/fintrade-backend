@@ -70,6 +70,10 @@ class LectureJoinResponse(BaseModel):
 class MessageResponse(BaseModel):
     message: str
 
+class RegistrationOTPSend(BaseModel):
+    email: str
+    lecture_title: Optional[str] = None
+
 class LectureRegistrationCreate(BaseModel):
     lecture_id: Optional[int] = None
     lecture_title: Optional[str] = None
@@ -77,6 +81,7 @@ class LectureRegistrationCreate(BaseModel):
     email: str
     mobile_no: str
     city: Optional[str] = None
+    otp: str
 
 class LectureRegistrationResponse(BaseModel):
     id: int

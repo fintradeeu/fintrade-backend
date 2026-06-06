@@ -36,13 +36,21 @@ async def join_lecture(
     return schemas.LectureJoinResponse(**result)
 
 
+@router.post("/send-otp", response_model=schemas.MessageResponse)
+async def send_registration_otp(
+    data: schemas.RegistrationOTPSend,
+    db: AsyncSession = Depends(get_db),
+):
+    """Send an OTP code to verify the email for registration."""
+    await services.send_registration_otp(db, email=data.email, lecture_title=data.lecture_title)
+    return schemas.MessageResponse(message="OTP sent successfully.")
+
+
 @router.post("/register", response_model=schemas.LectureRegistrationResponse)
 async def register_live_class(
     data: schemas.LectureRegistrationCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Register for a live class. Public endpoint."""
-    # We could try to extract user_id if we have an optional current_user,
-    # but since this is a public form we will just accept the data.
-    registration = await services.register_for_lecture(db, data.model_dump(exclude_unset=True))
+    """Register for a live class. Public endpoint with OTP verification."""
+    registration = await services.register_for_lecture_with_otp(db, data.model_dump(exclude_unset=True))
     return schemas.LectureRegistrationResponse.model_validate(registration)
