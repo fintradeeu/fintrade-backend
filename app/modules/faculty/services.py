@@ -337,7 +337,7 @@ async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student
         raise HTTPException(status_code=404, detail="Student not found")
 
     # Get faculty courses
-    faculty_courses_stmt = select(Course.id).where(Course.instructor_id == faculty_id)
+    faculty_courses_stmt = select(Course.id).where(Course.created_by == faculty_id)
     faculty_courses = (await db.execute(faculty_courses_stmt)).scalars().all()
 
     if not faculty_courses:
@@ -402,7 +402,7 @@ async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student
     course_res = await db.execute(course_exam_stmt)
 
     exams_data = []
-    for res, exam, attempt, course in list(ent_res) + list(course_res):
+    for res, exam, attempt, course in ent_res.all() + course_res.all():
         answers_data = []
         for ans in attempt.answers:
             correct_opt = next((o.option_text for o in ans.question.options if o.is_correct), None)
