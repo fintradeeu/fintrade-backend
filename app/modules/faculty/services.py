@@ -421,7 +421,7 @@ async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student
             "title": exam.title,
             "exam_type": "Entrance" if isinstance(exam, EntranceExam) else "Course",
             "course_title": course.title if course else None,
-            "score": res.score or 0.0,
+            "score": res.obtained_marks or 0.0,
             "total_marks": res.total_marks or 0.0,
             "passed": res.passed or False,
             "submitted_at": attempt.submitted_at,
