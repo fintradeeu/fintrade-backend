@@ -341,6 +341,11 @@ async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student
     faculty_courses = (await db.execute(faculty_courses_stmt)).scalars().all()
 
     if not faculty_courses:
+        # Fallback to get all courses like get_faculty_reports in simple setup
+        c_res = await db.execute(select(Course.id))
+        faculty_courses = [r[0] for r in c_res.all()]
+
+    if not faculty_courses:
         return {"student_id": user.id, "name": user.full_name, "email": user.email, "courses": [], "assignments": [], "exams": []}
 
     # 1. Enrolled Courses
