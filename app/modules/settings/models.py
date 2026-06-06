@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 
+# pyrefly: ignore [missing-import]
 from sqlalchemy import (
     Column,
     DateTime,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
 )
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import relationship
 
 from app.db.database import Base
