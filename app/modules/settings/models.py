@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column,
     DateTime,
+    Enum as SAEnum,
     ForeignKey,
     Integer,
     String,
@@ -16,8 +17,6 @@ from app.db.database import Base
 from app.modules.auth.models import User
 
 
-from sqlalchemy.dialects.postgresql import ENUM
-
 class PlatformSetting(Base):
     __tablename__ = "platform_settings"
 
@@ -25,7 +24,7 @@ class PlatformSetting(Base):
     key = Column(String(100), unique=True, nullable=False, index=True)
     value = Column(Text, nullable=True)  # Stored as JSON string
     category = Column(
-        ENUM("general", "simulator", "exam", "payment", name="setting_category", create_type=False),
+        SAEnum("general", "simulator", "exam", "payment", name="setting_category"),
         default="general",
         nullable=False
     )
