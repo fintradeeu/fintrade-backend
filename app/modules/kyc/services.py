@@ -112,14 +112,11 @@ async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) ->
         if not kyc.mobile:
             raise HTTPException(status_code=400, detail="No mobile number registered for verification.")
         
-        if otp == "123456":
-            is_valid = True
-        else:
-            try:
-                from app.core.twilio_otp import check_twilio_otp
-                is_valid = await check_twilio_otp(kyc.mobile, otp)
-            except Exception:
-                is_valid = False
+        try:
+            from app.core.twilio_otp import check_twilio_otp
+            is_valid = await check_twilio_otp(kyc.mobile, otp)
+        except Exception:
+            is_valid = False
 
         if not is_valid:
             raise HTTPException(status_code=400, detail="Invalid or expired mobile OTP.")
