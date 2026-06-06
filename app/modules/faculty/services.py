@@ -2,9 +2,13 @@
 
 from typing import List
 
+# pyrefly: ignore [missing-import]
 from fastapi import HTTPException
+# pyrefly: ignore [missing-import]
 from sqlalchemy import select
+# pyrefly: ignore [missing-import]
 from sqlalchemy.ext.asyncio import AsyncSession
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import selectinload
 
 from app.modules.courses.models import Course, CourseEnrollment, CourseModule, Lesson
@@ -172,7 +176,9 @@ async def get_faculty_reports(db: AsyncSession, faculty_id: int) -> dict:
                 "performance_trend": [], "weak_topics": [], "module_completion": [], "student_distribution": []
             }
 
+    # pyrefly: ignore [missing-import]
     import sqlalchemy as sa
+    # pyrefly: ignore [missing-import]
     from sqlalchemy import func
     from app.modules.exams.models import CourseExamResult, CourseExamAttempt, CourseExam
     from app.modules.exams.models import CategoryScore
@@ -324,15 +330,18 @@ async def get_faculty_reports(db: AsyncSession, faculty_id: int) -> dict:
     return reports
 
 async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student_id: int):
+    # pyrefly: ignore [missing-import]
     from sqlalchemy.orm import selectinload
     from app.modules.auth.models import User
     from app.modules.courses.models import Course, CourseEnrollment, Assignment, AssignmentSubmission
+    # pyrefly: ignore [missing-import]
     from app.modules.exams.models import ExamResult, CourseExamResult, ExamAttempt, ExamAnswer, ExamQuestion, ExamOption, CourseExamAttempt, CourseExamAnswer, CourseExamQuestion, CourseExamOption
 
     # Check if student exists and faculty has access (student must be enrolled in at least one course taught by faculty)
     user_stmt = select(User).where(User.id == student_id)
     user = (await db.execute(user_stmt)).scalar_one_or_none()
     if not user:
+        # pyrefly: ignore [missing-import]
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Student not found")
 
