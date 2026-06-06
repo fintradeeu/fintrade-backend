@@ -37,6 +37,15 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection):
+    from sqlalchemy import inspect
+    insp = inspect(connection)
+    has_alembic = insp.has_table('alembic_version')
+    has_users = insp.has_table('users')
+
+    if not has_alembic and not has_users:
+        # Fresh database: create all tables first!
+        target_metadata.create_all(bind=connection)
+
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()

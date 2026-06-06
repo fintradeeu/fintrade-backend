@@ -17,7 +17,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column('users', sa.Column('city', sa.String(length=100), nullable=True))
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if 'users' in insp.get_table_names():
+        cols = {col['name'] for col in insp.get_columns('users')}
+        if 'city' not in cols:
+            op.add_column('users', sa.Column('city', sa.String(length=100), nullable=True))
 
 
 def downgrade() -> None:

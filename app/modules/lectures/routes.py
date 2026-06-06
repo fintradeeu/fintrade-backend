@@ -1,4 +1,4 @@
-"""Lectures module — API routes."""
+"""Lectures module - API routes."""
 
 from typing import List, Optional
 
@@ -20,7 +20,6 @@ async def list_lectures(
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """List scheduled lectures."""
     lectures = await services.list_lectures(db, course_id=course_id, skip=skip, limit=limit)
     return [schemas.LectureResponse.model_validate(l) for l in lectures]
 
@@ -31,7 +30,6 @@ async def join_lecture(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Join a lecture and get the meeting link."""
     result = await services.join_lecture(db, current_user.id, lecture_id)
     return schemas.LectureJoinResponse(**result)
 

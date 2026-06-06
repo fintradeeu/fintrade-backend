@@ -407,7 +407,7 @@ async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student
     course_res = await db.execute(course_exam_stmt)
 
     exams_data = []
-    for res, exam, attempt, course in list(ent_res) + list(course_res):
+    for res, exam, attempt, course in ent_res.all() + course_res.all():
         answers_data = []
         for ans in attempt.answers:
             correct_opt = next((o.option_text for o in ans.question.options if o.is_correct), None)
@@ -426,7 +426,7 @@ async def get_faculty_student_profile(db: AsyncSession, faculty_id: int, student
             "title": exam.title,
             "exam_type": "Entrance" if isinstance(exam, EntranceExam) else "Course",
             "course_title": course.title if course else None,
-            "score": res.score or 0.0,
+            "score": res.obtained_marks or 0.0,
             "total_marks": res.total_marks or 0.0,
             "passed": res.passed or False,
             "submitted_at": attempt.submitted_at,
