@@ -3,7 +3,7 @@
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import Any, List
 
 from fastapi import HTTPException
 from sqlalchemy import select
