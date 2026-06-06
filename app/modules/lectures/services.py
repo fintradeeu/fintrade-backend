@@ -3,7 +3,7 @@
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import Any, List
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -267,12 +267,28 @@ async def register_for_lecture_with_otp(db: AsyncSession, data: dict, user_id: i
     landing_config = await get_landing_page_config(db)
     live_classes = landing_config.get("live_classes", [])
     lecture_link = None
+    # Case-insensitive/stripped title matching to avoid mismatch bugs
+    norm_title = (lecture_title or "").strip().lower()
     for lc in live_classes:
-        if lc.get("title") == lecture_title:
-            lecture_link = lc.get("lecture_link")
+        lc_title = (lc.get("title") or "").strip().lower()
+        if lc_title and lc_title == norm_title:
+            lecture_link = lc.get("lecture_link") or None
             break
-            
-    # Send confirmation email
+    # Fallback: if lecture_id is known, try meeting_link from the Lecture row itself
+    if not lecture_link and lecture_id:
+        lec_row = await db.get(Lecture, lecture_id)
+        if lec_row and lec_row.meeting_link:
+            lecture_link = lec_row.meeting_link
+    
+    logger.info(
+        "lecture_registration_link_resolved",
+        email=email,
+        lecture_title=lecture_title,
+        lecture_id=lecture_id,
+        lecture_link=lecture_link,
+        live_classes_count=len(live_classes),
+    )
+
     confirm_subject = f"Registration Confirmed: {lecture_title or 'Live Class'}"
     confirm_body = f"""
     <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #eee; border-radius: 10px; padding: 20px;">
