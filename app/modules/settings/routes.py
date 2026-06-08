@@ -58,6 +58,49 @@ async def update_landing_page(
     return result
 
 
+@router.get("/settings/about-us", response_model=schemas.AboutUsConfig)
+async def get_about_us(db: AsyncSession = Depends(get_db)):
+    """Get specifically the About Us page content from CMS (public)."""
+    config = await services.get_landing_page_config(db)
+    return schemas.AboutUsConfig(
+        slides=config.get("about_us_slides"),
+        stats=config.get("about_us_stats"),
+        text=config.get("about_us_text"),
+        vision=config.get("about_us_vision"),
+        mission=config.get("about_us_mission")
+    )
+
+
+@router.put("/admin/settings/about-us", response_model=schemas.AboutUsConfig)
+async def update_about_us(
+    body: schemas.AboutUsConfig,
+    admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update specifically the About Us page content in CMS (admin only)."""
+    config_update = {}
+    if body.slides is not None:
+        config_update["about_us_slides"] = body.slides
+    if body.stats is not None:
+        config_update["about_us_stats"] = body.stats
+    if body.text is not None:
+        config_update["about_us_text"] = body.text
+    if body.vision is not None:
+        config_update["about_us_vision"] = body.vision
+    if body.mission is not None:
+        config_update["about_us_mission"] = body.mission
+        
+    updated_config = await services.update_landing_page_config(db, config_update, admin.id)
+    
+    return schemas.AboutUsConfig(
+        slides=updated_config.get("about_us_slides"),
+        stats=updated_config.get("about_us_stats"),
+        text=updated_config.get("about_us_text"),
+        vision=updated_config.get("about_us_vision"),
+        mission=updated_config.get("about_us_mission")
+    )
+
+
 @router.put("/admin/settings/{key}", response_model=schemas.SettingResponse)
 async def update_setting(
     key: str,
