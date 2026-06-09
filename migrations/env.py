@@ -42,9 +42,21 @@ def do_run_migrations(connection):
     has_alembic = insp.has_table('alembic_version')
     has_users = insp.has_table('users')
 
-    if not has_alembic and not has_users:
-        # Fresh database: create all tables first!
-        target_metadata.create_all(bind=connection)
+    if not has_alembic:
+        if not has_users:
+            # Fresh database: create all tables first!
+            target_metadata.create_all(bind=connection)
+        
+        # Stamp the database to head to avoid re-running all migrations
+        from alembic.script import ScriptDirectory
+        import sqlalchemy as sa
+        script = ScriptDirectory.from_config(context.config)
+        head_rev = script.get_current_head()
+        if head_rev:
+            connection.execute(sa.text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL, CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))"))
+            connection.execute(sa.text(f"INSERT INTO alembic_version (version_num) VALUES ('{head_rev}')"))
+            connection.commit()
+        return
 
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():

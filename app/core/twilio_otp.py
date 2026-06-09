@@ -65,6 +65,12 @@ async def check_twilio_otp(phone: str, code: str) -> bool:
     """Verify OTP using Twilio Verify API."""
     phone_clean = clean_phone_number(phone)
     
+    # Dev/test bypass: allow "123456" as a fallback OTP when DEBUG is True
+    cleaned_code = "".join(c for c in code if c.isdigit())
+    if settings.DEBUG and cleaned_code == "123456":
+        logger.info("Bypassing Twilio OTP verification in DEBUG mode with code 123456", phone=phone_clean)
+        return True
+    
     if not settings.TWILIO_ACCOUNT_SID or not settings.TWILIO_SERVICE_SID:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
