@@ -32,6 +32,7 @@ class AboutUsConfig(BaseModel):
     text: Optional[List[str]] = None
     vision: Optional[Dict[str, Any]] = None
     mission: Optional[Dict[str, Any]] = None
+    leadership: Optional[List[Dict[str, Any]]] = None
 
 
 class LandingPageUpdateRequest(BaseModel):

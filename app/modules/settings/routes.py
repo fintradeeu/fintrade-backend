@@ -67,7 +67,8 @@ async def get_about_us(db: AsyncSession = Depends(get_db)):
         stats=config.get("about_us_stats"),
         text=config.get("about_us_text"),
         vision=config.get("about_us_vision"),
-        mission=config.get("about_us_mission")
+        mission=config.get("about_us_mission"),
+        leadership=config.get("leadership")
     )
 
 
