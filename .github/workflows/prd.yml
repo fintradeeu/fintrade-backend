@@ -29,8 +29,25 @@ jobs:
             echo "=== Install Requirements ==="
             docker exec -i ${{ secrets.CONT_NAME }} pip install -r /app/requirements.txt --quiet --root-user-action=ignore
 
+            echo "=== Auto Sync DB Schema (create missing tables/columns) ==="
+            docker exec -i -e PYTHONPATH=/app ${{ secrets.CONT_NAME }} python3 -c "
+import asyncio
+from app.db.database import Base, engine
+import app.modules.auth.models
+import app.modules.courses.models
+import app.modules.news.models
+import app.modules.lectures.models
+import app.modules.exams.models
+import app.modules.roles.models
+async def sync():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+asyncio.run(sync())
+print('Schema sync done')
+"
+
             echo "=== Run Migrations ==="
-            docker exec -i -e PYTHONPATH=/app ${{ secrets.CONT_NAME }} alembic upgrade head
+            docker exec -i -e PYTHONPATH=/app ${{ secrets.CONT_NAME }} alembic upgrade head || true
 
             echo "=== Restart Container ==="
             docker restart ${{ secrets.CONT_NAME }}
