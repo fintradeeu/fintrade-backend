@@ -30,10 +30,10 @@ jobs:
             docker exec -i ${{ secrets.CONT_NAME }} pip install -r /app/requirements.txt --quiet --root-user-action=ignore
 
             echo "=== Sync DB Schema ==="
-            docker exec -i -e PYTHONPATH=/app ${{ secrets.CONT_NAME }} python3 /app/scripts/sync_schema.py
+            docker exec -i -e PYTHONPATH=/app ${{ secrets.CONT_NAME }} python3 -c "from app.db.database import Base; import app.main; from sqlalchemy import create_engine; from app.config import settings; e=create_engine(settings.DATABASE_URL.replace('postgresql+asyncpg://','postgresql://').replace('sqlite+aiosqlite://','sqlite://')); Base.metadata.create_all(e); print('Schema sync done')"
 
             echo "=== Run Migrations ==="
-            docker exec -i -e PYTHONPATH=/app ${{ secrets.CONT_NAME }} alembic upgrade head || true
+            docker exec -i -e PYTHONPATH=/app ${{ secrets.CONT_NAME }} alembic upgrade head
 
             echo "=== Restart Container ==="
             docker restart ${{ secrets.CONT_NAME }}
