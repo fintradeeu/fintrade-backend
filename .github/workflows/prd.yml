@@ -9,41 +9,35 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5
+
       - name: Install SSH Key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
       - name: Deploy Backend
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'SSHEOF'
             set -e
-            echo '---------------- Change Directory ----------------'
             cd ${{ secrets.WORK_DIR }}
 
-            echo '---------------- Git Pull ----------------'
+            echo "=== Git Pull ==="
             git pull origin ${{ secrets.BRANCH }}
 
-            echo '---------------- Copy Code to Container ----------------'
-            tar --exclude='__pycache__' --exclude='*.pyc' -cf - app migrations requirements.txt | docker exec -i ${{ secrets.CONT_NAME }} tar -xf - -C /app/
+            echo "=== Install Requirements ==="
+            docker exec -i ${{ secrets.CONT_NAME }} pip install -r /app/requirements.txt --quiet --root-user-action=ignore
 
-            echo '---------------- Install Requirements ----------------'
-            docker exec -i ${{ secrets.CONT_NAME }} pip install -r requirements.txt --quiet
-
-            echo '---------------- Run Migrations ----------------'
+            echo "=== Run Migrations ==="
             docker exec -i -e PYTHONPATH=/app ${{ secrets.CONT_NAME }} alembic upgrade head
 
-            echo '---------------- Restart Container ----------------'
+            echo "=== Restart Container ==="
             docker restart ${{ secrets.CONT_NAME }}
-            sleep 5
 
-            echo '---------------- Verify ----------------'
-            docker ps | grep ${{ secrets.CONT_NAME }}
+            echo "=== Deployment Successful ==="
+          SSHEOF
 
-            echo '---------------- Deployment Successful ----------------'
-          EOF
       - name: Cleanup SSH
         if: always()
-        run: |
-          rm -rf ~/.ssh
+        run: rm -rf ~/.ssh
