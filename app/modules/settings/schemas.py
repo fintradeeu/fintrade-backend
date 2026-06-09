@@ -26,6 +26,15 @@ class BulkSettingUpdateRequest(BaseModel):
     settings: Dict[str, str]  # key -> value pairs
 
 
+class AboutUsConfig(BaseModel):
+    slides: Optional[List[str]] = None
+    stats: Optional[List[Dict[str, Any]]] = None
+    text: Optional[List[str]] = None
+    vision: Optional[Dict[str, Any]] = None
+    mission: Optional[Dict[str, Any]] = None
+    leadership: Optional[List[Dict[str, Any]]] = None
+
+
 class LandingPageUpdateRequest(BaseModel):
     hero: Optional[Dict[str, Any]] = None
     contact: Optional[Dict[str, Any]] = None
@@ -44,6 +53,11 @@ class LandingPageUpdateRequest(BaseModel):
     certificate: Optional[Dict[str, Any]] = None
     program_modules: Optional[List[Dict[str, Any]]] = None
     hero_backgrounds: Optional[List[str]] = None
+    about_us_slides: Optional[List[str]] = None
+    about_us_stats: Optional[List[Dict[str, Any]]] = None
+    about_us_text: Optional[List[str]] = None
+    about_us_vision: Optional[Dict[str, Any]] = None
+    about_us_mission: Optional[Dict[str, Any]] = None
 
 
 class SettingsGroupedResponse(BaseModel):

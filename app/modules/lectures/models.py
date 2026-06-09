@@ -81,3 +81,18 @@ class LectureRegistration(Base):
 
     def __repr__(self):
         return f"<LectureRegistration {self.full_name} for {self.lecture_title or self.lecture_id}>"
+
+
+class RegistrationOTP(Base):
+    __tablename__ = "registration_otps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    code = Column(String(6), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    is_verified = Column(Boolean, default=False)
+
+    def __repr__(self):
+        return f"<RegistrationOTP {self.email} - {self.code}>"
+

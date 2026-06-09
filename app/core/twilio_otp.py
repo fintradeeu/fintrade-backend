@@ -29,17 +29,11 @@ async def send_twilio_otp(phone: str) -> bool:
     phone_clean = clean_phone_number(phone)
     
     # Check if credentials are not configured
-    if (
-        not settings.TWILIO_ACCOUNT_SID 
-        or not settings.TWILIO_SERVICE_SID 
-        or "your-twilio" in settings.TWILIO_ACCOUNT_SID 
-        or "your-twilio" in settings.TWILIO_AUTH_TOKEN
-    ):
-        logger.warning(
-            "twilio_credentials_missing", 
-            message="Twilio credentials are not set. SMS OTP will NOT be sent. Running in mock/dev mode."
+    if not settings.TWILIO_ACCOUNT_SID or not settings.TWILIO_SERVICE_SID:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Twilio SMS gateway is not configured on the server."
         )
-        return True
 
     url = f"https://verify.twilio.com/v2/Services/{settings.TWILIO_SERVICE_SID}/Verifications"
     auth = (settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
@@ -71,17 +65,17 @@ async def check_twilio_otp(phone: str, code: str) -> bool:
     """Verify OTP using Twilio Verify API."""
     phone_clean = clean_phone_number(phone)
     
-    # Check if credentials are not configured - fallback to allow '123456' for dev/testing
-    if (
-        not settings.TWILIO_ACCOUNT_SID 
-        or not settings.TWILIO_SERVICE_SID 
-        or "your-twilio" in settings.TWILIO_ACCOUNT_SID 
-        or "your-twilio" in settings.TWILIO_AUTH_TOKEN
-    ):
-        logger.warning("twilio_credentials_missing", message="Running in mock/dev verification mode.")
-        if code == "123456":
-            return True
-        return False
+    # Dev/test bypass: allow "123456" as a fallback OTP when DEBUG is True
+    cleaned_code = "".join(c for c in code if c.isdigit())
+    if settings.DEBUG and cleaned_code == "123456":
+        logger.info("Bypassing Twilio OTP verification in DEBUG mode with code 123456", phone=phone_clean)
+        return True
+    
+    if not settings.TWILIO_ACCOUNT_SID or not settings.TWILIO_SERVICE_SID:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Twilio SMS gateway is not configured on the server."
+        )
 
     url = f"https://verify.twilio.com/v2/Services/{settings.TWILIO_SERVICE_SID}/VerificationCheck"
     auth = (settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)

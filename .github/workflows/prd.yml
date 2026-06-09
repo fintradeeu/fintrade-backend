@@ -22,40 +22,24 @@ jobs:
             echo '---------------- Change Directory ----------------'
             cd ${{ secrets.WORK_DIR }}
 
-            echo '---------------- Diagnostics ----------------'
-            echo '=== Running Containers ==='
-            docker ps
-            echo '=== Docker Compose Status ==='
-            docker compose ps || docker-compose ps || true
-            echo '=== Host Python Processes ==='
-            ps aux | grep -E "uvicorn|gunicorn|python" || true
-
             echo '---------------- Git Pull ----------------'
             git pull origin ${{ secrets.BRANCH }}
 
-            echo '------------- Copy Code to Container (with Exclusions) -------------'
+            echo '---------------- Copy Code to Container ----------------'
             tar --exclude='__pycache__' --exclude='*.pyc' -cf - app migrations requirements.txt | docker exec -i ${{ secrets.CONT_NAME }} tar -xf - -C /app/
 
-            echo '---------------- Upgrade Pip ----------------'
-            docker exec -i --user root ${{ secrets.CONT_NAME }} pip install --upgrade pip
-
             echo '---------------- Install Requirements ----------------'
-            docker exec -i ${{ secrets.CONT_NAME }} pip install -r requirements.txt
+            docker exec -i ${{ secrets.CONT_NAME }} pip install -r requirements.txt --quiet
 
-            echo '---------------- Alembic Migration ----------------'
-            docker exec -i ${{ secrets.CONT_NAME }} python -c "import sqlalchemy as sa; from app.config import settings; engine=sa.create_engine(settings.DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://').replace('sqlite+aiosqlite://', 'sqlite://')); conn=engine.connect(); conn.execute(sa.text('DELETE FROM alembic_version;')); conn.execute(sa.text(\"INSERT INTO alembic_version (version_num) VALUES ('004_add_google_oauth');\")); conn.commit()" || true
-            docker exec -i ${{ secrets.CONT_NAME }} python -m alembic upgrade head
+            echo '---------------- Run Migrations ----------------'
+            docker exec -i -e PYTHONPATH=/app ${{ secrets.CONT_NAME }} alembic upgrade head
 
             echo '---------------- Restart Container ----------------'
             docker restart ${{ secrets.CONT_NAME }}
+            sleep 5
 
-            echo '---------------- Verification Post-Restart ----------------'
-            echo '=== Container Mounts ==='
-            docker inspect ${{ secrets.CONT_NAME }} --format='{{json .Mounts}}' || true
-            echo '=== Inside Container settings/routes.py content ==='
-            docker exec -i ${{ secrets.CONT_NAME }} grep -n "LandingPageUpdateRequest" /app/app/modules/settings/routes.py || true
-            echo '=== Running Containers Post-Restart ==='
-            docker ps
+            echo '---------------- Verify ----------------'
+            docker ps | grep ${{ secrets.CONT_NAME }}
 
             echo '---------------- Deployment Successful ----------------'
           EOF

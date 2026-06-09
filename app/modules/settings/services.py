@@ -376,7 +376,29 @@ DEFAULT_LANDING_PAGE_CONFIG = {
                 { "num": 2, "title": "Real World Market Execution", "overview": "Live trading execution under guidance." }
             ]
         }
-    ]
+    ],
+    "about_us_slides": [
+        "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1200",
+        "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1200"
+    ],
+    "about_us_stats": [
+        { "value": "10k+", "label": "Students Trained" },
+        { "value": "₹50Cr+", "label": "Capital Managed" },
+        { "value": "15+", "label": "Expert Mentors" },
+        { "value": "95%", "label": "Success Rate" }
+    ],
+    "about_us_text": [
+        "The FinTrade is India's leading proprietary trading academy. We don't just teach you how to trade; we build your foundation, fund your potential, and give you the platform to become a professional trader.",
+        "We believe that lack of capital should never stop a talented trader from succeeding. Through our rigorous curriculum and state-of-the-art simulator, we evaluate and select the best talent to trade our capital."
+    ],
+    "about_us_vision": {
+        "title": "Our Vision",
+        "content": "To build India's largest and most successful pipeline of professional traders by democratizing access to institutional-grade education and proprietary capital."
+    },
+    "about_us_mission": {
+        "title": "Our Mission",
+        "content": "To empower retail traders with the right knowledge, discipline, and capital, ultimately eradicating the 95% failure rate in the Indian retail trading market."
+    }
 }
 
 
@@ -491,6 +513,16 @@ async def get_landing_page_config(db: AsyncSession) -> Dict[str, Any]:
             data["carousel_slides"] = DEFAULT_LANDING_PAGE_CONFIG["carousel_slides"]
         if "hero_backgrounds" not in data:
             data["hero_backgrounds"] = DEFAULT_LANDING_PAGE_CONFIG["hero_backgrounds"]
+        if "about_us_slides" not in data:
+            data["about_us_slides"] = DEFAULT_LANDING_PAGE_CONFIG["about_us_slides"]
+        if "about_us_stats" not in data:
+            data["about_us_stats"] = DEFAULT_LANDING_PAGE_CONFIG["about_us_stats"]
+        if "about_us_text" not in data:
+            data["about_us_text"] = DEFAULT_LANDING_PAGE_CONFIG["about_us_text"]
+        if "about_us_vision" not in data:
+            data["about_us_vision"] = DEFAULT_LANDING_PAGE_CONFIG["about_us_vision"]
+        if "about_us_mission" not in data:
+            data["about_us_mission"] = DEFAULT_LANDING_PAGE_CONFIG["about_us_mission"]
         return data
     except (json.JSONDecodeError, TypeError):
         return DEFAULT_LANDING_PAGE_CONFIG

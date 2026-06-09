@@ -315,9 +315,7 @@ def _repair_news_schema(sync_engine):
         """,
         "UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status::varchar = ''",
         "UPDATE news_articles SET views_count = 0 WHERE views_count IS NULL",
-        "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)",
-        "DELETE FROM alembic_version",
-        "INSERT INTO alembic_version (version_num) VALUES ('006_repair_news_articles_schema')"
+        "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)"
     ]
 
     for statement in statements:
@@ -370,9 +368,7 @@ async def _repair_news_schema_async(db):
         """,
         "UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status::varchar = ''",
         "UPDATE news_articles SET views_count = 0 WHERE views_count IS NULL",
-        "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)",
-        "DELETE FROM alembic_version",
-        "INSERT INTO alembic_version (version_num) VALUES ('006_repair_news_articles_schema')"
+        "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)"
     ]
 
     for statement in statements:
