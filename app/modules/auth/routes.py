@@ -51,7 +51,9 @@ async def google_auth(
     user = await services.authenticate_or_register_google_user(
         db,
         token=body.token,
+        access_token=body.access_token,
         phone=body.phone,
+        city=body.city,
     )
     tokens = await services.create_session(
         db,

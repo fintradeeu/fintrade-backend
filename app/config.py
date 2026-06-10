@@ -124,6 +124,12 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_SERVICE_SID: str = ""
 
+    # ── Fast2SMS OTP Gateway ──────────────────────────────────────────
+    FAST2SMS_API_KEY: str = ""
+    FAST2SMS_ROUTE: str = "otp"  # "otp" or "dlt"
+    FAST2SMS_SENDER_ID: str = ""
+    FAST2SMS_MESSAGE_ID: str = ""
+
     @field_validator("DEBUG", mode="before")
     @classmethod
     def parse_debug(cls, value: Any) -> Any:

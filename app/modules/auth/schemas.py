@@ -23,8 +23,10 @@ class LoginRequest(BaseModel):
 
 class GoogleAuthRequest(BaseModel):
     """Request schema for Google OAuth sign-in."""
-    token: str = Field(..., description="Google ID token from the frontend")
+    token: Optional[str] = Field(None, description="Google ID token from the frontend")
+    access_token: Optional[str] = Field(None, description="Google access token from the frontend")
     phone: Optional[str] = Field(None, max_length=20)
+    city: Optional[str] = Field(None, max_length=100)
 
 
 class ProfileUpdateRequest(BaseModel):

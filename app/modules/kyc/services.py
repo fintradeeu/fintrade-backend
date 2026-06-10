@@ -46,7 +46,7 @@ async def get_kyc_status(db: AsyncSession, user_id: int) -> Optional[KYCSubmissi
 from datetime import timedelta
 
 async def send_mobile_otp(db: AsyncSession, user_id: int) -> bool:
-    """Send an SMS OTP using Twilio Verify to the user's KYC mobile number."""
+    """Send an SMS OTP using Twilio Verify or Fast2SMS to the user's KYC mobile number."""
     result = await db.execute(
         select(KYCSubmission).where(KYCSubmission.user_id == user_id)
     )
@@ -57,11 +57,34 @@ async def send_mobile_otp(db: AsyncSession, user_id: int) -> bool:
             detail="KYC submission or mobile number not found. Submit personal details first."
         )
     
+    from app.modules.auth.services import _generate_otp_code, _generate_otp_token
+    from app.modules.auth.models import OTPCode
+    from app.config import settings
+
+    otp_token = _generate_otp_token()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
+    
+    if settings.FAST2SMS_API_KEY:
+        code = _generate_otp_code()
+    else:
+        code = "000000"  # Placeholder code in DB for Twilio Verify (code is managed by Twilio)
+
+    # Store code in database
+    otp = OTPCode(
+        user_id=user_id,
+        code=code,
+        otp_token=otp_token,
+        channel="sms",
+        expires_at=expires_at,
+    )
+    db.add(otp)
+    await db.commit()
+
     try:
-        from app.core.twilio_otp import send_twilio_otp
-        await send_twilio_otp(kyc.mobile)
+        from app.core.twilio_otp import send_sms_otp
+        await send_sms_otp(kyc.mobile, code)
     except Exception:
-        # Gracefully handle Twilio exceptions during development/deployments withoutTwilio creds
+        # Gracefully handle exceptions during development/deployments without config
         pass
     return True
 
@@ -112,7 +135,37 @@ async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) ->
         if not kyc.mobile:
             raise HTTPException(status_code=400, detail="No mobile number registered for verification.")
         
+        from app.config import settings
+        is_valid = False
         if otp.strip() in ("123456", "654321"):
+            is_valid = True
+        elif settings.FAST2SMS_API_KEY:
+            # Look up the latest unused SMS OTP code
+            from app.modules.auth.models import OTPCode
+            from sqlalchemy import desc
+
+            result = await db.execute(
+                select(OTPCode)
+                .where(
+                    OTPCode.user_id == user_id,
+                    OTPCode.channel == "sms",
+                    OTPCode.is_used == False
+                )
+                .order_by(desc(OTPCode.created_at))
+            )
+            otp_record = result.scalars().first()
+            if not otp_record:
+                raise HTTPException(status_code=400, detail="No active mobile OTP verification found.")
+
+            if otp_record.expires_at < datetime.now(timezone.utc):
+                raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
+
+            if otp_record.code != otp.strip():
+                otp_record.attempts += 1
+                await db.commit()
+                raise HTTPException(status_code=400, detail="Incorrect verification code.")
+
+            otp_record.is_used = True
             is_valid = True
         else:
             try:
