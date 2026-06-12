@@ -92,7 +92,8 @@ async def verify_google_token(token: str) -> dict:
         )
     data = resp.json()
     # Verify the token was issued for our app
-    if data.get("aud") != settings.GOOGLE_CLIENT_ID:
+    allowed_client_ids = [cid.strip() for cid in settings.GOOGLE_CLIENT_ID.split(",") if cid.strip()]
+    if data.get("aud") not in allowed_client_ids:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Google token audience",
