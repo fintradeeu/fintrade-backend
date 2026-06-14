@@ -391,7 +391,9 @@ async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[
         
     # Check if user has phone number for SMS OTP
     if use_sms and user.phone:
-        if settings.FAST2SMS_API_KEY:
+        from app.core.twilio_otp import is_local_sms_otp_enabled, send_sms_otp
+
+        if is_local_sms_otp_enabled():
             code = _generate_otp_code()
         else:
             code = "000000"  # Placeholder code in DB for Twilio Verify (code is managed by Twilio)
@@ -407,7 +409,6 @@ async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[
         db.add(otp)
         await db.flush()
         
-        from app.core.twilio_otp import send_sms_otp
         # send_sms_otp handles errors internally or bubbles up
         sms_sent = await send_sms_otp(user.phone, code)
         if sms_sent:
@@ -508,10 +509,12 @@ async def verify_otp(db: AsyncSession, otp_token: str, code: str) -> User:
         cleaned_code = "".join(c for c in code if c.isdigit())
         if settings.DEBUG and cleaned_code in ("123456", "654321"):
             is_valid = True
-        elif settings.FAST2SMS_API_KEY:
-            # Verify against database record for Fast2SMS
+        from app.core.twilio_otp import is_local_sms_otp_enabled
+
+        if not is_valid and is_local_sms_otp_enabled():
+            # Verify against database record for local-code SMS gateways.
             is_valid = (otp.code == code.strip())
-        else:
+        elif not is_valid:
             # Verify via Twilio Verify API
             from app.core.twilio_otp import check_twilio_otp
             is_valid = await check_twilio_otp(user.phone, code)

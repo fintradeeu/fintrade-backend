@@ -1,4 +1,4 @@
-"""Twilio Verify API and Fast2SMS API wrapper for sending and verifying SMS OTPs."""
+"""SMS OTP gateway wrappers for Nimbus, Fast2SMS, and Twilio Verify."""
 
 import httpx
 from fastapi import HTTPException, status
@@ -39,7 +39,7 @@ def clean_phone_for_fast2sms(phone: str) -> str:
 def print_fallback_otp(phone: str, code: str, reason: str):
     logger.warning("sms_delivery_failed_falling_back_to_console", phone=phone, reason=reason)
     print("\n" + "="*80)
-    print(f"  [FAST2SMS DELIVERY FAILURE] SMS could not be sent to {phone}")
+    print(f"  [SMS DELIVERY FAILURE] SMS could not be sent to {phone}")
     print(f"  REASON: {reason}")
     print(f"  GENERATED OTP CODE FOR DEV/TESTING (ENTER THIS CODE): {code}")
     print("="*80 + "\n")
@@ -47,6 +47,71 @@ def print_fallback_otp(phone: str, code: str, reason: str):
 
 def _build_fast2sms_message(code: str) -> str:
     return f"{code} is your FinTrade verification code. Valid for {settings.OTP_EXPIRY_MINUTES} min. Do not share this code."
+
+
+def _build_nimbus_message(code: str) -> str:
+    return (
+        "Welcome to FinTrade.\n\n"
+        f"Use OTP {code} to verify your FinTrade account and continue your registration. "
+        f"This code will expire in {settings.OTP_EXPIRY_MINUTES} minutes. "
+        "For your security, never share your OTP with anyone.\n\n"
+        "Team FinTrade"
+    )
+
+
+def is_local_sms_otp_enabled() -> bool:
+    """Return true when SMS OTP codes are generated and verified by this backend."""
+    return is_nimbus_sms_configured() or bool(settings.FAST2SMS_API_KEY)
+
+
+def is_nimbus_sms_configured() -> bool:
+    """Return true when the Nimbus SMS gateway has all required credentials."""
+    return bool(
+        settings.NIMBUS_SMS_USER_ID
+        and settings.NIMBUS_SMS_PASSWORD
+        and settings.NIMBUS_SMS_SENDER_ID
+        and settings.NIMBUS_SMS_ENTITY_ID
+        and settings.NIMBUS_SMS_TEMPLATE_ID
+    )
+
+
+async def send_nimbus_otp(phone: str, code: str) -> bool:
+    """Send verification OTP using the Nimbus SendSingleApi endpoint."""
+    if not is_nimbus_sms_configured():
+        logger.warning("nimbus_sms_skipped", reason="Nimbus SMS credentials not configured")
+        return False
+
+    phone_clean = clean_phone_for_fast2sms(phone)
+    params = {
+        "UserID": settings.NIMBUS_SMS_USER_ID,
+        "Password": settings.NIMBUS_SMS_PASSWORD,
+        "SenderID": settings.NIMBUS_SMS_SENDER_ID,
+        "Phno": phone_clean,
+        "Msg": _build_nimbus_message(code),
+        "EntityID": settings.NIMBUS_SMS_ENTITY_ID,
+        "TemplateID": settings.NIMBUS_SMS_TEMPLATE_ID,
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(settings.NIMBUS_SMS_BASE_URL, params=params, timeout=10.0)
+            if resp.status_code != 200:
+                logger.error("nimbus_sms_send_error", status_code=resp.status_code, body=resp.text)
+                print_fallback_otp(phone_clean, code, f"Nimbus HTTP status {resp.status_code}")
+                return False
+
+            response_text = resp.text.strip().lower()
+            if any(marker in response_text for marker in ("invalid", "error", "fail")):
+                logger.error("nimbus_sms_api_error", response=resp.text)
+                print_fallback_otp(phone_clean, code, "Nimbus API returned an error response")
+                return False
+
+            logger.info("nimbus_sms_otp_sent_successfully", phone=phone_clean[-4:])
+            return True
+    except Exception as e:
+        logger.error("nimbus_sms_request_exception", error=str(e))
+        print_fallback_otp(phone_clean, code, str(e))
+        return False
 
 
 async def _send_fast2sms_request(
@@ -182,7 +247,13 @@ async def send_twilio_otp(phone: str) -> bool:
 
 
 async def send_sms_otp(phone: str, code: str) -> bool:
-    """Send SMS OTP using configured gateway (prefers Fast2SMS, falls back to Twilio Verify)."""
+    """Send SMS OTP using configured gateway.
+
+    Nimbus and Fast2SMS send backend-generated codes. Twilio Verify manages its
+    own code lifecycle and is used only when no local-code gateway is configured.
+    """
+    if is_nimbus_sms_configured():
+        return await send_nimbus_otp(phone, code)
     if settings.FAST2SMS_API_KEY:
         return await send_fast2sms_otp(phone, code)
     return await send_twilio_otp(phone)

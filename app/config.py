@@ -130,6 +130,14 @@ class Settings(BaseSettings):
     FAST2SMS_SENDER_ID: str = ""
     FAST2SMS_MESSAGE_ID: str = ""
 
+    # ── Nimbus SMS OTP Gateway ────────────────────────────────────────
+    NIMBUS_SMS_BASE_URL: str = "http://nimbusit.biz/api/SmsApi/SendSingleApi"
+    NIMBUS_SMS_USER_ID: str = ""
+    NIMBUS_SMS_PASSWORD: str = ""
+    NIMBUS_SMS_SENDER_ID: str = ""
+    NIMBUS_SMS_ENTITY_ID: str = ""
+    NIMBUS_SMS_TEMPLATE_ID: str = ""
+
     @field_validator("DEBUG", mode="before")
     @classmethod
     def parse_debug(cls, value: Any) -> Any:

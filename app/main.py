@@ -73,10 +73,13 @@ async def lifespan(app: FastAPI):
     try:
         from app.db.database import AsyncSessionLocal
         async with AsyncSessionLocal() as session:
+            await _repair_users_schema_async(session)
+            await _repair_courses_schema_async(session)
+            await _repair_feedback_schema_async(session)
             await _repair_news_schema_async(session)
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"News schema auto-repair skipped or failed: {e}")
+        logging.getLogger(__name__).warning(f"Schema auto-repair skipped or failed: {e}")
 
     yield
 
@@ -329,6 +332,76 @@ def _repair_news_schema(sync_engine):
             )
 
 
+async def _repair_users_schema_async(db):
+    """Repair users table columns expected by the current auth model."""
+    import sqlalchemy as sa
+
+    statements = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR(100)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSON",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON users (google_id)",
+    ]
+
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Users schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+            )
+
+
+async def _repair_courses_schema_async(db):
+    """Repair courses table columns expected by the current course model."""
+    import sqlalchemy as sa
+
+    statements = [
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS is_popular BOOLEAN DEFAULT false",
+    ]
+
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Courses schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+            )
+
+
+async def _repair_feedback_schema_async(db):
+    """Repair feedback table columns expected by the current feedback model."""
+    import sqlalchemy as sa
+
+    statements = [
+        "ALTER TABLE feedback ADD COLUMN IF NOT EXISTS form_id INTEGER REFERENCES feedback_forms(id) ON DELETE SET NULL",
+        "ALTER TABLE feedback ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)",
+        "ALTER TABLE feedback ADD COLUMN IF NOT EXISTS email VARCHAR(255)",
+        "ALTER TABLE feedback ADD COLUMN IF NOT EXISTS show_on_landing_page BOOLEAN DEFAULT false",
+    ]
+
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Feedback schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+            )
+
+
 async def _repair_news_schema_async(db):
     """Repair production news schema asynchronously."""
     import sqlalchemy as sa
@@ -355,6 +428,7 @@ async def _repair_news_schema_async(db):
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS thumbnail_url TEXT",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'published'",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 0",
+        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS author_name VARCHAR(255)",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",

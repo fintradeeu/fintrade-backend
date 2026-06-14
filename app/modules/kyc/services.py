@@ -64,7 +64,9 @@ async def send_mobile_otp(db: AsyncSession, user_id: int) -> bool:
     otp_token = _generate_otp_token()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
     
-    if settings.FAST2SMS_API_KEY:
+    from app.core.twilio_otp import is_local_sms_otp_enabled, send_sms_otp
+
+    if is_local_sms_otp_enabled():
         code = _generate_otp_code()
     else:
         code = "000000"  # Placeholder code in DB for Twilio Verify (code is managed by Twilio)
@@ -81,7 +83,6 @@ async def send_mobile_otp(db: AsyncSession, user_id: int) -> bool:
     await db.commit()
 
     try:
-        from app.core.twilio_otp import send_sms_otp
         await send_sms_otp(kyc.mobile, code)
     except Exception:
         # Gracefully handle exceptions during development/deployments without config
@@ -137,9 +138,11 @@ async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) ->
         
         from app.config import settings
         is_valid = False
-        if otp.strip() in ("123456", "654321"):
+        if settings.DEBUG and otp.strip() in ("123456", "654321"):
             is_valid = True
-        elif settings.FAST2SMS_API_KEY:
+        from app.core.twilio_otp import is_local_sms_otp_enabled
+
+        if not is_valid and is_local_sms_otp_enabled():
             # Look up the latest unused SMS OTP code
             from app.modules.auth.models import OTPCode
             from sqlalchemy import desc
@@ -167,7 +170,7 @@ async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) ->
 
             otp_record.is_used = True
             is_valid = True
-        else:
+        elif not is_valid:
             try:
                 from app.core.twilio_otp import check_twilio_otp
                 is_valid = await check_twilio_otp(kyc.mobile, otp)
@@ -179,7 +182,9 @@ async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) ->
         
         kyc.mobile_verified = True
     elif otp_type == "email":
-        if otp.strip() in ("123456", "654321"):
+        from app.config import settings
+
+        if settings.DEBUG and otp.strip() in ("123456", "654321"):
             kyc.email_verified = True
         else:
             from app.modules.auth.models import OTPCode
