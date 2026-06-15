@@ -69,7 +69,7 @@ TICKERS_CONFIG = [
     },
     {
         "label": "GOLD",
-        "symbol": "XAUUSD=X",
+        "symbol": "GC=F",
         "tv_symbol": "TVC:GOLD",
         "type": "commodity",
         "fallback_price": 2350.00,
@@ -77,7 +77,7 @@ TICKERS_CONFIG = [
     },
     {
         "label": "SILVER",
-        "symbol": "XAGUSD=X",
+        "symbol": "SI=F",
         "tv_symbol": "TVC:SILVER",
         "type": "commodity",
         "fallback_price": 63.50,
@@ -112,16 +112,20 @@ TICKERS_CONFIG = [
 # In-memory cache variables
 _market_data_cache = None
 _market_data_last_fetched = 0.0
-CACHE_TTL = 15.0
+CACHE_TTL = 60.0
 
 async def fetch_ticker_data(client: httpx.AsyncClient, cfg: dict) -> dict:
     symbol = cfg["symbol"]
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1d"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": "https://finance.yahoo.com",
+        "Referer": "https://finance.yahoo.com/"
     }
     try:
-        response = await client.get(url, headers=headers, timeout=3.0)
+        response = await client.get(url, headers=headers, timeout=4.0)
         if response.status_code == 200:
             res_json = response.json()
             meta = res_json["chart"]["result"][0]["meta"]
@@ -148,15 +152,19 @@ async def fetch_ticker_data(client: httpx.AsyncClient, cfg: dict) -> dict:
 
 @router.get("/market-data")
 async def get_market_data():
-    """Live market data feed fetched from Yahoo Finance with memory cache."""
+    """Live market data feed fetched from Yahoo Finance with memory cache and staggered fetching."""
     global _market_data_cache, _market_data_last_fetched
     now = time.time()
     if _market_data_cache is not None and (now - _market_data_last_fetched) < CACHE_TTL:
         return _market_data_cache
 
+    results = []
     async with httpx.AsyncClient() as client:
-        tasks = [fetch_ticker_data(client, cfg) for cfg in TICKERS_CONFIG]
-        results = await asyncio.gather(*tasks)
+        for cfg in TICKERS_CONFIG:
+            res = await fetch_ticker_data(client, cfg)
+            results.append(res)
+            # Add a small delay between requests to avoid triggering Yahoo's rate limiter / 429 blocks
+            await asyncio.sleep(0.2)
 
     final_data = []
     for item in results:
