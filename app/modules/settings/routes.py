@@ -90,6 +90,8 @@ async def update_about_us(
         config_update["about_us_vision"] = body.vision
     if body.mission is not None:
         config_update["about_us_mission"] = body.mission
+    if body.leadership is not None:
+        config_update["leadership"] = body.leadership
         
     updated_config = await services.update_landing_page_config(db, config_update, admin.id)
     
@@ -98,7 +100,8 @@ async def update_about_us(
         stats=updated_config.get("about_us_stats"),
         text=updated_config.get("about_us_text"),
         vision=updated_config.get("about_us_vision"),
-        mission=updated_config.get("about_us_mission")
+        mission=updated_config.get("about_us_mission"),
+        leadership=updated_config.get("leadership")
     )
 
 
