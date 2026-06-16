@@ -22,7 +22,14 @@ def generate_hash(data_string: str) -> str:
     """Generate SHA512 hash for Easebuzz."""
     return hashlib.sha512(data_string.encode('utf-8')).hexdigest()
 
-async def initiate_payment(db: AsyncSession, user: User, course_id: int, base_url: str) -> dict:
+async def initiate_payment(
+    db: AsyncSession,
+    user: User,
+    course_id: int,
+    base_url: str,
+    coupon_code: str | None = None,
+    discounted_price: float | None = None,
+) -> dict:
     """Initiate an Easebuzz payment for a course."""
 
     # Verify course
@@ -32,6 +39,23 @@ async def initiate_payment(db: AsyncSession, user: User, course_id: int, base_ur
     
     if not course.price or course.price <= 0:
         raise HTTPException(status_code=400, detail="Free courses do not require payment")
+
+    # --- Coupon / Discount Validation ---
+    # Re-validate the coupon server-side so the client cannot spoof the price.
+    charge_amount = course.price
+    if coupon_code:
+        try:
+            from app.modules.offers.services import validate_offer_price
+            server_discounted = await validate_offer_price(db, code=coupon_code, course_id=course_id)
+            if server_discounted is not None and server_discounted < charge_amount:
+                charge_amount = server_discounted
+        except Exception:
+            # If coupon validation fails at payment time, use the course price
+            pass
+    elif discounted_price is not None and 0 < discounted_price < course.price:
+        # No coupon code re-validation possible, trust the client value only as a
+        # secondary fallback (coupon was already validated at /offers/apply step).
+        charge_amount = discounted_price
 
     # Entrance Exam Prerequisite Check
     from app.modules.exams.models import EntranceExam, ExamResult
@@ -60,14 +84,14 @@ async def initiate_payment(db: AsyncSession, user: User, course_id: int, base_ur
     # If Easebuzz is not configured, fall back to Sandbox mockup flow
     if not settings.EASEBUZZ_KEY or not settings.EASEBUZZ_SALT:
         txnid = f"TXN{uuid.uuid4().hex[:12].upper()}"
-        amount_str = f"{course.price:.2f}"
+        amount_str = f"{charge_amount:.2f}"
         
         # Create pending transaction
         transaction = PaymentTransaction(
             user_id=user.id,
             course_id=course_id,
             txnid=txnid,
-            amount=course.price,
+            amount=charge_amount,
             status="pending"
         )
         db.add(transaction)
@@ -82,7 +106,7 @@ async def initiate_payment(db: AsyncSession, user: User, course_id: int, base_ur
 
     # Generate unique txnid
     txnid = f"TXN{uuid.uuid4().hex[:12].upper()}"
-    amount_str = f"{course.price:.2f}"
+    amount_str = f"{charge_amount:.2f}"
     productinfo = "Course"
     firstname = (user.full_name or "Student").strip()
     email = user.email.strip()
@@ -93,7 +117,7 @@ async def initiate_payment(db: AsyncSession, user: User, course_id: int, base_ur
         user_id=user.id,
         course_id=course_id,
         txnid=txnid,
-        amount=course.price,
+        amount=charge_amount,
         status="pending"
     )
     db.add(transaction)

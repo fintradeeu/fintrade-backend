@@ -6,6 +6,8 @@ from datetime import datetime
 
 class PaymentInitiateRequest(BaseModel):
     course_id: int
+    coupon_code: Optional[str] = None
+    discounted_price: Optional[float] = None
 
 class PaymentInitiateResponse(BaseModel):
     txnid: str

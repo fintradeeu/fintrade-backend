@@ -20,7 +20,14 @@ async def create_payment(
     db: AsyncSession = Depends(get_db)
 ):
     """Initiate a course payment via Easebuzz."""
-    return await services.initiate_payment(db, user=current_user, course_id=body.course_id, base_url=str(request.base_url))
+    return await services.initiate_payment(
+        db,
+        user=current_user,
+        course_id=body.course_id,
+        base_url=str(request.base_url),
+        coupon_code=body.coupon_code,
+        discounted_price=body.discounted_price,
+    )
 
 @router.post("/success")
 async def payment_success_redirect(request: Request, db: AsyncSession = Depends(get_db)):

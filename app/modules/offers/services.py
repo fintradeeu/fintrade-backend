@@ -56,6 +56,53 @@ async def list_offers(db: AsyncSession, active_only: bool = True) -> List[Offer]
     return list(result.scalars().all())
 
 
+async def validate_offer_price(db: AsyncSession, code: str, course_id: int) -> float | None:
+    """Read-only coupon validation — returns the discounted price without recording a redemption.
+    Used at payment initiation to confirm the discount is still valid.
+    Returns None if the coupon is no longer valid.
+    """
+    # Check if it's a regular offer
+    result = await db.execute(select(Offer).where(Offer.code == code))
+    offer = result.scalar_one_or_none()
+
+    if offer is None:
+        # Check if it's a distributor referral code
+        dist_result = await db.execute(select(Distributor).where(Distributor.referral_code == code))
+        distributor = dist_result.scalar_one_or_none()
+        if distributor is None:
+            return None
+        course = await db.get(Course, course_id)
+        if course is None:
+            return None
+        original_price = course.price or 0.0
+        discount_pct = distributor.discount_percentage or 10.0
+        if discount_pct == 0.0:
+            discount_pct = 10.0
+        discounted = max(original_price - original_price * (discount_pct / 100), 0.0)
+        return round(discounted, 2)
+
+    # Validate the offer is still usable
+    if not offer.is_active:
+        return None
+    now = datetime.now(timezone.utc)
+    if offer.valid_until and now > offer.valid_until:
+        return None
+    if offer.max_redemptions > 0 and offer.current_redemptions >= offer.max_redemptions:
+        return None
+    if offer.course_id and offer.course_id != course_id:
+        return None
+
+    course = await db.get(Course, course_id)
+    if course is None:
+        return None
+    original_price = course.price or 0.0
+    if offer.discount_type == "percentage":
+        discount = original_price * (offer.discount_value / 100)
+    else:
+        discount = offer.discount_value
+    return round(max(original_price - discount, 0.0), 2)
+
+
 async def apply_offer(db: AsyncSession, user_id: int, code: str, course_id: int) -> dict:
     """Apply an offer code to a course purchase."""
     # Find the offer
