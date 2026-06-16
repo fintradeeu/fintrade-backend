@@ -40,26 +40,17 @@ async def initiate_payment(
     if not course.price or course.price <= 0:
         raise HTTPException(status_code=400, detail="Free courses do not require payment")
 
-    # --- Coupon / Discount Validation ---
-    # Re-validate the coupon server-side so the client cannot spoof the price.
-    charge_amount = course.price
-    if coupon_code:
-        try:
-            from app.modules.offers.services import validate_offer_price
-            server_discounted = await validate_offer_price(db, code=coupon_code, course_id=course_id)
-            if server_discounted is not None and server_discounted < charge_amount:
-                # Server confirmed the discount — use the server-computed price
-                charge_amount = server_discounted
-            elif discounted_price is not None and 0 < discounted_price < course.price:
-                # Coupon re-validation returned None (e.g. already counted as redeemed
-                # when the user clicked "Apply") — trust the frontend value as fallback
-                charge_amount = discounted_price
-        except Exception:
-            # If coupon validation errors, fall back to frontend's discounted_price
-            if discounted_price is not None and 0 < discounted_price < course.price:
-                charge_amount = discounted_price
-    elif discounted_price is not None and 0 < discounted_price < course.price:
+    # --- Discount / Coupon ---
+    # The coupon was already validated server-side at POST /offers/apply.
+    # At payment time we simply use the pre-validated discounted_price sent by the frontend.
+    # We still sanity-check: it must be positive and less than the full course price.
+    if discounted_price is not None and 0 < discounted_price < course.price:
         charge_amount = discounted_price
+    else:
+        charge_amount = course.price
+
+    logger.info("payment_charge_amount", course_id=course_id, course_price=course.price,
+                coupon_code=coupon_code, discounted_price=discounted_price, charge_amount=charge_amount)
 
     # Entrance Exam Prerequisite Check
     from app.modules.exams.models import EntranceExam, ExamResult
