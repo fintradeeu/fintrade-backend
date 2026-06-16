@@ -48,13 +48,17 @@ async def initiate_payment(
             from app.modules.offers.services import validate_offer_price
             server_discounted = await validate_offer_price(db, code=coupon_code, course_id=course_id)
             if server_discounted is not None and server_discounted < charge_amount:
+                # Server confirmed the discount — use the server-computed price
                 charge_amount = server_discounted
+            elif discounted_price is not None and 0 < discounted_price < course.price:
+                # Coupon re-validation returned None (e.g. already counted as redeemed
+                # when the user clicked "Apply") — trust the frontend value as fallback
+                charge_amount = discounted_price
         except Exception:
-            # If coupon validation fails at payment time, use the course price
-            pass
+            # If coupon validation errors, fall back to frontend's discounted_price
+            if discounted_price is not None and 0 < discounted_price < course.price:
+                charge_amount = discounted_price
     elif discounted_price is not None and 0 < discounted_price < course.price:
-        # No coupon code re-validation possible, trust the client value only as a
-        # secondary fallback (coupon was already validated at /offers/apply step).
         charge_amount = discounted_price
 
     # Entrance Exam Prerequisite Check

@@ -87,8 +87,9 @@ async def validate_offer_price(db: AsyncSession, code: str, course_id: int) -> f
     now = datetime.now(timezone.utc)
     if offer.valid_until and now > offer.valid_until:
         return None
-    if offer.max_redemptions > 0 and offer.current_redemptions >= offer.max_redemptions:
-        return None
+    # Note: we do NOT re-check max_redemptions here because the user already
+    # redeemed this offer at /offers/apply time, which incremented current_redemptions.
+    # Blocking here would wrongly charge the full price after a valid apply.
     if offer.course_id and offer.course_id != course_id:
         return None
 
