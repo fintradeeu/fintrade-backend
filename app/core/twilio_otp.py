@@ -51,11 +51,8 @@ def _build_fast2sms_message(code: str) -> str:
 
 def _build_nimbus_message(code: str) -> str:
     return (
-        "Welcome to FinTrade.\n\n"
-        f"Use OTP {code} to verify your FinTrade account and continue your registration. "
-        f"This code will expire in {settings.OTP_EXPIRY_MINUTES} minutes. "
-        "For your security, never share your OTP with anyone.\n\n"
-        "Team FinTrade"
+        f"Welcome to FinTrade. Use OTP {code} to verify your account and continue your registration. "
+        "This code will expire in 5 minutes. For your security, never share your OTP with anyone. Team FinTrade"
     )
 
 

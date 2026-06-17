@@ -82,11 +82,25 @@ async def send_mobile_otp(db: AsyncSession, user_id: int) -> bool:
     db.add(otp)
     await db.commit()
 
+    sent = False
     try:
-        await send_sms_otp(kyc.mobile, code)
-    except Exception:
-        # Gracefully handle exceptions during development/deployments without config
-        pass
+        sent = await send_sms_otp(kyc.mobile, code)
+    except Exception as e:
+        from app.utils.logger import get_logger
+        logger = get_logger(__name__)
+        logger.error("kyc_mobile_otp_sending_failed", error=str(e))
+        if not settings.DEBUG:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to send SMS OTP: {str(e)}"
+            )
+        sent = True
+
+    if not sent and not settings.DEBUG:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send SMS OTP. Please ensure that Nimbus SMS credentials are fully configured on the server."
+        )
     return True
 
 
