@@ -55,9 +55,10 @@ async def ingest_documents(documents: List[dict]) -> int:
 
 
 async def _llm_generate(question: str, context_chunks: List[str]) -> str:
-    """Generate an answer using OpenAI ChatCompletion."""
+    """Generate an answer using OpenAI ChatCompletion with guardrails SYSTEM_PROMPT."""
     try:
         import openai
+        from app.modules.ai.guardrails import SYSTEM_PROMPT
 
         client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         context = "\n\n---\n\n".join(context_chunks) if context_chunks else "No specific context available."
@@ -67,12 +68,7 @@ async def _llm_generate(question: str, context_chunks: List[str]) -> str:
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        "You are an AI teaching assistant for a trading education platform. "
-                        "Answer questions clearly and concisely based on the provided context. "
-                        "If the context doesn't cover the question, provide a helpful general answer "
-                        "and note that it's based on general knowledge."
-                    ),
+                    "content": SYSTEM_PROMPT,
                 },
                 {
                     "role": "user",

@@ -72,6 +72,7 @@ class LectureRegistration(Base):
     email = Column(String(255), nullable=False)
     mobile_no = Column(String(50), nullable=False)
     city = Column(String(100), nullable=True)
+    one_hour_email_sent = Column(Boolean, default=False, nullable=False, server_default="false")
     
     registered_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

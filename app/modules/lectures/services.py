@@ -325,29 +325,14 @@ async def register_for_lecture_with_otp(db: AsyncSession, data: dict, user_id: i
           <td style="padding:8px 0;color:#111;font-size:14px;font-weight:700;">{class_time}</td>
         </tr>"""
 
-    # Meeting link block
-    if lecture_link:
-        meeting_block = f"""
-        <div style="text-align:center;margin:30px 0;">
-          <a href="{lecture_link}"
-             style="background-color:#D50032;color:#fff;padding:14px 32px;
-                    text-decoration:none;font-weight:700;font-size:16px;
-                    border-radius:8px;display:inline-block;letter-spacing:0.5px;">
-            🎥 Join Live Class
-          </a>
-        </div>
-        <p style="text-align:center;font-size:12px;color:#888;word-break:break-all;">
-          If the button doesn't work, copy this link:<br/>
-          <a href="{lecture_link}" style="color:#D50032;">{lecture_link}</a>
-        </p>"""
-    else:
-        meeting_block = """
-        <div style="background:#fff8f8;border:1px dashed #D50032;border-radius:8px;
-                    padding:16px;margin:20px 0;text-align:center;">
-          <p style="color:#D50032;font-size:14px;font-weight:600;margin:0;">
-            📩 The meeting link will be sent to your email shortly before the class starts.
-          </p>
-        </div>"""
+    # Meeting link block (No direct link / join button in registration confirmation email)
+    meeting_block = """
+    <div style="background:#fff8f8;border:1px dashed #D50032;border-radius:8px;
+                padding:16px;margin:20px 0;text-align:center;">
+      <p style="color:#D50032;font-size:14px;font-weight:600;margin:0;">
+        📩 The join link will be sent to your email exactly 1 hour before the class starts.
+      </p>
+    </div>"""
 
     confirm_body = f"""
     <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:560px;margin:0 auto;

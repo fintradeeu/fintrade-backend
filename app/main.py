@@ -77,9 +77,15 @@ async def lifespan(app: FastAPI):
             await _repair_courses_schema_async(session)
             await _repair_feedback_schema_async(session)
             await _repair_news_schema_async(session)
+            await _repair_lectures_schema_async(session)
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Schema auto-repair skipped or failed: {e}")
+
+    # Start background live class scheduler
+    from app.utils.live_class_scheduler import live_class_scheduler_loop
+    import asyncio
+    asyncio.create_task(live_class_scheduler_loop())
 
     yield
 
@@ -454,6 +460,23 @@ async def _repair_news_schema_async(db):
             import logging
             logging.getLogger(__name__).warning(
                 f"News schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+            )
+
+async def _repair_lectures_schema_async(db):
+    """Repair lecture registrations table to add one_hour_email_sent column if not exists."""
+    import sqlalchemy as sa
+    statements = [
+        "ALTER TABLE lecture_registrations ADD COLUMN IF NOT EXISTS one_hour_email_sent BOOLEAN DEFAULT false",
+    ]
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Lectures schema repair statement failed: {statement.strip()[:60]}... error: {e}"
             )
 
 # Mount static uploads

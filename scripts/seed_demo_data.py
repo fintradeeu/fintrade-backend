@@ -13,7 +13,7 @@ async def seed_data():
         # Fetch first admin to associate created courses
         # Wait, get admin
         from sqlalchemy import select
-        result = await db.execute(select(User).where(User.email == "akash@fintraders.com"))
+        result = await db.execute(select(User).where(User.email == "admin@platform.com"))
         admin = result.scalar_one_or_none()
         admin_id = admin.id if admin else None
 
