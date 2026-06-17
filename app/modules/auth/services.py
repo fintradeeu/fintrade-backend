@@ -506,15 +506,12 @@ async def verify_otp(db: AsyncSession, otp_token: str, code: str) -> User:
         
         # Verify code
         is_valid = False
-        cleaned_code = "".join(c for c in code if c.isdigit())
-        if settings.DEBUG and cleaned_code in ("123456", "654321"):
-            is_valid = True
         from app.core.twilio_otp import is_local_sms_otp_enabled
 
-        if not is_valid and is_local_sms_otp_enabled():
+        if is_local_sms_otp_enabled():
             # Verify against database record for local-code SMS gateways.
             is_valid = (otp.code == code.strip())
-        elif not is_valid:
+        else:
             # Verify via Twilio Verify API
             from app.core.twilio_otp import check_twilio_otp
             is_valid = await check_twilio_otp(user.phone, code)

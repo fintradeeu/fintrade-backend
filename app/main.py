@@ -169,7 +169,8 @@ def trigger_db_migration(secret_key: str):
         raise HTTPException(status_code=403, detail="Invalid secret key")
     
     try:
-        from alembic.config import Config
+        # pyrefly: ignore [missing-import]
+        from alembic.config import Config   
         from alembic import command
         import os
         
@@ -207,7 +208,8 @@ def trigger_db_migration(secret_key: str):
                     pass
                 
         # 2. Proactively clear any duplicate heads in alembic_version table and stamp to 004
-        import sqlalchemy as sa
+        # pyrefly: ignore [missing-import]
+        import sqlalchemy as sa 
         sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://").replace("sqlite+aiosqlite://", "sqlite://")
         sync_engine = sa.create_engine(sync_url)
         try:
@@ -246,6 +248,7 @@ async def inspect_db(secret_key: str):
     
     try:
         from app.db.database import AsyncSessionLocal
+        # pyrefly: ignore [missing-import]
         import sqlalchemy as sa
         async with AsyncSessionLocal() as session:
             # Query table columns
@@ -287,6 +290,7 @@ async def inspect_db(secret_key: str):
 
 def _repair_news_schema(sync_engine):
     """Repair production news schema when Alembic graph is polluted."""
+    # pyrefly: ignore [missing-import]
     import sqlalchemy as sa
 
     statements = [
@@ -340,6 +344,7 @@ def _repair_news_schema(sync_engine):
 
 async def _repair_users_schema_async(db):
     """Repair users table columns expected by the current auth model."""
+    # pyrefly: ignore [missing-import]
     import sqlalchemy as sa
 
     statements = [
