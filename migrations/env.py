@@ -77,7 +77,7 @@ async def run_async_migrations() -> None:
     args.pop("max_overflow", None)
     
     connectable = create_async_engine(**args)
-    async with connectable.connect() as connection:
+    async with connectable.begin() as connection:
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()
 
