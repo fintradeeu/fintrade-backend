@@ -70,6 +70,7 @@ class AdminDistributorResponse(BaseModel):
     created_at: datetime
     user_name: Optional[str] = None
     user_email: Optional[str] = None
+    total_students_referred: int = 0
 
     model_config = {"from_attributes": True}
 

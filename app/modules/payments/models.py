@@ -28,6 +28,7 @@ class PaymentTransaction(Base):
     amount = Column(Float, nullable=False)
     status = Column(String(50), default="pending", nullable=False) # pending, success, failed
     payment_mode = Column(String(50), nullable=True)
+    coupon_code = Column(String(100), nullable=True)
     gateway_response = Column(JSONB, nullable=True)
     
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

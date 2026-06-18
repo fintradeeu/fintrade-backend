@@ -140,7 +140,18 @@ async def list_distributors(
     db: AsyncSession = Depends(get_db),
 ):
     """List all distributors (admin only)."""
+    from sqlalchemy import select, func
+    from app.modules.distributors.models import StudentReferral
+
     distributors = await services.list_distributors(db)
+    
+    # Query count of referred students grouped by distributor_id
+    counts_res = await db.execute(
+        select(StudentReferral.distributor_id, func.count(func.distinct(StudentReferral.student_id)))
+        .group_by(StudentReferral.distributor_id)
+    )
+    counts_map = {row[0]: row[1] for row in counts_res.all()}
+
     return [
         schemas.AdminDistributorResponse(
             id=d.id,
@@ -151,6 +162,7 @@ async def list_distributors(
             created_at=d.created_at,
             user_name=d.user.full_name if d.user else None,
             user_email=d.user.email if d.user else None,
+            total_students_referred=counts_map.get(d.id, 0),
         )
         for d in distributors
     ]

@@ -88,7 +88,8 @@ async def initiate_payment(
             course_id=course_id,
             txnid=txnid,
             amount=charge_amount,
-            status="pending"
+            status="pending",
+            coupon_code=coupon_code
         )
         db.add(transaction)
         await db.commit()
@@ -114,7 +115,8 @@ async def initiate_payment(
         course_id=course_id,
         txnid=txnid,
         amount=charge_amount,
-        status="pending"
+        status="pending",
+        coupon_code=coupon_code
     )
     db.add(transaction)
     await db.flush()
@@ -223,7 +225,12 @@ async def process_webhook(db: AsyncSession, form_data: dict) -> dict:
     if status.lower() == "success":
         try:
             # Grant course access
-            await enroll_user(db, user_id=transaction.user_id, course_id=transaction.course_id)
+            await enroll_user(
+                db,
+                user_id=transaction.user_id,
+                course_id=transaction.course_id,
+                distributor_code=transaction.coupon_code
+            )
             logger.info("easebuzz_course_unlocked", txnid=txnid, user_id=transaction.user_id, course_id=transaction.course_id)
             
             # Send Email Invoice asynchronously
