@@ -409,6 +409,8 @@ async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[
         db.add(otp)
         await db.flush()
         
+        print(f"\n🔑 [OTP SERVICE] Generated SMS OTP code: {code} for user: {user.email}\n", flush=True)
+        
         # send_sms_otp handles errors internally or bubbles up
         sms_sent = await send_sms_otp(user.phone, code)
         if sms_sent:
@@ -427,6 +429,8 @@ async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[
         )
         db.add(otp)
         await db.flush()
+        
+        print(f"\n🔑 [OTP SERVICE] Generated Email OTP code: {code} for user: {user.email}\n", flush=True)
         
         email_html = build_otp_email_html(code, user.full_name)
         email_sent = await send_email(

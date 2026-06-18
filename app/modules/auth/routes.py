@@ -77,14 +77,14 @@ async def login(
     """Step 1 - Validate credentials and send OTP via email. (Admins bypass OTP)"""
     user = await services.authenticate_user(db, body.email, body.password)
     
-    # Check if user has admin or super_admin role
-    is_admin = False
+    # Check if user has admin, super_admin, or distributor (IB) role to bypass OTP
+    is_otp_bypassed = False
     for role in user.roles:
-        if role.name in ["admin", "super_admin"]:
-            is_admin = True
+        if role.name in ["admin", "super_admin", "distributor"]:
+            is_otp_bypassed = True
             break
             
-    if is_admin:
+    if is_otp_bypassed:
         # Bypass OTP, generate session immediately
         tokens = await services.create_session(
             db,
