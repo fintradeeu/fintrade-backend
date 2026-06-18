@@ -5,7 +5,7 @@ from typing import List
 from fastapi import APIRouter, Depends, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import require_roles
+from app.core.security import require_roles, get_current_user
 from app.db.database import get_db
 from app.modules.admin import schemas, services
 from app.modules.auth.models import User
@@ -717,16 +717,82 @@ async def offer_stats(
 
 @router.get("/revenue/stats", response_model=dict)
 async def revenue_stats(
-    _admin: User = Depends(require_roles(["admin"])),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get revenue statistics (hardcoded for now, Finance/Super Admin only)."""
+    """Get revenue statistics (Super Admin only)."""
+    from fastapi import HTTPException
+    
+    user_role_names = {r.name for r in current_user.roles}
+    if "super_admin" not in user_role_names:
+        raise HTTPException(status_code=403, detail="Requires Super Admin role")
+
+    # Calculate actual revenue from database
+    from app.modules.payments.models import PaymentTransaction
+    from sqlalchemy import func, select
+    
+    total_stmt = select(func.sum(PaymentTransaction.amount)).where(PaymentTransaction.status == "success")
+    total_val = (await db.execute(total_stmt)).scalar() or 0.0
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    start_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    monthly_stmt = select(func.sum(PaymentTransaction.amount)).where(
+        PaymentTransaction.status == "success",
+        PaymentTransaction.updated_at >= start_of_month
+    )
+    monthly_val = (await db.execute(monthly_stmt)).scalar() or 0.0
+
     return {
-        "total_revenue": "₹2.45Cr",
-        "monthly_revenue": "₹24.5L",
+        "total_revenue": f"₹{total_val:,.2f}",
+        "monthly_revenue": f"₹{monthly_val:,.2f}",
         "active_coupons": (await offer_services.get_offer_stats(db))["active_coupons"],
         "total_usage": (await offer_services.get_offer_stats(db))["total_usage"],
     }
+
+
+@router.get("/revenue/details")
+async def revenue_details(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get detailed transaction history (Super Admin only)."""
+    from fastapi import HTTPException
+    
+    user_role_names = {r.name for r in current_user.roles}
+    if "super_admin" not in user_role_names:
+        raise HTTPException(status_code=403, detail="Requires Super Admin role")
+
+    from app.modules.payments.models import PaymentTransaction
+    from app.modules.courses.models import Course
+    from sqlalchemy import select
+    
+    # Query database for transactions joined with user and course
+    stmt = (
+        select(PaymentTransaction, User.full_name, User.email, Course.title)
+        .join(User, User.id == PaymentTransaction.user_id)
+        .join(Course, Course.id == PaymentTransaction.course_id)
+        .where(PaymentTransaction.status == "success")
+        .order_by(PaymentTransaction.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+    
+    return [
+        {
+            "id": tx.id,
+            "txnid": tx.txnid,
+            "amount": tx.amount,
+            "status": tx.status,
+            "payment_mode": tx.payment_mode or "N/A",
+            "created_at": tx.created_at.isoformat() if tx.created_at else None,
+            "student_name": full_name,
+            "student_email": email,
+            "course_title": title,
+        }
+        for tx, full_name, email, title in rows
+    ]
+
 
 
 # ── Lecture management ──────────────────────────────────────────────
