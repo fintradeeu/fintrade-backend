@@ -36,6 +36,17 @@ def clean_phone_for_fast2sms(phone: str) -> str:
     return cleaned
 
 
+def clean_phone_for_nimbus(phone: str) -> str:
+    """Ensure phone number is in 91xxxxxxxxxx format (without leading +) for Nimbus."""
+    cleaned = "".join(c for c in phone if c.isdigit())
+    if len(cleaned) == 10:
+        cleaned = f"91{cleaned}"
+    elif len(cleaned) > 10:
+        if not cleaned.startswith("91"):
+            cleaned = f"91{cleaned[-10:]}"
+    return cleaned
+
+
 def print_fallback_otp(phone: str, code: str, reason: str):
     logger.warning("sms_delivery_failed_falling_back_to_console", phone=phone, reason=reason)
     print("\n" + "="*80)
@@ -78,7 +89,7 @@ async def send_nimbus_otp(phone: str, code: str) -> bool:
         logger.warning("nimbus_sms_skipped", reason="Nimbus SMS credentials not configured")
         return False
 
-    phone_clean = clean_phone_for_fast2sms(phone)
+    phone_clean = clean_phone_for_nimbus(phone)
     params = {
         "UserID": settings.NIMBUS_SMS_USER_ID,
         "Password": settings.NIMBUS_SMS_PASSWORD,
