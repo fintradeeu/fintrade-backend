@@ -62,9 +62,17 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ── AI / OpenAI ──────────────────────────────────────────────────
+    AI_PROVIDER: str = "openai"  # openai, gemini, ollama, fallback
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-3.5-turbo"
     EMBEDDING_MODEL: str = "text-embedding-ada-002"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
+    GEMINI_TIMEOUT_SECONDS: float = 60.0
+    OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
+    OLLAMA_MODEL: str = "llama3.2:3b"
+    OLLAMA_TIMEOUT_SECONDS: float = 60.0
 
     # ── Payment Gateways (Future Compatibility) ──────────────────────
     CASHFREE_APP_ID: str = ""
@@ -137,6 +145,12 @@ class Settings(BaseSettings):
     NIMBUS_SMS_SENDER_ID: str = ""
     NIMBUS_SMS_ENTITY_ID: str = ""
     NIMBUS_SMS_TEMPLATE_ID: str = ""
+    NIMBUS_SMS_MESSAGE_TEMPLATE: str = (
+        "Welcome to FinTrade.\n\n"
+        "Use OTP {code} to verify your FinTrade account and continue your registration. "
+        "This code will expire in {expiry_minutes} minutes. For your security, never share your OTP with anyone.\n\n"
+        "Team FinTrade"
+    )
 
     @field_validator("DEBUG", mode="before")
     @classmethod

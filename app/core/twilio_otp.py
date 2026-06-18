@@ -1,5 +1,7 @@
 """SMS OTP gateway wrappers for Nimbus, Fast2SMS, and Twilio Verify."""
 
+import json
+
 import httpx
 from fastapi import HTTPException, status
 
@@ -61,10 +63,71 @@ def _build_fast2sms_message(code: str) -> str:
 
 
 def _build_nimbus_message(code: str) -> str:
-    return (
-        f"Welcome to FinTrade. Use OTP {code} to verify your account and continue your registration. "
-        "This code will expire in 5 minutes. For your security, never share your OTP with anyone. Team FinTrade"
+    return settings.NIMBUS_SMS_MESSAGE_TEMPLATE.format(
+        code=code,
+        expiry_minutes=settings.OTP_EXPIRY_MINUTES,
     )
+
+
+def _is_nimbus_success_response(response_text: str) -> bool:
+    normalized = response_text.strip().lower()
+    if not normalized:
+        return False
+
+    try:
+        data = json.loads(response_text)
+        status_value = str(data.get("Status", "")).strip().lower()
+        response = data.get("Response") or {}
+        message_value = str(response.get("Message", "")).strip().lower()
+        if status_value == "ok" and ("message id" in message_value or message_value):
+            return True
+    except (TypeError, ValueError):
+        pass
+
+    error_markers = (
+        "invalid",
+        "error",
+        "fail",
+        "failed",
+        "insufficient",
+        "unauthorized",
+        "not found",
+        "template",
+        "sender",
+        "balance",
+    )
+    if any(marker in normalized for marker in error_markers):
+        return False
+
+    success_markers = (
+        "success",
+        "sent",
+        "submitted",
+        "accepted",
+        "queued",
+        "done",
+    )
+    return any(marker in normalized for marker in success_markers) or normalized in {"1", "true", "ok"}
+
+
+def _extract_nimbus_message_id(response_text: str) -> str | None:
+    try:
+        data = json.loads(response_text)
+    except (TypeError, ValueError):
+        return None
+
+    response = data.get("Response") or {}
+    message = str(response.get("Message", "")).strip()
+    if not message:
+        return None
+
+    _, separator, message_id = message.partition(":")
+    return message_id.strip() if separator else message
+
+
+def _short_response(response_text: str) -> str:
+    text = " ".join(response_text.split())
+    return text[:500]
 
 
 def is_local_sms_otp_enabled() -> bool:
@@ -108,13 +171,17 @@ async def send_nimbus_otp(phone: str, code: str) -> bool:
                 print_fallback_otp(phone_clean, code, f"Nimbus HTTP status {resp.status_code}")
                 return False
 
-            response_text = resp.text.strip().lower()
-            if any(marker in response_text for marker in ("invalid", "error", "fail")):
-                logger.error("nimbus_sms_api_error", response=resp.text)
-                print_fallback_otp(phone_clean, code, "Nimbus API returned an error response")
+            if not _is_nimbus_success_response(resp.text):
+                response_summary = _short_response(resp.text)
+                logger.error("nimbus_sms_api_error", response=response_summary)
+                print_fallback_otp(phone_clean, code, f"Nimbus API did not confirm delivery: {response_summary}")
                 return False
 
-            logger.info("nimbus_sms_otp_sent_successfully", phone=phone_clean[-4:])
+            logger.info(
+                "nimbus_sms_otp_sent_successfully",
+                phone=phone_clean[-4:],
+                provider_message_id=_extract_nimbus_message_id(resp.text),
+            )
             return True
     except Exception as e:
         logger.error("nimbus_sms_request_exception", error=str(e))

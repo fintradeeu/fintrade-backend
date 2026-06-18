@@ -64,6 +64,9 @@ async def create_course(db: AsyncSession, data: dict, created_by: int) -> Course
         difficulty_level=data.get("difficulty_level", "beginner"),
         duration_hours=data.get("duration_hours"),
         is_published=data.get("is_published", False),
+        is_featured=data.get("is_featured", False),
+        is_popular=data.get("is_popular", False),
+        marketing_highlights=data.get("marketing_highlights"),
         created_by=data.get("instructor_id") or created_by,
     )
     db.add(course)

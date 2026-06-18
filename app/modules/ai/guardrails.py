@@ -18,6 +18,8 @@ SYSTEM_PROMPT = (
     f"  \"{BLOCKED_RESPONSE}\"\n"
     "- NEVER provide buy or sell signals, guaranteed profit strategies, financial advice, investment recommendations, or portfolio management advice.\n"
     "- For trading-related questions, provide educational explanations only.\n"
+    "- Keep answers concise and easy to scan: start with a 1-2 sentence direct answer, then use short bullet points or numbered steps when helpful.\n"
+    "- Avoid long dense paragraphs. Do not overuse bold text.\n"
     "- ALWAYS include a standard risk disclaimer: \"Disclaimer: Trading and investing in financial markets involve significant risk of loss. All content is for educational purposes only.\"\n"
 )
 
@@ -86,6 +88,10 @@ def is_question_allowed_locally(question: str) -> bool:
         return False
 
     q_clean = question.strip().lower()
+
+    # Common chat greetings, including casual spellings like "hii" / "heyy".
+    if re.fullmatch(r"(hi+|hey+|hello+|hlo+|helo+)", q_clean):
+        return True
 
     # 1. Check for blocked topics / keywords first (using strict word boundaries)
     for blocked in BLOCKED_KEYWORDS:

@@ -14,7 +14,7 @@ async def generate_embedding(text: str) -> List[float]:
     Uses OpenAI embeddings API if the key is configured.
     Falls back to a deterministic hash-based pseudo-embedding for local dev.
     """
-    if settings.OPENAI_API_KEY:
+    if settings.AI_PROVIDER.lower() == "openai" and settings.OPENAI_API_KEY:
         return await _openai_embedding(text)
     return _fallback_embedding(text)
 

@@ -7,7 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.ai.rag_pipeline import query_rag
+from app.ai.rag_pipeline import (
+    GEMINI_UNAVAILABLE_RESPONSE,
+    LLM_SERVICE_UNAVAILABLE_RESPONSE,
+    LOCAL_LLM_UNAVAILABLE_RESPONSE,
+    query_rag,
+)
 from app.modules.ai.models import ChatMessage, ChatSession
 from app.utils.logger import get_logger
 
@@ -16,6 +21,21 @@ logger = get_logger(__name__)
 
 from app.modules.ai.guardrails import is_question_allowed_locally, BLOCKED_RESPONSE
 from app.modules.ai.models import FAQEntry
+
+
+LOW_CONFIDENCE_ANSWER_MARKERS = (
+    "I don't have enough context to answer your question right now.",
+    GEMINI_UNAVAILABLE_RESPONSE,
+    LLM_SERVICE_UNAVAILABLE_RESPONSE,
+    LOCAL_LLM_UNAVAILABLE_RESPONSE,
+    BLOCKED_RESPONSE,
+)
+
+
+def _should_cache_faq_answer(answer: str) -> bool:
+    """Cache only useful generated answers, not guardrail or service failure text."""
+    return bool(answer and not any(marker in answer for marker in LOW_CONFIDENCE_ANSWER_MARKERS))
+
 
 async def ask_question(
     db: AsyncSession,
@@ -89,10 +109,12 @@ async def ask_question(
         answer = rag_result["answer"]
         sources = rag_result.get("sources", [])
         
-        # Add new question to FAQ dynamically
-        new_faq = FAQEntry(question=question, answer=answer, frequency=1)
-        db.add(new_faq)
-        await db.flush()
+        if _should_cache_faq_answer(answer):
+            new_faq = FAQEntry(question=question, answer=answer, frequency=1)
+            db.add(new_faq)
+            await db.flush()
+        else:
+            logger.info("ai_answer_not_cached", user_id=user_id, session_id=session.id)
 
     # Save user message
     user_msg = ChatMessage(

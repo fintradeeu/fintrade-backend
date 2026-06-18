@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -29,6 +29,62 @@ import httpx
 logger = get_logger(__name__)
 
 MAX_OTP_ATTEMPTS = 5  # Lock after 5 wrong attempts
+
+
+def _looks_like_phone(identifier: str) -> bool:
+    digits = "".join(c for c in identifier if c.isdigit())
+    return len(digits) >= 8
+
+
+def _phone_login_variants(identifier: str) -> list[str]:
+    """Possible stored forms for the same Indian mobile number."""
+    stripped = identifier.strip()
+    digits = "".join(c for c in stripped if c.isdigit())
+    variants = {stripped, digits}
+    if len(digits) >= 10:
+        last_digits = digits[-10:]
+        variants.update(
+            {
+                last_digits,
+                f"91{last_digits}",
+                f"+91{last_digits}",
+                f"+{digits}",
+            }
+        )
+    return [variant for variant in variants if variant]
+
+
+async def _get_login_candidates(db: AsyncSession, identifier: str) -> list[User]:
+    """Return possible users for an email or phone login without assuming uniqueness."""
+    identifier = identifier.strip()
+    if _looks_like_phone(identifier):
+        digits = "".join(c for c in identifier if c.isdigit())
+        last_digits = digits[-10:]
+
+        exact_result = await db.execute(
+            select(User)
+            .options(selectinload(User.roles))
+            .where(User.phone.in_(_phone_login_variants(identifier)))
+            .order_by(desc(User.id))
+        )
+        exact_candidates = list(exact_result.scalars().all())
+        if exact_candidates:
+            return exact_candidates
+
+        result = await db.execute(
+            select(User)
+            .options(selectinload(User.roles))
+            .where(User.phone.like(f"%{last_digits}"))
+            .order_by(desc(User.id))
+        )
+    else:
+        result = await db.execute(
+            select(User)
+            .options(selectinload(User.roles))
+            .where(User.email == identifier)
+            .order_by(desc(User.id))
+        )
+    return list(result.scalars().all())
 
 
 async def get_or_create_role(db: AsyncSession, role_name: str) -> Role:
@@ -313,32 +369,43 @@ async def authenticate_or_register_google_user(
 async def authenticate_user(db: AsyncSession, email_or_phone: str, password: str) -> User:
     """Verify credentials (email or phone number) and return the user."""
     identifier = email_or_phone.strip()
-    
-    # Check if identifier is a phone number (e.g. mostly digits or starting with '+')
-    is_phone = False
-    digits = "".join(c for c in identifier if c.isdigit())
-    if len(digits) >= 8:
-        is_phone = True
-        
-    if is_phone:
-        # Search by exact phone string or match the last 10 digits
-        last_digits = digits[-10:]
-        result = await db.execute(
-            select(User)
-            .options(selectinload(User.roles))
-            .where((User.phone == identifier) | (User.phone.like(f"%{last_digits}")))
-        )
-    else:
-        result = await db.execute(
-            select(User).options(selectinload(User.roles)).where(User.email == identifier)
-        )
-        
-    user = result.scalar_one_or_none()
-    if user is None or not verify_password(password, user.hashed_password):
+
+    candidates = await _get_login_candidates(db, identifier)
+    matching_users = [
+        user
+        for user in candidates
+        if user.hashed_password and verify_password(password, user.hashed_password)
+    ]
+
+    if not matching_users:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email/phone or password",
         )
+
+    if len(matching_users) > 1:
+        if _looks_like_phone(identifier):
+            active_matches = [user for user in matching_users if user.is_active]
+            if active_matches:
+                selected_user = active_matches[0]
+                logger.warning(
+                    "duplicate_phone_login_resolved_to_latest_active_user",
+                    selected_user_id=selected_user.id,
+                    matched_user_ids=[user.id for user in matching_users],
+                )
+                return selected_user
+
+        logger.error(
+            "duplicate_login_identifier_with_same_password",
+            identifier_type="phone" if _looks_like_phone(identifier) else "email",
+            user_ids=[user.id for user in matching_users],
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Multiple accounts match this login. Please sign in with your email address.",
+        )
+
+    user = matching_users[0]
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -433,6 +500,22 @@ async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[
         sms_sent = await send_sms_otp(user.phone, code)
         if sms_sent:
             channels_sent.append("sms")
+        elif user.email:
+            logger.warning("sms_otp_delivery_failed_falling_back_to_email", user_id=user.id)
+            otp.channel = "email"
+            email_html = build_otp_email_html(code, user.full_name)
+            email_sent = await send_email(
+                to_email=user.email,
+                subject=f"{code} - Your FinTrade Verification Code",
+                body_html=email_html,
+            )
+            if email_sent:
+                channels_sent.append("email")
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to send SMS OTP. Please check the Nimbus SMS gateway response in backend logs.",
+            )
     else:
         # Fallback to standard Email OTP
         code = _generate_otp_code()
@@ -461,8 +544,10 @@ async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[
 
     if not channels_sent:
         logger.warning("otp_delivery_failed", user_id=user.id)
-        # Even if delivery fails, we can add a fallback channel for safety
-        channels_sent.append("email" if not user.phone else "sms")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to deliver OTP. Please check SMS/email gateway configuration.",
+        )
 
     logger.info("otp_generated", user_id=user.id, channels=channels_sent)
 
@@ -651,32 +736,27 @@ async def revoke_session(db: AsyncSession, user_id: int, token: str):
 async def initiate_forgot_password(db: AsyncSession, email_or_phone: str) -> dict:
     """Validate user exists and send OTP via SMS (if phone) or Email (fallback) for password reset."""
     identifier = email_or_phone.strip()
+    is_phone = _looks_like_phone(identifier)
+    candidates = await _get_login_candidates(db, identifier)
     
-    # Check if identifier is a phone number
-    is_phone = False
-    digits = "".join(c for c in identifier if c.isdigit())
-    if len(digits) >= 8:
-        is_phone = True
-        
-    if is_phone:
-        last_digits = digits[-10:]
-        result = await db.execute(
-            select(User)
-            .options(selectinload(User.roles))
-            .where((User.phone == identifier) | (User.phone.like(f"%{last_digits}")))
-        )
-    else:
-        result = await db.execute(
-            select(User).options(selectinload(User.roles)).where(User.email == identifier)
-        )
-        
-    user = result.scalar_one_or_none()
-    
-    if user is None:
+    if not candidates:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User with this email/phone not found.",
         )
+
+    if len(candidates) > 1:
+        logger.error(
+            "duplicate_password_reset_identifier",
+            identifier_type="phone" if is_phone else "email",
+            user_ids=[user.id for user in candidates],
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Multiple accounts match this identifier. Please use your email address or contact support.",
+        )
+
+    user = candidates[0]
         
     if not user.is_active:
         raise HTTPException(

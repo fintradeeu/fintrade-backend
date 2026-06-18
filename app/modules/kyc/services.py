@@ -92,17 +92,15 @@ async def send_mobile_otp(db: AsyncSession, user_id: int) -> bool:
         from app.utils.logger import get_logger
         logger = get_logger(__name__)
         logger.error("kyc_mobile_otp_sending_failed", error=str(e))
-        if not settings.DEBUG:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to send SMS OTP: {str(e)}"
-            )
-        sent = True
-
-    if not sent and not settings.DEBUG:
         raise HTTPException(
-            status_code=500,
-            detail="Failed to send SMS OTP. Please ensure that Nimbus SMS credentials are fully configured on the server."
+            status_code=502,
+            detail=f"Failed to send SMS OTP: {str(e)}"
+        )
+
+    if not sent:
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to send SMS OTP. Please check the Nimbus SMS gateway response in backend logs."
         )
     return True
 
