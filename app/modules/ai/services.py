@@ -82,7 +82,7 @@ async def ask_question(
         matched_faq.frequency += 1
         await db.flush()
         answer = matched_faq.answer
-        sources = [{"source": f"FAQ - freq: {matched_faq.frequency}"}]
+        sources = [f"FAQ - freq: {matched_faq.frequency}"]
     else:
         # Run RAG pipeline
         rag_result = await query_rag(question)

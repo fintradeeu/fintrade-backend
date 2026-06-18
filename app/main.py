@@ -123,9 +123,20 @@ async def global_exception_handler(request: Request, exc: Exception):
     tb = _tb.format_exc()
     import logging
     logging.getLogger("uvicorn.error").error(f"Unhandled error on {request.method} {request.url}: {error_detail}\n{tb}")
+    
+    headers = {}
+    origin = request.headers.get("origin")
+    if origin:
+        if "*" in settings.cors_origins_list or origin in settings.cors_origins_list:
+            headers["Access-Control-Allow-Origin"] = origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+            headers["Access-Control-Allow-Methods"] = "*"
+            headers["Access-Control-Allow-Headers"] = "*"
+            
     return JSONResponse(
         status_code=500,
         content={"detail": f"Internal Server Error: {error_detail}"},
+        headers=headers,
     )
 
 
