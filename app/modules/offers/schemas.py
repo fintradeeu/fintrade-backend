@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel, Field
 
 
@@ -38,7 +39,7 @@ class OfferResponse(BaseModel):
 
 
 class OfferApplyRequest(BaseModel):
-    code: str = Field(..., min_length=3)
+    code: Optional[str] = None
     course_id: int
 
 

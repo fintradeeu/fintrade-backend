@@ -5,13 +5,16 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+# pyrefly: ignore [missing-import]
 from fastapi import HTTPException, UploadFile
+# pyrefly: ignore [missing-import]
 from sqlalchemy import select
+# pyrefly: ignore [missing-import]
 from sqlalchemy.ext.asyncio import AsyncSession
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import selectinload
 
 from app.modules.kyc.models import KYCSubmission, Contract
-
 
 # ── Student services ────────────────────────────────────────────────
 
@@ -126,6 +129,8 @@ async def send_email_otp(db: AsyncSession, user) -> bool:
     db.add(otp)
     await db.commit()
 
+    print(f"\n🔑 [KYC OTP SERVICE] Generated Email OTP code: {code} for user: {user.email}\n", flush=True)
+
     email_html = build_otp_email_html(code, user.full_name)
     email_sent = await send_email(
         to_email=user.email,
@@ -156,6 +161,7 @@ async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) ->
         if is_local_sms_otp_enabled():
             # Look up the latest unused SMS OTP code
             from app.modules.auth.models import OTPCode
+            # pyrefly: ignore [missing-import]
             from sqlalchemy import desc
 
             result = await db.execute(
@@ -194,6 +200,7 @@ async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) ->
         kyc.mobile_verified = True
     elif otp_type == "email":
         from app.modules.auth.models import OTPCode
+        # pyrefly: ignore [missing-import]
         from sqlalchemy import desc
 
         # Look up the latest unused email OTP code

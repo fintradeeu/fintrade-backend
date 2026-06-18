@@ -50,6 +50,7 @@ async def register_user(
     phone: Optional[str] = None,
     city: Optional[str] = None,
     role_name: str = "student",
+    referral_code: Optional[str] = None,
 ) -> User:
     """Create a new user with the given role."""
     # Check uniqueness
@@ -74,6 +75,23 @@ async def register_user(
     await db.flush()
     await db.refresh(user)
     logger.info("user_registered", user_id=user.id, email=email)
+
+    if referral_code:
+        from app.modules.distributors.models import Distributor, StudentReferral
+        dist_res = await db.execute(
+            select(Distributor).where(Distributor.referral_code == referral_code)
+        )
+        distributor = dist_res.scalar_one_or_none()
+        if distributor:
+            referral = StudentReferral(
+                student_id=user.id,
+                distributor_id=distributor.id,
+                course_id=None,
+            )
+            db.add(referral)
+            await db.flush()
+            logger.info("user_referred_by_distributor", user_id=user.id, distributor_id=distributor.id)
+
     return user
 
 

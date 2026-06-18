@@ -1,7 +1,7 @@
 """Offers module — service layer."""
 
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -104,20 +104,35 @@ async def validate_offer_price(db: AsyncSession, code: str, course_id: int) -> f
     return round(max(original_price - discount, 0.0), 2)
 
 
-async def apply_offer(db: AsyncSession, user_id: int, code: str, course_id: int) -> dict:
+async def apply_offer(db: AsyncSession, user_id: int, code: Optional[str], course_id: int) -> dict:
     """Apply an offer code to a course purchase."""
-    # Find the offer
-    result = await db.execute(select(Offer).where(Offer.code == code))
-    offer = result.scalar_one_or_none()
-    
-    # If not an offer, check if it's a distributor referral code
+    offer = None
     distributor = None
-    if offer is None:
-        dist_result = await db.execute(select(Distributor).where(Distributor.referral_code == code))
-        distributor = dist_result.scalar_one_or_none()
+
+    if code and code.strip():
+        # Find the offer
+        result = await db.execute(select(Offer).where(Offer.code == code))
+        offer = result.scalar_one_or_none()
         
-        if distributor is None:
-            raise HTTPException(status_code=404, detail="Invalid offer or referral code")
+        # If not an offer, check if it's a distributor referral code
+        if offer is None:
+            dist_result = await db.execute(select(Distributor).where(Distributor.referral_code == code))
+            distributor = dist_result.scalar_one_or_none()
+            
+            if distributor is None:
+                raise HTTPException(status_code=404, detail="Invalid offer or referral code")
+    else:
+        # Check if user has an existing distributor referral
+        from app.modules.distributors.models import StudentReferral
+        ref_res = await db.execute(
+            select(StudentReferral).where(StudentReferral.student_id == user_id)
+        )
+        referral = ref_res.scalars().first()
+        if referral:
+            dist_result = await db.execute(
+                select(Distributor).where(Distributor.id == referral.distributor_id)
+            )
+            distributor = dist_result.scalar_one_or_none()
 
     if offer:
         if not offer.is_active:
@@ -185,7 +200,7 @@ async def apply_offer(db: AsyncSession, user_id: int, code: str, course_id: int)
             "discount_applied": round(discount, 2),
             "message": f"Offer '{offer.code}' applied successfully",
         }
-    else:
+    elif distributor:
         # Note: Actual distributor referral is recorded during the /enroll endpoint
         logger.info("distributor_referral_applied", user_id=user_id, distributor_id=distributor.id, discount=discount)
         return {
@@ -194,6 +209,14 @@ async def apply_offer(db: AsyncSession, user_id: int, code: str, course_id: int)
             "discounted_price": round(discounted_price, 2),
             "discount_applied": round(discount, 2),
             "message": f"Distributor referral '{distributor.referral_code}' applied successfully",
+        }
+    else:
+        return {
+            "offer_id": 0,
+            "original_price": original_price,
+            "discounted_price": round(original_price, 2),
+            "discount_applied": 0.0,
+            "message": "No discount applied",
         }
 
 

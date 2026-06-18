@@ -30,7 +30,7 @@ class ReferralResponse(BaseModel):
     student_id: int
     student_name: Optional[str] = None
     student_email: Optional[str] = None
-    course_id: int
+    course_id: Optional[int] = None
     course_title: Optional[str] = None
     created_at: datetime
 

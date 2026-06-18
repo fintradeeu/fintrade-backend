@@ -10,6 +10,7 @@ from app.db.database import get_db
 from app.modules.admin import schemas, services
 from app.modules.auth.models import User
 from app.modules.auth.schemas import UserResponse
+from app.modules.distributors.schemas import ReferralResponse
 
 # Course / Exam / Lecture / Offer schemas for creation
 from app.modules.courses import schemas as course_schemas, services as course_services
@@ -54,6 +55,13 @@ async def create_admin(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new admin account (admin only)."""
+    user_role_names = {r.name for r in admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admin has access to create Admin users"
+        )
     user = await services.create_user_with_role(
         db,
         email=body.email,
@@ -94,13 +102,13 @@ async def create_distributor(
     admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new distributor account with profile (admin only)."""
+    """Create a new distributor/IB account (Super Admin only)."""
     user_role_names = {r.name for r in admin.roles}
     if "super_admin" not in user_role_names:
         from fastapi import HTTPException
         raise HTTPException(
             status_code=403,
-            detail="Only Super Admin has access to create Introducing Brokers (IB)"
+            detail="Only Super Admin can create Introducing Broker (IB) accounts"
         )
     user, distributor = await services.create_distributor_user(
         db,
@@ -147,15 +155,9 @@ async def list_distributors(
     db: AsyncSession = Depends(get_db),
 ):
     """List all distributors (admin only)."""
-    user_role_names = {r.name for r in _admin.roles}
-    if "super_admin" not in user_role_names:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=403,
-            detail="Requires Super Admin role"
-        )
     from sqlalchemy import select, func
     from app.modules.distributors.models import StudentReferral
+    from app.modules.courses.models import CourseEnrollment
 
     distributors = await services.list_distributors(db)
     
@@ -165,6 +167,14 @@ async def list_distributors(
         .group_by(StudentReferral.distributor_id)
     )
     counts_map = {row[0]: row[1] for row in counts_res.all()}
+
+    # Query total revenue generated grouped by distributor_id
+    revenue_res = await db.execute(
+        select(CourseEnrollment.distributor_id, func.coalesce(func.sum(CourseEnrollment.price_paid), 0.0))
+        .where(CourseEnrollment.distributor_id.isnot(None))
+        .group_by(CourseEnrollment.distributor_id)
+    )
+    revenue_map = {row[0]: float(row[1]) for row in revenue_res.all()}
 
     return [
         schemas.AdminDistributorResponse(
@@ -177,6 +187,7 @@ async def list_distributors(
             user_name=d.user.full_name if d.user else None,
             user_email=d.user.email if d.user else None,
             total_students_referred=counts_map.get(d.id, 0),
+            total_revenue_generated=revenue_map.get(d.id, 0.0),
         )
         for d in distributors
     ]
@@ -189,15 +200,32 @@ async def distributor_stats(
     db: AsyncSession = Depends(get_db),
 ):
     """Get stats for a specific distributor (admin only)."""
-    user_role_names = {r.name for r in _admin.roles}
-    if "super_admin" not in user_role_names:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=403,
-            detail="Requires Super Admin role"
-        )
     stats = await services.get_distributor_stats(db, distributor_id)
     return schemas.AdminDistributorStatsResponse(**stats)
+
+
+@router.get("/distributors/{distributor_id}/referrals", response_model=List[ReferralResponse])
+async def list_distributor_referrals(
+    distributor_id: int,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """List referred students for a specific distributor (admin only)."""
+    from app.modules.distributors import services as dist_services
+    
+    referrals = await dist_services.list_referrals(db, distributor_id)
+    return [
+        ReferralResponse(
+            id=r.id,
+            student_id=r.student_id,
+            student_name=r.student.full_name if r.student else None,
+            student_email=r.student.email if r.student else None,
+            course_id=r.course_id,
+            course_title=r.course.title if r.course else None,
+            created_at=r.created_at,
+        )
+        for r in referrals
+    ]
 
 
 # ── Course management ────────────────────────────────────────────────

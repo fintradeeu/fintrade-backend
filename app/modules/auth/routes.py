@@ -26,6 +26,7 @@ async def register(
         password=body.password,
         phone=body.phone,
         city=body.city,
+        referral_code=body.referral_code,
     )   
     
     tokens = await services.create_session(

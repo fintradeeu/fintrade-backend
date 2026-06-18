@@ -56,7 +56,7 @@ class CreateDistributorRequest(BaseModel):
     city: Optional[str] = Field(None, max_length=100)
     password: str = Field(..., min_length=8, max_length=128)
     region: str = Field(..., min_length=1, max_length=255)
-    referral_code: str = Field(..., min_length=3, max_length=50)
+    referral_code: Optional[str] = Field(None, max_length=50)
     discount_percentage: float = Field(0.0, ge=0, le=100)
 
 
@@ -71,6 +71,7 @@ class AdminDistributorResponse(BaseModel):
     user_name: Optional[str] = None
     user_email: Optional[str] = None
     total_students_referred: int = 0
+    total_revenue_generated: float = 0.0
 
     model_config = {"from_attributes": True}
 

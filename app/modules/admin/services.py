@@ -105,22 +105,35 @@ async def create_distributor_user(
     full_name: str,
     password: str,
     region: str,
-    referral_code: str,
+    referral_code: Optional[str],
     discount_percentage: float,
     created_by: int,
     phone: Optional[str] = None,
     city: Optional[str] = None,
 ) -> tuple:
     """Admin creates a distributor: user + distributor profile."""
-    # Check referral code uniqueness
-    existing_code = await db.execute(
-        select(Distributor).where(Distributor.referral_code == referral_code)
-    )
-    if existing_code.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Referral code already exists",
+    if not referral_code:
+        import string
+        import random
+        while True:
+            code_suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            generated_code = f"IB-{code_suffix}"
+            existing_code = await db.execute(
+                select(Distributor).where(Distributor.referral_code == generated_code)
+            )
+            if not existing_code.scalar_one_or_none():
+                referral_code = generated_code
+                break
+    else:
+        # Check referral code uniqueness
+        existing_code = await db.execute(
+            select(Distributor).where(Distributor.referral_code == referral_code)
         )
+        if existing_code.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Referral code already exists",
+            )
 
     user = await create_user_with_role(
         db, email, full_name, password, "distributor", created_by, phone, city
