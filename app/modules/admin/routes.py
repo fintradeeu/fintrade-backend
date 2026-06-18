@@ -95,6 +95,13 @@ async def create_distributor(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new distributor account with profile (admin only)."""
+    user_role_names = {r.name for r in admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admin has access to create Introducing Brokers (IB)"
+        )
     user, distributor = await services.create_distributor_user(
         db,
         email=body.email,
@@ -140,6 +147,13 @@ async def list_distributors(
     db: AsyncSession = Depends(get_db),
 ):
     """List all distributors (admin only)."""
+    user_role_names = {r.name for r in _admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     from sqlalchemy import select, func
     from app.modules.distributors.models import StudentReferral
 
@@ -175,6 +189,13 @@ async def distributor_stats(
     db: AsyncSession = Depends(get_db),
 ):
     """Get stats for a specific distributor (admin only)."""
+    user_role_names = {r.name for r in _admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     stats = await services.get_distributor_stats(db, distributor_id)
     return schemas.AdminDistributorStatsResponse(**stats)
 
@@ -668,6 +689,13 @@ async def create_offer(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new offer (admin only)."""
+    user_role_names = {r.name for r in admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     data = body.model_dump()
     data["created_by_admin"] = admin.id
     offer = await offer_services.create_offer(db, data)
@@ -680,6 +708,13 @@ async def list_all_offers(
     db: AsyncSession = Depends(get_db),
 ):
     """List all offers including inactive ones (admin only)."""
+    user_role_names = {r.name for r in _admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     offers = await offer_services.list_offers(db, active_only=False)
     return [offer_schemas.OfferResponse.model_validate(o) for o in offers]
 
@@ -692,6 +727,13 @@ async def update_offer(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing offer/coupon (admin only)."""
+    user_role_names = {r.name for r in _admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     offer = await offer_services.update_offer(db, offer_id, body.model_dump(exclude_unset=True))
     return offer_schemas.OfferResponse.model_validate(offer)
 
@@ -703,6 +745,13 @@ async def delete_offer(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete an offer/coupon (admin only)."""
+    user_role_names = {r.name for r in _admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     await offer_services.delete_offer(db, offer_id)
     return schemas.MessageResponse(message="Offer deleted successfully")
 
@@ -714,6 +763,13 @@ async def toggle_offer(
     db: AsyncSession = Depends(get_db),
 ):
     """Toggle offer active/inactive status (admin only)."""
+    user_role_names = {r.name for r in _admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     offer = await offer_services.toggle_offer(db, offer_id)
     return offer_schemas.OfferResponse.model_validate(offer)
 
@@ -724,6 +780,13 @@ async def offer_stats(
     db: AsyncSession = Depends(get_db),
 ):
     """Get coupon/offer usage statistics (admin only)."""
+    user_role_names = {r.name for r in _admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     return await offer_services.get_offer_stats(db)
 
 
