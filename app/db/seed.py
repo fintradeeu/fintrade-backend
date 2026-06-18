@@ -67,6 +67,32 @@ async def seed(skip_init_db: bool = False):
             else:
                 print(f"  · Admin already exists: {DEFAULT_ADMIN['email']}")
 
+            # Create default superadmin
+            super_email = "superadmin@gmail.com"
+            result_super = await db.execute(
+                select(User).where(User.email == super_email)
+            )
+            superadmin = result_super.scalar_one_or_none()
+
+            if superadmin is None:
+                # Get super_admin role
+                role_result_super = await db.execute(select(Role).where(Role.name == "super_admin"))
+                super_role = role_result_super.scalar_one()
+
+                superadmin = User(
+                    email=super_email,
+                    full_name="Super Admin",
+                    hashed_password=hash_password("super@123"),
+                    is_active=True,
+                    is_verified=True,
+                )
+                superadmin.roles.append(super_role)
+                db.add(superadmin)
+                await db.flush()
+                print(f"  ✓ Created superadmin: {super_email} (password: super@123)")
+            else:
+                print(f"  · Superadmin already exists: {super_email}")
+
             await db.commit()
             print("\n✅ Seed completed successfully!")
 

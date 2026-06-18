@@ -13,7 +13,7 @@ __pycache__/
 # Environment
 .env
 !.env.example
-!.env.production
+.env.production
 
 # Uploads content
 uploads/*
