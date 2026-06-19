@@ -366,7 +366,13 @@ async def authenticate_or_register_google_user(
     return user
 
 
-async def complete_google_profile(db: AsyncSession, user: User, phone: str, password: str) -> User:
+async def complete_google_profile(
+    db: AsyncSession,
+    user: User,
+    phone: str,
+    password: str,
+    city: Optional[str] = None,
+) -> User:
     """Store mobile number and password for a Google-created account."""
     phone = phone.strip()
     if not phone:
@@ -385,6 +391,7 @@ async def complete_google_profile(db: AsyncSession, user: User, phone: str, pass
         )
 
     user.phone = phone
+    user.city = city.strip() if city else user.city
     user.hashed_password = hash_password(password)
     user.is_verified = True
     await db.flush()

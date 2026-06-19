@@ -80,6 +80,7 @@ async def complete_google_profile(
         db,
         current_user,
         phone=body.phone,
+        city=body.city,
         password=body.password,
     )
     return schemas.UserResponse.model_validate(user)

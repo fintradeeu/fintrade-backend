@@ -32,6 +32,7 @@ class GoogleAuthRequest(BaseModel):
 
 class GoogleProfileCompletionRequest(BaseModel):
     phone: str = Field(..., min_length=8, max_length=20)
+    city: Optional[str] = Field(None, max_length=100)
     password: str = Field(..., min_length=8, max_length=128)
 
 
