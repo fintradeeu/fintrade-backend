@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.orm import selectinload
 
+from app.modules.auth.models import User
+from app.modules.courses.models import Course, CourseEnrollment
 from app.modules.lectures.models import Lecture, LectureRecording, RegistrationOTP
 from app.utils.logger import get_logger
 
@@ -97,12 +99,68 @@ async def end_lecture(db: AsyncSession, lecture_id: int) -> Lecture:
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
     
+    was_completed = bool(lecture.is_completed)
     lecture.is_live = False
     lecture.is_completed = True
     await db.commit()
     await db.refresh(lecture)
     logger.info("lecture_ended", lecture_id=lecture.id)
+    if not was_completed:
+        await notify_enrolled_students_lecture_finished(db, lecture)
     return lecture
+
+
+async def notify_enrolled_students_lecture_finished(db: AsyncSession, lecture: Lecture) -> dict:
+    """Send WhatsApp completion notification to active enrolled students for this lecture course."""
+    if not lecture.course_id:
+        logger.info("lecture_finished_whatsapp_skipped_no_course", lecture_id=lecture.id)
+        return {"sent": 0, "failed": 0, "skipped": 0}
+
+    from app.integrations.whatsapp_service import send_lecture_finished_message
+
+    course = await db.get(Course, lecture.course_id)
+    rows = await db.execute(
+        select(User)
+        .join(CourseEnrollment, CourseEnrollment.user_id == User.id)
+        .where(
+            CourseEnrollment.course_id == lecture.course_id,
+            CourseEnrollment.is_active == True,  # noqa: E712
+            User.is_active == True,  # noqa: E712
+            User.phone.isnot(None),
+        )
+        .distinct()
+    )
+    students = list(rows.scalars().all())
+    sent = 0
+    failed = 0
+    skipped = 0
+    finished_at = datetime.now(timezone.utc).strftime("%d %b %Y, %I:%M %p UTC")
+
+    for student in students:
+        if not student.phone:
+            skipped += 1
+            continue
+        ok = await send_lecture_finished_message(
+            student_phone=student.phone,
+            student_name=student.full_name or "Student",
+            lecture_title=lecture.title,
+            course_title=course.title if course else "your course",
+            finished_at=finished_at,
+        )
+        if ok:
+            sent += 1
+        else:
+            failed += 1
+
+    logger.info(
+        "lecture_finished_whatsapp_notifications",
+        lecture_id=lecture.id,
+        course_id=lecture.course_id,
+        sent=sent,
+        failed=failed,
+        skipped=skipped,
+    )
+    return {"sent": sent, "failed": failed, "skipped": skipped}
 
 
 async def add_recording(db: AsyncSession, lecture_id: int, recording_url: str) -> LectureRecording:

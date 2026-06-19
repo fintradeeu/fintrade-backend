@@ -95,10 +95,11 @@ async def login(
     """Step 1 - Validate credentials and send OTP via email. (Admins bypass OTP)"""
     user = await services.authenticate_user(db, body.email, body.password)
     
-    # Check if user has admin, super_admin, or distributor (IB) role to bypass OTP
+    # Admin and Super Admin bypass OTP. IB/distributor accounts must verify by email OTP.
+    user_role_names = {role.name for role in user.roles}
     is_otp_bypassed = False
     for role in user.roles:
-        if role.name in ["admin", "super_admin", "distributor"]:
+        if role.name in ["admin", "super_admin"]:
             is_otp_bypassed = True
             break
             
@@ -122,7 +123,7 @@ async def login(
     if len(digits) >= 8:
         is_phone = True
 
-    channel = "sms" if is_phone else "email"
+    channel = "email" if "distributor" in user_role_names else ("sms" if is_phone else "email")
     otp_result = await services.generate_and_send_otp(db, user, channel=channel)
     
     message_text = "Verification code sent to your email."

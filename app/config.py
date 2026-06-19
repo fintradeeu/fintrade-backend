@@ -98,6 +98,7 @@ class Settings(BaseSettings):
     # ── WhatsApp / SMS Reminders ─────────────────────────────────────
     WHATSAPP_API_TOKEN: str = ""
     WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_TEMPLATE_LANGUAGE: str = "en_US"
 
     # ── Milvus ───────────────────────────────────────────────────────
     MILVUS_HOST: str = "localhost"
