@@ -146,6 +146,32 @@ def is_nimbus_sms_configured() -> bool:
     )
 
 
+def get_sms_gateway_status() -> dict:
+    """Return redacted SMS provider configuration status for logs/diagnostics."""
+    nimbus_fields = {
+        "user_id": bool(settings.NIMBUS_SMS_USER_ID),
+        "password": bool(settings.NIMBUS_SMS_PASSWORD),
+        "sender_id": bool(settings.NIMBUS_SMS_SENDER_ID),
+        "entity_id": bool(settings.NIMBUS_SMS_ENTITY_ID),
+        "template_id": bool(settings.NIMBUS_SMS_TEMPLATE_ID),
+    }
+    return {
+        "active_gateway": (
+            "nimbus"
+            if all(nimbus_fields.values())
+            else "fast2sms"
+            if bool(settings.FAST2SMS_API_KEY)
+            else "twilio"
+            if bool(settings.TWILIO_ACCOUNT_SID and settings.TWILIO_SERVICE_SID)
+            else "none"
+        ),
+        "nimbus_configured": all(nimbus_fields.values()),
+        "nimbus_fields": nimbus_fields,
+        "fast2sms_configured": bool(settings.FAST2SMS_API_KEY),
+        "twilio_configured": bool(settings.TWILIO_ACCOUNT_SID and settings.TWILIO_SERVICE_SID),
+    }
+
+
 async def send_nimbus_otp(phone: str, code: str) -> bool:
     """Send verification OTP using the Nimbus SendSingleApi endpoint."""
     if not is_nimbus_sms_configured():

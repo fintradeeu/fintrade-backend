@@ -476,7 +476,9 @@ async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[
         
     # Check if user has phone number for SMS OTP
     if use_sms and user.phone:
-        from app.core.twilio_otp import is_local_sms_otp_enabled, send_sms_otp
+        from app.core.twilio_otp import get_sms_gateway_status, is_local_sms_otp_enabled, send_sms_otp
+
+        logger.info("sms_gateway_status", **get_sms_gateway_status())
 
         if is_local_sms_otp_enabled():
             code = _generate_otp_code()

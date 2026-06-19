@@ -207,6 +207,16 @@ def trigger_db_migration(secret_key: str):
             "006_repair_news_articles_schema.py",
             "007_fix_news_enums_drop_video_type.py",
             "008_add_user_permissions.py",
+            "009_add_lecture_registrations.py",
+            "009_force_drop_video_type.py",
+            "010_add_user_city.py",
+            "011_add_lecture_recordings.py",
+            "012_add_is_popular_to_courses.py",
+            "013_repair_payment_transactions_schema.py",
+            "3abe91512295_add_author_name_to_newsarticle.py",
+            "621bf7ebb607_add_feedback_forms.py",
+            "de8dc5db081f_merge_all_heads.py",
+            "df05f2889739_add_ai_tables.py",
             ".gitkeep",
         }
         for f in glob.glob(os.path.join(versions_dir, "*")):

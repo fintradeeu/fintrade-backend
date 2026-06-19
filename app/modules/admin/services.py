@@ -218,13 +218,20 @@ async def update_user(db: AsyncSession, user_id: int, data: dict) -> User:
 
 async def delete_user(db: AsyncSession, user_id: int) -> None:
     """Delete a user account."""
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.distributor_profile))
+        .where(User.id == user_id)
+    )
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
+    if user.distributor_profile is not None:
+        await db.delete(user.distributor_profile)
+        await db.flush()
     await db.delete(user)
     await db.flush()
     logger.info("admin_deleted_user", user_id=user_id)
