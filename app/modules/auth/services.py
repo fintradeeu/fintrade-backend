@@ -366,6 +366,32 @@ async def authenticate_or_register_google_user(
     return user
 
 
+async def complete_google_profile(db: AsyncSession, user: User, phone: str, password: str) -> User:
+    """Store mobile number and password for a Google-created account."""
+    phone = phone.strip()
+    if not phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile number is required",
+        )
+
+    existing = await db.execute(
+        select(User).where(User.phone == phone, User.id != user.id)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This mobile number is already registered with another account",
+        )
+
+    user.phone = phone
+    user.hashed_password = hash_password(password)
+    user.is_verified = True
+    await db.flush()
+    logger.info("google_profile_completed", user_id=user.id)
+    return user
+
+
 async def authenticate_user(db: AsyncSession, email_or_phone: str, password: str) -> User:
     """Verify credentials (email or phone number) and return the user."""
     identifier = email_or_phone.strip()

@@ -69,6 +69,22 @@ async def google_auth(
     )
 
 
+@router.post("/google/complete-profile", response_model=schemas.UserResponse)
+async def complete_google_profile(
+    body: schemas.GoogleProfileCompletionRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Complete mobile and password setup after Google sign-in."""
+    user = await services.complete_google_profile(
+        db,
+        current_user,
+        phone=body.phone,
+        password=body.password,
+    )
+    return schemas.UserResponse.model_validate(user)
+
+
 @router.post("/login", response_model=Union[schemas.TokenResponse, schemas.OTPPendingResponse])
 async def login(
     body: schemas.LoginRequest,
