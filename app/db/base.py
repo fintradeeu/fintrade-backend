@@ -23,6 +23,7 @@ def import_all_models():
     import app.modules.news.models  # noqa: F401
     import app.modules.settings.models  # noqa: F401
     import app.modules.payments.models  # noqa: F401
+    import app.modules.commissions.models  # noqa: F401
 
 
 # Also run on import so `from app.db.base import ...` triggers discovery

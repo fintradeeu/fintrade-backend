@@ -360,6 +360,11 @@ async def enroll_user(
     db.add(enrollment)
     await db.flush()
     await db.refresh(enrollment)
+    try:
+        from app.modules.commissions.services import credit_commission_for_enrollment
+        await credit_commission_for_enrollment(db, enrollment)
+    except Exception as e:
+        logger.error("commission_credit_failed", enrollment_id=enrollment.id, error=str(e))
     logger.info(
         "user_enrolled",
         user_id=user_id,

@@ -36,7 +36,7 @@ async def get_distributor_by_referral_code(db: AsyncSession, code: str) -> Optio
 
 
 async def list_referrals(db: AsyncSession, distributor_id: int) -> List[StudentReferral]:
-    """List all referrals for a distributor."""
+    """List referrals for a distributor, hiding stale pending rows after enrollment."""
     result = await db.execute(
         select(StudentReferral)
         .options(
@@ -46,7 +46,23 @@ async def list_referrals(db: AsyncSession, distributor_id: int) -> List[StudentR
         .where(StudentReferral.distributor_id == distributor_id)
         .order_by(StudentReferral.created_at.desc())
     )
-    return list(result.scalars().all())
+    referrals = list(result.scalars().all())
+
+    enrolled_students_result = await db.execute(
+        select(CourseEnrollment.user_id)
+        .where(
+            CourseEnrollment.distributor_id == distributor_id,
+            CourseEnrollment.is_active == True,  # noqa: E712
+        )
+        .distinct()
+    )
+    enrolled_student_ids = set(enrolled_students_result.scalars().all())
+
+    return [
+        referral
+        for referral in referrals
+        if not (referral.course_id is None and referral.student_id in enrolled_student_ids)
+    ]
 
 
 async def get_distributor_stats(db: AsyncSession, distributor_id: int) -> dict:
@@ -59,11 +75,14 @@ async def get_distributor_stats(db: AsyncSession, distributor_id: int) -> dict:
         )
     ).scalar() or 0
 
-    # Total courses purchased (referral records)
+    # Total successfully enrolled courses through this distributor
     courses_count = (
         await db.execute(
-            select(func.count(StudentReferral.id))
-            .where(StudentReferral.distributor_id == distributor_id)
+            select(func.count(CourseEnrollment.id))
+            .where(
+                CourseEnrollment.distributor_id == distributor_id,
+                CourseEnrollment.is_active == True,  # noqa: E712
+            )
         )
     ).scalar() or 0
 

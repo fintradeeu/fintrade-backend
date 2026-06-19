@@ -30,6 +30,7 @@ from app.modules.news.routes import router as news_router
 from app.modules.settings.routes import router as settings_router
 from app.modules.payments.routes import router as payments_router
 from app.modules.dashboard.routes import router as dashboard_router
+from app.modules.commissions.routes import router as commissions_router
 
 
 @asynccontextmanager
@@ -161,6 +162,7 @@ app.include_router(roles_router)
 app.include_router(news_router)
 app.include_router(settings_router)
 app.include_router(payments_router)
+app.include_router(commissions_router)
 
 
 import os
@@ -213,6 +215,7 @@ def trigger_db_migration(secret_key: str):
             "011_add_lecture_recordings.py",
             "012_add_is_popular_to_courses.py",
             "013_repair_payment_transactions_schema.py",
+            "014_add_commission_wallet_tables.py",
             "3abe91512295_add_author_name_to_newsarticle.py",
             "621bf7ebb607_add_feedback_forms.py",
             "de8dc5db081f_merge_all_heads.py",

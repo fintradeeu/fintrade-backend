@@ -269,8 +269,11 @@ async def get_distributor_stats(db: AsyncSession, distributor_id: int) -> dict:
 
     courses_count = (
         await db.execute(
-            select(func.count(StudentReferral.id))
-            .where(StudentReferral.distributor_id == distributor_id)
+            select(func.count(CourseEnrollment.id))
+            .where(
+                CourseEnrollment.distributor_id == distributor_id,
+                CourseEnrollment.is_active == True,  # noqa: E712
+            )
         )
     ).scalar() or 0
 

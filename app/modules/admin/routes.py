@@ -2,7 +2,7 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File
+from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import require_roles, get_current_user
@@ -21,6 +21,11 @@ from app.modules.offers import schemas as offer_schemas, services as offer_servi
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
+def require_super_admin_user(user: User) -> None:
+    if not any(role.name == "super_admin" for role in user.roles):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Super Admin role")
+
+
 # ── Dashboard ────────────────────────────────────────────────────────
 @router.get("/stats", response_model=schemas.AdminStatsResponse)
 async def admin_stats(
@@ -36,14 +41,20 @@ async def admin_stats(
 async def list_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    _admin: User = Depends(require_roles(["admin"])),
+    admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
     """List all users (admin only)."""
     data = await services.list_users(db, skip=skip, limit=limit)
+    users = data["users"]
+    users = [
+        user
+        for user in users
+        if not any(role.name == "distributor" for role in user.roles)
+    ]
     return schemas.UserListResponse(
-        users=[UserResponse.model_validate(u) for u in data["users"]],
-        total=data["total"],
+        users=[UserResponse.model_validate(u) for u in users],
+        total=len(users) if users != data["users"] else data["total"],
     )
 
 
@@ -151,10 +162,11 @@ async def delete_user(
 # ── Distributor management ──────────────────────────────────────────
 @router.get("/distributors", response_model=List[schemas.AdminDistributorResponse])
 async def list_distributors(
-    _admin: User = Depends(require_roles(["admin"])),
+    admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all distributors (admin only)."""
+    """List all distributors (Super Admin only)."""
+    require_super_admin_user(admin)
     from sqlalchemy import select, func
     from app.modules.distributors.models import StudentReferral
     from app.modules.courses.models import CourseEnrollment
@@ -186,6 +198,8 @@ async def list_distributors(
             created_at=d.created_at,
             user_name=d.user.full_name if d.user else None,
             user_email=d.user.email if d.user else None,
+            phone=d.user.phone if d.user else None,
+            city=d.user.city if d.user else None,
             total_students_referred=counts_map.get(d.id, 0),
             total_revenue_generated=revenue_map.get(d.id, 0.0),
         )
@@ -196,10 +210,11 @@ async def list_distributors(
 @router.get("/distributors/{distributor_id}/stats", response_model=schemas.AdminDistributorStatsResponse)
 async def distributor_stats(
     distributor_id: int,
-    _admin: User = Depends(require_roles(["admin"])),
+    admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get stats for a specific distributor (admin only)."""
+    """Get stats for a specific distributor (Super Admin only)."""
+    require_super_admin_user(admin)
     stats = await services.get_distributor_stats(db, distributor_id)
     return schemas.AdminDistributorStatsResponse(**stats)
 
@@ -207,10 +222,11 @@ async def distributor_stats(
 @router.get("/distributors/{distributor_id}/referrals", response_model=List[ReferralResponse])
 async def list_distributor_referrals(
     distributor_id: int,
-    _admin: User = Depends(require_roles(["admin"])),
+    admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """List referred students for a specific distributor (admin only)."""
+    """List referred students for a specific distributor (Super Admin only)."""
+    require_super_admin_user(admin)
     from app.modules.distributors import services as dist_services
     
     referrals = await dist_services.list_referrals(db, distributor_id)

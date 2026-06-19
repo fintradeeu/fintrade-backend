@@ -70,6 +70,8 @@ class AdminDistributorResponse(BaseModel):
     created_at: datetime
     user_name: Optional[str] = None
     user_email: Optional[str] = None
+    phone: Optional[str] = None
+    city: Optional[str] = None
     total_students_referred: int = 0
     total_revenue_generated: float = 0.0
 
