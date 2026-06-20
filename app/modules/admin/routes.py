@@ -82,6 +82,11 @@ async def create_admin(
         created_by=admin.id,
         phone=body.phone,
         city=body.city,
+        bank_account_holder_name=body.bank_account_holder_name,
+        bank_name=body.bank_name,
+        bank_account_number=body.bank_account_number,
+        bank_ifsc_code=body.bank_ifsc_code,
+        bank_upi_id=body.bank_upi_id,
     )
     return UserResponse.model_validate(user)
 
@@ -200,6 +205,16 @@ async def list_distributors(
             user_email=d.user.email if d.user else None,
             phone=d.user.phone if d.user else None,
             city=d.user.city if d.user else None,
+            profile_photo_url=d.profile_photo_url,
+            aadhaar_card_url=d.aadhaar_card_url,
+            pan_card_url=d.pan_card_url,
+            bank_account_holder_name=d.bank_account_holder_name,
+            bank_name=d.bank_name,
+            bank_account_number=d.bank_account_number,
+            bank_ifsc_code=d.bank_ifsc_code,
+            bank_upi_id=d.bank_upi_id,
+            self_registered=d.self_registered,
+            verification_status=d.verification_status,
             total_students_referred=counts_map.get(d.id, 0),
             total_revenue_generated=revenue_map.get(d.id, 0.0),
         )

@@ -24,6 +24,16 @@ class Distributor(Base):
     region = Column(String(255), nullable=False)
     referral_code = Column(String(50), unique=True, nullable=False, index=True)
     discount_percentage = Column(Float, default=0.0)
+    profile_photo_url = Column(Text, nullable=True)
+    aadhaar_card_url = Column(Text, nullable=True)
+    pan_card_url = Column(Text, nullable=True)
+    bank_account_holder_name = Column(String(255), nullable=True)
+    bank_name = Column(String(255), nullable=True)
+    bank_account_number = Column(String(100), nullable=True)
+    bank_ifsc_code = Column(String(50), nullable=True)
+    bank_upi_id = Column(String(255), nullable=True)
+    self_registered = Column(String(10), nullable=False, default="no")
+    verification_status = Column(String(30), nullable=False, default="pending")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # relationships

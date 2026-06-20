@@ -217,6 +217,7 @@ def trigger_db_migration(secret_key: str):
             "013_repair_payment_transactions_schema.py",
             "014_add_commission_wallet_tables.py",
             "015_add_referral_leads.py",
+            "016_add_ib_self_registration_fields.py",
             "3abe91512295_add_author_name_to_newsarticle.py",
             "621bf7ebb607_add_feedback_forms.py",
             "de8dc5db081f_merge_all_heads.py",

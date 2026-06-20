@@ -110,6 +110,11 @@ async def create_distributor_user(
     created_by: int,
     phone: Optional[str] = None,
     city: Optional[str] = None,
+    bank_account_holder_name: Optional[str] = None,
+    bank_name: Optional[str] = None,
+    bank_account_number: Optional[str] = None,
+    bank_ifsc_code: Optional[str] = None,
+    bank_upi_id: Optional[str] = None,
 ) -> tuple:
     """Admin creates a distributor: user + distributor profile."""
     if not referral_code:
@@ -144,6 +149,12 @@ async def create_distributor_user(
         region=region,
         referral_code=referral_code,
         discount_percentage=discount_percentage,
+        bank_account_holder_name=bank_account_holder_name,
+        bank_name=bank_name,
+        bank_account_number=bank_account_number,
+        bank_ifsc_code=bank_ifsc_code,
+        bank_upi_id=bank_upi_id,
+        verification_status="approved",
     )
     db.add(distributor)
     await db.flush()
@@ -201,7 +212,17 @@ async def update_user(db: AsyncSession, user_id: int, data: dict) -> User:
                         detail="Referral code already exists",
                     )
             
-            for field in ["region", "referral_code", "discount_percentage"]:
+            for field in [
+                "region",
+                "referral_code",
+                "discount_percentage",
+                "bank_account_holder_name",
+                "bank_name",
+                "bank_account_number",
+                "bank_ifsc_code",
+                "bank_upi_id",
+                "verification_status",
+            ]:
                 if field in data and data[field] is not None:
                     setattr(distributor, field, data[field])
                     

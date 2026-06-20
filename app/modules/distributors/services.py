@@ -1,13 +1,19 @@
 """Distributors module — service layer."""
 
+import os
+import random
+import string
+from uuid import uuid4
 from typing import List, Optional
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.security import hash_password
 from app.modules.auth.models import User
+from app.modules.auth.services import get_or_create_role
 from app.modules.distributors.models import Distributor, ReferralLead, StudentReferral
 from app.modules.courses.models import Course, CourseEnrollment
 from app.utils.logger import get_logger
@@ -34,6 +40,95 @@ async def get_distributor_by_referral_code(db: AsyncSession, code: str) -> Optio
         select(Distributor).where(Distributor.referral_code == code)
     )
     return result.scalar_one_or_none()
+
+
+async def _generate_referral_code(db: AsyncSession) -> str:
+    while True:
+        code_suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        referral_code = f"IB-{code_suffix}"
+        existing = await db.execute(select(Distributor).where(Distributor.referral_code == referral_code))
+        if not existing.scalar_one_or_none():
+            return referral_code
+
+
+async def save_ib_upload(file: UploadFile) -> str:
+    ext = os.path.splitext(file.filename or "")[1].lower().lstrip(".")
+    allowed = {"jpg", "jpeg", "png", "pdf", "webp"}
+    if ext not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {', '.join(sorted(allowed))}",
+        )
+    upload_dir = os.path.join("uploads", "ib-documents")
+    os.makedirs(upload_dir, exist_ok=True)
+    filename = f"{uuid4().hex}.{ext}"
+    path = os.path.join(upload_dir, filename)
+    content = await file.read()
+    with open(path, "wb") as out:
+        out.write(content)
+    return f"/{path.replace(os.sep, '/')}"
+
+
+async def self_register_distributor(
+    db: AsyncSession,
+    *,
+    email: str,
+    full_name: str,
+    password: str,
+    phone: Optional[str],
+    city: Optional[str],
+    region: str,
+    bank_account_holder_name: Optional[str],
+    bank_name: Optional[str],
+    bank_account_number: Optional[str],
+    bank_ifsc_code: Optional[str],
+    bank_upi_id: Optional[str],
+    profile_photo_url: Optional[str],
+    aadhaar_card_url: Optional[str],
+    pan_card_url: Optional[str],
+) -> Distributor:
+    existing = await db.execute(select(User).where(User.email == email.strip().lower()))
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A user with this email already exists",
+        )
+
+    role = await get_or_create_role(db, "distributor")
+    user = User(
+        email=email.strip().lower(),
+        full_name=full_name.strip(),
+        phone=phone,
+        city=city,
+        hashed_password=hash_password(password),
+        is_verified=True,
+        is_active=True,
+    )
+    user.roles.append(role)
+    db.add(user)
+    await db.flush()
+
+    distributor = Distributor(
+        user_id=user.id,
+        region=region,
+        referral_code=await _generate_referral_code(db),
+        discount_percentage=10,
+        profile_photo_url=profile_photo_url,
+        aadhaar_card_url=aadhaar_card_url,
+        pan_card_url=pan_card_url,
+        bank_account_holder_name=bank_account_holder_name,
+        bank_name=bank_name,
+        bank_account_number=bank_account_number,
+        bank_ifsc_code=bank_ifsc_code,
+        bank_upi_id=bank_upi_id,
+        self_registered="yes",
+        verification_status="pending",
+    )
+    db.add(distributor)
+    await db.flush()
+    await db.refresh(distributor)
+    logger.info("distributor_self_registered", distributor_id=distributor.id, referral_code=distributor.referral_code)
+    return distributor
 
 
 async def create_referral_lead(db: AsyncSession, data: dict) -> ReferralLead:
