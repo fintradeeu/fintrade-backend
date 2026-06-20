@@ -13,6 +13,17 @@ from app.modules.distributors import schemas, services
 router = APIRouter(prefix="/distributor", tags=["Distributor"])
 
 
+@router.post("/referral-leads", response_model=schemas.ReferralLeadResponse, status_code=201)
+async def create_referral_lead(
+    body: schemas.ReferralLeadCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Capture a lead when someone opens an IB referral link."""
+    lead = await services.create_referral_lead(db, body.model_dump())
+    await db.commit()
+    return schemas.ReferralLeadResponse.model_validate(lead)
+
+
 @router.get("/profile", response_model=schemas.DistributorProfileResponse)
 async def get_profile(
     current_user: User = Depends(require_roles(["distributor"])),
@@ -53,19 +64,7 @@ async def get_referrals(
 ):
     """List all students referred by this distributor."""
     dist = await services.get_distributor_by_user_id(db, current_user.id)
-    referrals = await services.list_referrals(db, dist.id)
-    return [
-        schemas.ReferralResponse(
-            id=r.id,
-            student_id=r.student_id,
-            student_name=r.student.full_name if r.student else None,
-            student_email=r.student.email if r.student else None,
-            course_id=r.course_id,
-            course_title=r.course.title if r.course else None,
-            created_at=r.created_at,
-        )
-        for r in referrals
-    ]
+    return [schemas.ReferralResponse(**row) for row in await services.list_referral_journeys(db, dist.id)]
 
 
 @router.get("/stats", response_model=schemas.DistributorStatsResponse)

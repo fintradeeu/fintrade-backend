@@ -146,6 +146,8 @@ async def register_user(
             )
             db.add(referral)
             await db.flush()
+            from app.modules.distributors.services import link_referral_lead_to_user
+            await link_referral_lead_to_user(db, distributor.id, user)
             logger.info("user_referred_by_distributor", user_id=user.id, distributor_id=distributor.id)
 
     return user
