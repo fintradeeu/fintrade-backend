@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.modules.certificates.models import Certificate
 from app.modules.courses.models import CourseEnrollment, Course
@@ -95,14 +96,32 @@ async def generate_certificate(db: AsyncSession, user_id: int, course_id: int) -
     )
     db.add(cert)
     await db.flush()
-    await db.refresh(cert)
+    result = await db.execute(
+        select(Certificate)
+        .options(selectinload(Certificate.course))
+        .where(Certificate.id == cert.id)
+    )
+    cert = result.scalar_one()
     return cert
+
+
+async def list_certificates_for_user(db: AsyncSession, user_id: int) -> list[Certificate]:
+    """List certificates for the current student with course info."""
+    result = await db.execute(
+        select(Certificate)
+        .options(selectinload(Certificate.course))
+        .where(Certificate.user_id == user_id)
+        .order_by(Certificate.issued_at.desc())
+    )
+    return list(result.scalars().all())
 
 
 async def get_certificate(db: AsyncSession, cert_id: int, user_id: int) -> Certificate:
     """Get a certificate by ID (user can only view their own)."""
     result = await db.execute(
-        select(Certificate).where(Certificate.id == cert_id, Certificate.user_id == user_id)
+        select(Certificate)
+        .options(selectinload(Certificate.course))
+        .where(Certificate.id == cert_id, Certificate.user_id == user_id)
     )
     cert = result.scalar_one_or_none()
     if cert is None:
@@ -141,65 +160,127 @@ def _generate_pdf(filepath: str, student_name: str, course_title: str, unique_co
 
     c = canvas.Canvas(filepath, pagesize=landscape(A4))
     width, height = landscape(A4)
+    is_research = "research" in (course_title or "").lower() or "analyst" in (course_title or "").lower()
+    issue_date = datetime.now(timezone.utc).strftime("%d %B, %Y").upper()
+    cert_no = f"FT-{unique_code}"
 
-    # Background
-    c.setFillColor(HexColor("#1a1a2e"))
-    c.rect(0, 0, width, height, fill=1)
-
-    # Border
-    c.setStrokeColor(HexColor("#e94560"))
-    c.setLineWidth(3)
-    c.rect(30, 30, width - 60, height - 60, fill=0)
-
-    # Inner border
-    c.setStrokeColor(HexColor("#0f3460"))
-    c.setLineWidth(1)
-    c.rect(45, 45, width - 90, height - 90, fill=0)
-
-    # Title
-    c.setFillColor(HexColor("#e94560"))
-    c.setFont("Helvetica-Bold", 36)
-    c.drawCentredString(width / 2, height - 120, "CERTIFICATE OF COMPLETION")
-
-    # Subtitle
-    c.setFillColor(HexColor("#16213e"))
-    c.setFont("Helvetica", 14)
-    c.drawCentredString(width / 2, height - 155, "FItTrade Learning Management System")
-
-    # Divider
-    c.setStrokeColor(HexColor("#e94560"))
-    c.setLineWidth(2)
-    c.line(width / 2 - 150, height - 170, width / 2 + 150, height - 170)
-
-    # Body text
     c.setFillColor(HexColor("#ffffff"))
-    c.setFont("Helvetica", 16)
-    c.drawCentredString(width / 2, height - 210, "This is to certify that")
+    c.rect(0, 0, width, height, fill=1, stroke=0)
 
-    # Student Name
-    c.setFillColor(HexColor("#e94560"))
-    c.setFont("Helvetica-Bold", 28)
-    c.drawCentredString(width / 2, height - 250, student_name)
+    red = HexColor("#ef3135")
+    dark = HexColor("#111827")
+    muted = HexColor("#4b5563")
+    gold = HexColor("#d6a32f")
 
-    # Course completion text
-    c.setFillColor(HexColor("#ffffff"))
-    c.setFont("Helvetica", 16)
-    c.drawCentredString(width / 2, height - 290, "has successfully completed the course")
+    if is_research:
+        c.setFillColor(HexColor("#c8172a"))
+        c.rect(0, 0, 165, height, fill=1, stroke=0)
+        c.setFillColor(HexColor("#f7c14d"))
+        c.rect(165, 0, 7, height, fill=1, stroke=0)
+        c.setFillColor(HexColor("#ffffff"))
+        c.setFont("Helvetica-Bold", 22)
+        c.drawString(22, height - 42, "The")
+        c.setFont("Helvetica-Bold", 30)
+        c.drawString(22, height - 72, "FinTrade")
+        c.setFont("Helvetica-Oblique", 8)
+        c.drawString(58, height - 85, "Learn to Earn")
+        content_x = 175
+    else:
+        c.setFillColor(HexColor("#eeeeee"))
+        c.circle(-40, height + 35, 305, fill=1, stroke=0)
+        c.setFillColor(red)
+        c.circle(-38, height + 35, 275, fill=1, stroke=0)
+        c.setFillColor(HexColor("#ffffff"))
+        c.circle(-15, height + 12, 238, fill=1, stroke=0)
+        c.setFillColor(HexColor("#eeeeee"))
+        c.circle(width + 30, -25, 272, fill=1, stroke=0)
+        c.setFillColor(red)
+        c.circle(width + 35, -28, 238, fill=1, stroke=0)
+        c.setFillColor(HexColor("#ffffff"))
+        c.circle(width + 20, -10, 205, fill=1, stroke=0)
+        c.setFillColor(red)
+        c.setFont("Helvetica-Bold", 18)
+        c.drawRightString(width - 105, height - 36, "The")
+        c.setFillColor(dark)
+        c.setFont("Helvetica-Bold", 25)
+        c.drawRightString(width - 38, height - 55, "FinTrade")
+        c.setFont("Helvetica-Oblique", 8)
+        c.drawRightString(width - 38, height - 67, "Learn to Earn")
+        content_x = 0
 
-    # Course Title
-    c.setFillColor(HexColor("#0f3460"))
-    c.setFont("Helvetica-Bold", 22)
-    c.drawCentredString(width / 2, height - 325, course_title)
+    center_x = content_x + (width - content_x) / 2
+    top_y = height - (70 if is_research else 85)
+    c.setFillColor(red)
+    c.setFont("Times-Bold", 52)
+    c.drawCentredString(center_x, top_y, "CERTIFICATE")
+    c.setFillColor(dark)
+    c.setFont("Times-Bold", 22)
+    c.drawCentredString(center_x, top_y - 33, "OF COMPLETION")
+    c.setStrokeColor(red)
+    c.setLineWidth(0.8)
+    c.line(center_x - 70, top_y - 43, center_x + 70, top_y - 43)
 
-    # Date
-    c.setFillColor(HexColor("#cccccc"))
-    c.setFont("Helvetica", 12)
-    issued_date = datetime.now(timezone.utc).strftime("%B %d, %Y")
-    c.drawCentredString(width / 2, height - 380, f"Issued on: {issued_date}")
+    c.setFillColor(dark)
+    c.setFont("Helvetica", 24)
+    program_name = "Professional Research Analyst Program" if is_research else "Professional Trading Program"
+    c.drawCentredString(center_x, top_y - 80, program_name)
 
-    # Unique code
-    c.setFillColor(HexColor("#888888"))
+    c.setFont("Helvetica-Bold", 9)
+    c.drawCentredString(center_x, top_y - 118, "THIS CERTIFICATE IS PROUDLY PRESENTED TO")
+
+    c.setFillColor(red)
+    c.setFont("Helvetica-Oblique", 38)
+    c.drawCentredString(center_x, top_y - 166, student_name)
+    c.setStrokeColor(red)
+    c.setLineWidth(0.8)
+    c.line(center_x - 230, top_y - 178, center_x + 230, top_y - 178)
+
+    c.setFillColor(dark)
     c.setFont("Helvetica", 10)
-    c.drawCentredString(width / 2, 70, f"Certificate Code: {unique_code}")
+    c.drawCentredString(center_x, top_y - 203, "For successfully completing the course and gaining practical knowledge in global")
+    c.drawCentredString(center_x, top_y - 224, "trade operations, financial instruments, and risk mitigation strategies.")
+
+    signature_y = 138 if is_research else 126
+    left_sig_x = center_x - 230
+    right_sig_x = center_x + 230
+    c.setFillColor(dark)
+    c.setFont("Helvetica-Oblique", 27)
+    c.drawCentredString(left_sig_x, signature_y + 38, "Hvyas")
+    c.drawCentredString(right_sig_x, signature_y + 38, "Chirag")
+    c.setStrokeColor(HexColor("#cfa869") if is_research else HexColor("#bdbdbd"))
+    c.line(left_sig_x - 80, signature_y + 20, left_sig_x + 80, signature_y + 20)
+    c.line(right_sig_x - 80, signature_y + 20, right_sig_x + 80, signature_y + 20)
+    c.setFillColor(red)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawCentredString(left_sig_x, signature_y, "HET VYAS")
+    c.drawCentredString(right_sig_x, signature_y, "CHIRAG PANCHAL")
+    c.setFillColor(dark)
+    c.setFont("Helvetica", 5)
+    c.drawCentredString(left_sig_x, signature_y - 9, "(FOUNDER/COO)")
+    c.drawCentredString(right_sig_x, signature_y - 9, "(MD/CEO)")
+
+    if is_research:
+        badge_x = center_x
+        badge_y = signature_y + 18
+        c.setFillColor(gold)
+        c.circle(badge_x, badge_y, 38, fill=1, stroke=0)
+        c.setFillColor(HexColor("#8b5d00"))
+        c.circle(badge_x, badge_y, 31, fill=1, stroke=0)
+        c.setFillColor(gold)
+        c.setFont("Helvetica-Bold", 15)
+        c.drawCentredString(badge_x, badge_y + 2, "CERTIFIED")
+
+    footer_y = 34
+    c.setFillColor(red)
+    c.circle(center_x - 215, footer_y + 10, 12, fill=1, stroke=0)
+    c.circle(center_x + 125, footer_y + 10, 12, fill=1, stroke=0)
+    c.setFillColor(dark)
+    c.setFont("Helvetica-Bold", 6)
+    c.drawString(center_x - 190, footer_y + 13, "DATE OF COMPLETION")
+    c.drawString(center_x + 150, footer_y + 13, "CERTIFICATE NUMBER")
+    c.setFillColor(red)
+    c.setFont("Helvetica-Bold", 7)
+    c.drawString(center_x - 190, footer_y + 2, issue_date)
+    c.drawString(center_x + 150, footer_y + 2, cert_no)
 
     c.save()

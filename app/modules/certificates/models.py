@@ -25,5 +25,8 @@ class Certificate(Base):
     certificate_url = Column(Text, nullable=True)
     issued_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
+    course = relationship("Course")
+    user = relationship("User")
+
     def __repr__(self):
         return f"<Certificate user={self.user_id} course={self.course_id}>"

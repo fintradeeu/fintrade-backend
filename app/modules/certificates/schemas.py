@@ -14,6 +14,8 @@ class CertificateResponse(BaseModel):
     id: int
     user_id: int
     course_id: int
+    course_title: Optional[str] = None
+    certificate_number: Optional[str] = None
     unique_code: str
     certificate_url: Optional[str] = None
     issued_at: datetime
