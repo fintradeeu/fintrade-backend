@@ -26,6 +26,13 @@ async def submit_kyc(db: AsyncSession, user_id: int, data: dict) -> KYCSubmissio
     kyc = result.scalar_one_or_none()
 
     if kyc:
+        # A rejected submission becomes a fresh pending review as soon as the
+        # student starts filling it again.
+        if kyc.status == "rejected":
+            kyc.status = "pending"
+            kyc.rejection_reason = None
+            kyc.reviewed_by = None
+            kyc.reviewed_at = None
         for key, value in data.items():
             if value is not None:
                 setattr(kyc, key, value)
@@ -276,16 +283,24 @@ async def upload_document(
 async def generate_contract(
     db: AsyncSession, user_id: int, course_id: Optional[int], terms_accepted: bool
 ) -> Contract:
-    """Generate a contract after KYC is verified. Returns existing contract if already generated."""
+    """Create the pending contract dossier submitted for admin review."""
     result = await db.execute(
         select(KYCSubmission).where(KYCSubmission.user_id == user_id)
     )
     kyc = result.scalar_one_or_none()
     if not kyc:
         raise HTTPException(status_code=404, detail="KYC submission not found")
-    if kyc.status != "verified":
-        kyc.status = "verified"
-        await db.commit()
+    required_documents = (
+        kyc.aadhaar_doc_url,
+        kyc.pan_doc_url,
+        kyc.photo_url,
+        kyc.signature_url,
+        kyc.biometric_selfie_url,
+    )
+    if not all(required_documents):
+        raise HTTPException(status_code=400, detail="Upload all KYC documents before submitting for review")
+    if kyc.status == "rejected":
+        raise HTTPException(status_code=400, detail="Please fill and upload all documents again")
 
     # Check if a contract already exists for this user (one-time contract)
     existing_result = await db.execute(
@@ -293,6 +308,13 @@ async def generate_contract(
     )
     existing_contract = existing_result.scalar_one_or_none()
     if existing_contract:
+        if course_id is not None:
+            existing_contract.course_id = course_id
+        if terms_accepted:
+            existing_contract.terms_accepted = True
+            existing_contract.signed_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(existing_contract)
         return existing_contract
 
     # Generate contract number
@@ -309,7 +331,7 @@ Mobile         : {kyc.mobile or 'N/A'}
 Aadhaar        : {kyc.aadhaar_number or 'N/A'}
 PAN            : {kyc.pan_number or 'N/A'}
 
-KYC Status     : VERIFIED
+KYC Status     : PENDING ADMIN REVIEW
 Contract Date  : {datetime.now().strftime('%d %B %Y')}
 
 TERMS & CONDITIONS
@@ -334,7 +356,7 @@ Date: {datetime.now().strftime('%d/%m/%Y')}
         contract_number=contract_number,
         course_id=course_id,
         terms_accepted=terms_accepted,
-        signed_at=datetime.now(timezone.utc),
+        signed_at=datetime.now(timezone.utc) if terms_accepted else None,
         contract_text=contract_text,
     )
     db.add(contract)
@@ -378,6 +400,8 @@ async def get_kyc_detail(db: AsyncSession, kyc_id: int) -> KYCSubmission:
 async def approve_kyc(db: AsyncSession, kyc_id: int, admin_id: int) -> KYCSubmission:
     """Approve a KYC submission."""
     kyc = await get_kyc_detail(db, kyc_id)
+    if not all((kyc.aadhaar_doc_url, kyc.pan_doc_url, kyc.photo_url, kyc.signature_url, kyc.biometric_selfie_url)):
+        raise HTTPException(status_code=400, detail="Cannot approve an incomplete KYC submission")
     kyc.status = "verified"
     kyc.reviewed_by = admin_id
     kyc.reviewed_at = datetime.now(timezone.utc)
@@ -390,10 +414,20 @@ async def approve_kyc(db: AsyncSession, kyc_id: int, admin_id: int) -> KYCSubmis
 async def reject_kyc(db: AsyncSession, kyc_id: int, admin_id: int, reason: str) -> KYCSubmission:
     """Reject a KYC submission with reason."""
     kyc = await get_kyc_detail(db, kyc_id)
+    reason = reason.strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Rejection reason is required")
     kyc.status = "rejected"
     kyc.reviewed_by = admin_id
     kyc.reviewed_at = datetime.now(timezone.utc)
     kyc.rejection_reason = reason
+    # Force a complete fresh upload. Old files remain on disk for audit/cleanup,
+    # but are no longer attached to the active submission.
+    kyc.aadhaar_doc_url = None
+    kyc.pan_doc_url = None
+    kyc.photo_url = None
+    kyc.signature_url = None
+    kyc.biometric_selfie_url = None
     await db.commit()
     await db.refresh(kyc)
     return kyc

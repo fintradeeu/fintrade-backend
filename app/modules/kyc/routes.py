@@ -123,7 +123,7 @@ async def generate_contract(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate contract after KYC verification."""
+    """Submit a complete KYC contract dossier for admin review."""
     contract = await services.generate_contract(
         db, current_user.id, body.course_id, body.terms_accepted
     )
@@ -229,6 +229,7 @@ async def list_contracts(
                 
         items.append(schemas.AdminContractListItem(
             id=c.id,
+            kyc_id=c.kyc_id,
             contract_number=c.contract_number,
             user_id=c.user_id,
             user_name=c.user.full_name if c.user else None,
@@ -245,6 +246,7 @@ async def list_contracts(
             signature_url=kyc.signature_url if kyc else None,
             biometric_selfie_url=kyc.biometric_selfie_url if kyc else None,
             kyc_status=kyc.status if kyc else None,
+            rejection_reason=kyc.rejection_reason if kyc else None,
             course_id=c.course_id,
             course_title=course_title,
             signed_at=c.signed_at,
