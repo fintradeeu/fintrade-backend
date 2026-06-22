@@ -134,9 +134,14 @@ async def global_exception_handler(request: Request, exc: Exception):
             headers["Access-Control-Allow-Methods"] = "*"
             headers["Access-Control-Allow-Headers"] = "*"
             
+    public_detail = (
+        f"Internal Server Error: {error_detail}"
+        if settings.DEBUG
+        else "An unexpected server error occurred. Please try again."
+    )
     return JSONResponse(
         status_code=500,
-        content={"detail": f"Internal Server Error: {error_detail}"},
+        content={"detail": public_detail},
         headers=headers,
     )
 
@@ -218,6 +223,7 @@ def trigger_db_migration(secret_key: str):
             "014_add_commission_wallet_tables.py",
             "015_add_referral_leads.py",
             "016_add_ib_self_registration_fields.py",
+            "017_make_student_referral_course_nullable.py",
             "3abe91512295_add_author_name_to_newsarticle.py",
             "621bf7ebb607_add_feedback_forms.py",
             "de8dc5db081f_merge_all_heads.py",
