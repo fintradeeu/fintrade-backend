@@ -1,7 +1,7 @@
 """Allow referral registration before a student selects a course.
 
 Revision ID: 017_referral_course_nullable
-Revises: 016_add_ib_self_registration_fields
+Revises: 016_ib_self_registration
 Create Date: 2026-06-22
 """
 from typing import Sequence, Union
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 revision: str = "017_referral_course_nullable"
-down_revision: Union[str, None] = "016_add_ib_self_registration_fields"
+down_revision: Union[str, None] = "016_ib_self_registration"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

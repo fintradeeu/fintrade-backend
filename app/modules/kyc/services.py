@@ -283,7 +283,7 @@ async def upload_document(
 async def generate_contract(
     db: AsyncSession, user_id: int, course_id: Optional[int], terms_accepted: bool
 ) -> Contract:
-    """Create the pending contract dossier submitted for admin review."""
+    """Complete KYC and create the contract dossier for optional admin review."""
     result = await db.execute(
         select(KYCSubmission).where(KYCSubmission.user_id == user_id)
     )
@@ -301,6 +301,15 @@ async def generate_contract(
         raise HTTPException(status_code=400, detail="Upload all KYC documents before submitting for review")
     if kyc.status == "rejected":
         raise HTTPException(status_code=400, detail="Please fill and upload all documents again")
+
+    # A complete student submission is immediately usable. Admin approval is
+    # an audit action; only rejection sends the student back to re-upload.
+    if kyc.status != "verified":
+        kyc.status = "verified"
+        kyc.rejection_reason = None
+        kyc.reviewed_by = None
+        kyc.reviewed_at = None
+        await db.flush()
 
     # Check if a contract already exists for this user (one-time contract)
     existing_result = await db.execute(
@@ -331,7 +340,7 @@ Mobile         : {kyc.mobile or 'N/A'}
 Aadhaar        : {kyc.aadhaar_number or 'N/A'}
 PAN            : {kyc.pan_number or 'N/A'}
 
-KYC Status     : PENDING ADMIN REVIEW
+KYC Status     : COMPLETED
 Contract Date  : {datetime.now().strftime('%d %B %Y')}
 
 TERMS & CONDITIONS

@@ -107,6 +107,7 @@ class AdminContractListItem(BaseModel):
     biometric_selfie_url: Optional[str] = None
     kyc_status: Optional[str] = None
     rejection_reason: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
     course_id: Optional[int] = None
     course_title: Optional[str] = None
     signed_at: Optional[datetime] = None

@@ -1,6 +1,6 @@
 """add ib self registration fields
 
-Revision ID: 016_add_ib_self_registration_fields
+Revision ID: 016_ib_self_registration
 Revises: 015_add_referral_leads
 Create Date: 2026-06-20
 """
@@ -10,7 +10,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "016_add_ib_self_registration_fields"
+revision: str = "016_ib_self_registration"
 down_revision: Union[str, None] = "015_add_referral_leads"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
