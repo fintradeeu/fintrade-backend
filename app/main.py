@@ -30,6 +30,7 @@ from app.modules.news.routes import router as news_router
 from app.modules.settings.routes import router as settings_router
 from app.modules.payments.routes import router as payments_router
 from app.modules.dashboard.routes import router as dashboard_router
+from app.modules.mobile_api.routes import router as mobile_users_router, student_router as mobile_students_router
 
 
 @asynccontextmanager
@@ -141,6 +142,8 @@ app.include_router(roles_router)
 app.include_router(news_router)
 app.include_router(settings_router)
 app.include_router(payments_router)
+app.include_router(mobile_users_router, prefix="/api")
+app.include_router(mobile_students_router, prefix="/api")
 
 
 import os

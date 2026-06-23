@@ -117,3 +117,21 @@ class OTPCode(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
 
     user = relationship("User")
+
+
+class Student(Base):
+    __tablename__ = "students"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id = Column(Integer, nullable=True)
+    address = Column(Text, nullable=True)
+    qualification = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    user = relationship("User")
