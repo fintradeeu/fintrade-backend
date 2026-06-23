@@ -23,7 +23,7 @@ def generate_hash(data_string: str) -> str:
     return hashlib.sha512(data_string.encode('utf-8')).hexdigest()
 
 async def initiate_payment(db: AsyncSession, user: User, course_id: int, base_url: str) -> dict:
-    """Initiate an Easebuzz payment for a course."""
+    """Initiate a course payment via the configured gateway (Easebuzz or Razorpay)."""
 
     # Verify course
     course = await db.get(Course, course_id)
@@ -57,10 +57,15 @@ async def initiate_payment(db: AsyncSession, user: User, course_id: int, base_ur
                 detail="You must pass the entrance exam before you can purchase this course."
             )
 
-    # If Easebuzz is not configured, fall back to Sandbox mockup flow
-    if not settings.EASEBUZZ_KEY or not settings.EASEBUZZ_SALT:
+    gateway = settings.ACTIVE_PAYMENT_GATEWAY.lower() if settings.ACTIVE_PAYMENT_GATEWAY else "sandbox"
+
+    if gateway == "razorpay" and settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET:
+        return await initiate_razorpay_payment(db, user, course, base_url)
+    elif gateway == "easebuzz" and settings.EASEBUZZ_KEY and settings.EASEBUZZ_SALT:
+        return await initiate_easebuzz_payment(db, user, course, base_url)
+    else:
+        # Fall back to Sandbox mockup flow
         txnid = f"TXN{uuid.uuid4().hex[:12].upper()}"
-        amount_str = f"{course.price:.2f}"
         
         # Create pending transaction
         transaction = PaymentTransaction(
@@ -80,7 +85,67 @@ async def initiate_payment(db: AsyncSession, user: User, course_id: int, base_ur
             "redirect_url": f"{clean_base}/payments/mock-checkout?txnid={txnid}"
         }
 
-    # Generate unique txnid
+
+async def initiate_razorpay_payment(db: AsyncSession, user: User, course: Course, base_url: str) -> dict:
+    """Create a Razorpay Order for a course and return parameters for frontend checkout SDK."""
+    txnid = f"TXN{uuid.uuid4().hex[:12].upper()}"
+    amount_paise = int(course.price * 100)
+
+    # Create pending transaction
+    transaction = PaymentTransaction(
+        user_id=user.id,
+        course_id=course.id,
+        txnid=txnid,
+        amount=course.price,
+        status="pending"
+    )
+    db.add(transaction)
+    await db.flush()
+
+    # Call Razorpay Orders API
+    url = "https://api.razorpay.com/v1/orders"
+    auth = (settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+    payload = {
+        "amount": amount_paise,
+        "currency": "INR",
+        "receipt": txnid
+    }
+
+    logger.info("razorpay_order_create_req", txnid=txnid, amount=amount_paise)
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, json=payload, auth=auth, timeout=10.0)
+            if response.status_code not in (200, 201):
+                logger.error("razorpay_order_error_status", status_code=response.status_code, body=response.text)
+                raise HTTPException(status_code=502, detail=f"Razorpay API error: {response.text}")
+            data = response.json()
+        except httpx.RequestError as e:
+            logger.error("razorpay_order_request_exception", error=str(e))
+            raise HTTPException(status_code=502, detail="Failed to connect to Razorpay payment gateway")
+
+    order_id = data.get("id")
+    if not order_id:
+        logger.error("razorpay_order_failed_no_id", data=data)
+        raise HTTPException(status_code=500, detail="Razorpay did not return an order ID")
+
+    # Save order ID in gateway response fields / easepayid field
+    transaction.easepayid = order_id
+    transaction.gateway_response = data
+    await db.commit()
+
+    return {
+        "txnid": txnid,
+        "gateway": "razorpay",
+        "key_id": settings.RAZORPAY_KEY_ID,
+        "order_id": order_id,
+        "amount": amount_paise,
+        "currency": "INR"
+    }
+
+
+async def initiate_easebuzz_payment(db: AsyncSession, user: User, course: Course, base_url: str) -> dict:
+    """Initiate an Easebuzz payment for a course."""
     txnid = f"TXN{uuid.uuid4().hex[:12].upper()}"
     amount_str = f"{course.price:.2f}"
     productinfo = "Course"
@@ -91,7 +156,7 @@ async def initiate_payment(db: AsyncSession, user: User, course_id: int, base_ur
     # Create pending transaction
     transaction = PaymentTransaction(
         user_id=user.id,
-        course_id=course_id,
+        course_id=course.id,
         txnid=txnid,
         amount=course.price,
         status="pending"
@@ -146,6 +211,8 @@ async def initiate_payment(db: AsyncSession, user: User, course_id: int, base_ur
     access_key = data["data"]
     redirect_url = f"{settings.easebuzz_base_url}/pay/{access_key}"
 
+    transaction.easepayid = access_key
+    transaction.gateway_response = data
     await db.commit()
     return {
         "txnid": txnid,
@@ -251,3 +318,70 @@ async def send_invoice_email(user: User, course: Course, transaction: PaymentTra
     </html>
     """
     await send_email(to_email=user.email, subject=subject, body_html=body_html)
+
+
+async def verify_razorpay_payment(db: AsyncSession, params: dict) -> dict:
+    """Verify Razorpay payment signature from frontend SDK checkout."""
+    import hmac
+    import hashlib
+    logger.info("razorpay_verification_received", params=params)
+
+    razorpay_payment_id = params.get("razorpay_payment_id")
+    razorpay_order_id = params.get("razorpay_order_id")
+    razorpay_signature = params.get("razorpay_signature")
+    txnid = params.get("txnid")
+
+    if not all([razorpay_payment_id, razorpay_order_id, razorpay_signature]):
+        logger.warning("razorpay_verification_missing_fields")
+        return {"status": "error", "message": "Missing verification fields"}
+
+    # Verify Signature
+    # razorpay_order_id + "|" + razorpay_payment_id
+    msg = f"{razorpay_order_id}|{razorpay_payment_id}"
+    calculated_signature = hmac.new(
+        settings.RAZORPAY_KEY_SECRET.encode('utf-8'),
+        msg.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+
+    if calculated_signature != razorpay_signature:
+        logger.error("razorpay_verification_invalid_signature", txnid=txnid)
+        return {"status": "error", "message": "Invalid signature"}
+
+    # Fetch transaction (use txnid or easepayid = razorpay_order_id)
+    res = await db.execute(
+        select(PaymentTransaction).where(
+            (PaymentTransaction.txnid == txnid) | (PaymentTransaction.easepayid == razorpay_order_id)
+        )
+    )
+    transaction = res.scalar_one_or_none()
+    if not transaction:
+        logger.error("razorpay_verification_txnid_not_found", txnid=txnid, order_id=razorpay_order_id)
+        return {"status": "error", "message": "Transaction not found"}
+
+    # Idempotency check
+    if transaction.status == "success":
+        logger.info("razorpay_verification_already_processed", txnid=transaction.txnid)
+        return {"status": "success", "txnid": transaction.txnid}
+
+    # Update transaction
+    transaction.easepayid = razorpay_payment_id
+    transaction.status = "success"
+    transaction.gateway_response = params
+    transaction.updated_at = datetime.now(timezone.utc)
+
+    try:
+        # Grant course access
+        await enroll_user(db, user_id=transaction.user_id, course_id=transaction.course_id)
+        logger.info("razorpay_course_unlocked", txnid=transaction.txnid, user_id=transaction.user_id, course_id=transaction.course_id)
+        
+        # Send Email Invoice
+        user = await db.get(User, transaction.user_id)
+        course = await db.get(Course, transaction.course_id)
+        if user and course:
+            await send_invoice_email(user, course, transaction)
+    except Exception as e:
+        logger.error("razorpay_course_unlock_failed", txnid=transaction.txnid, error=str(e))
+
+    await db.commit()
+    return {"status": "success", "txnid": transaction.txnid}

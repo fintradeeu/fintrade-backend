@@ -9,8 +9,19 @@ class PaymentInitiateRequest(BaseModel):
 
 class PaymentInitiateResponse(BaseModel):
     txnid: str
-    access_key: str
-    redirect_url: str
+    access_key: Optional[str] = None
+    redirect_url: Optional[str] = None
+    gateway: Optional[str] = None
+    key_id: Optional[str] = None
+    order_id: Optional[str] = None
+    amount: Optional[int] = None
+    currency: Optional[str] = None
+
+class RazorpayVerifyRequest(BaseModel):
+    razorpay_payment_id: str
+    razorpay_order_id: str
+    razorpay_signature: str
+    txnid: Optional[str] = None
 
 class PaymentTransactionResponse(BaseModel):
     id: int

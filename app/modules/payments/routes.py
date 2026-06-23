@@ -48,6 +48,71 @@ async def payment_failure_redirect(request: Request, db: AsyncSession = Depends(
     frontend_url = settings.CORS_ORIGINS.split(',')[0]
     return RedirectResponse(url=f"{frontend_url}/payment/failure?txnid={txnid}", status_code=303)
 
+
+@router.post("/verify-razorpay")
+async def verify_razorpay(
+    body: schemas.RazorpayVerifyRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Verify Razorpay payment signature from frontend SDK checkout."""
+    return await services.verify_razorpay_payment(db, params=body.model_dump())
+
+
+@router.post("/razorpay-webhook")
+async def razorpay_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Receive and process Razorpay order webhook."""
+    body = await request.json()
+    logger = services.logger
+    logger.info("razorpay_webhook_received", payload=body)
+    
+    event = body.get("event")
+    if event in ("order.paid", "payment.captured"):
+        payload = body.get("payload", {})
+        order_entity = payload.get("order", {}).get("entity", {})
+        payment_entity = payload.get("payment", {}).get("entity", {})
+        
+        order_id = order_entity.get("id") or payment_entity.get("order_id")
+        payment_id = payment_entity.get("id")
+        txnid = order_entity.get("receipt")
+        
+        if not order_id:
+            logger.warning("razorpay_webhook_missing_order_id")
+            return {"status": "ok"}
+            
+        from sqlalchemy import select
+        from app.modules.payments.models import PaymentTransaction
+        from app.modules.courses.services import enroll_user
+        from app.modules.auth.models import User
+        from app.modules.courses.models import Course
+        
+        res = await db.execute(
+            select(PaymentTransaction).where(
+                (PaymentTransaction.easepayid == order_id) | (PaymentTransaction.txnid == txnid)
+            )
+        )
+        transaction = res.scalar_one_or_none()
+        if transaction and transaction.status != "success":
+            transaction.easepayid = payment_id or transaction.easepayid
+            transaction.status = "success"
+            transaction.gateway_response = body
+            
+            try:
+                await enroll_user(db, user_id=transaction.user_id, course_id=transaction.course_id)
+                user = await db.get(User, transaction.user_id)
+                course = await db.get(Course, transaction.course_id)
+                if user and course:
+                    await services.send_invoice_email(user, course, transaction)
+            except Exception as e:
+                logger.error("razorpay_webhook_unlock_failed", error=str(e))
+                
+            await db.commit()
+            
+    return {"status": "ok"}
+
+
 @router.post("/webhook")
 async def easebuzz_webhook(
     request: Request,
