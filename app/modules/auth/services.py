@@ -272,26 +272,48 @@ async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[
     else:
         use_sms = bool(user.phone)
         
-    # Check if user has phone number for Twilio SMS OTP
+    # Check if user has phone number for SMS OTP
     if use_sms and user.phone:
-        code = "000000"  # Placeholder code in DB for Twilio Verify (code is managed by Twilio)
-        
-        # Store in DB
-        otp = OTPCode(
-            user_id=user.id,
-            code=code,
-            otp_token=otp_token,
-            channel="sms",
-            expires_at=expires_at,
-        )
-        db.add(otp)
-        await db.flush()
-        
-        from app.core.twilio_otp import send_twilio_otp
-        # send_twilio_otp handles errors internally or bubbles up
-        sms_sent = await send_twilio_otp(user.phone)
-        if sms_sent:
-            channels_sent.append("sms")
+        # Check if Twilio Verify is configured
+        if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_SERVICE_SID:
+            code = "000000"  # Placeholder code in DB for Twilio Verify
+            
+            # Store in DB
+            otp = OTPCode(
+                user_id=user.id,
+                code=code,
+                otp_token=otp_token,
+                channel="sms",
+                expires_at=expires_at,
+            )
+            db.add(otp)
+            await db.flush()
+            
+            from app.core.twilio_otp import send_twilio_otp
+            sms_sent = await send_twilio_otp(user.phone)
+            if sms_sent:
+                channels_sent.append("sms")
+        # Fall back to Nimbus SMS Gateway if configured
+        elif settings.NIMBUS_SMS_USER_ID and settings.NIMBUS_SMS_PASSWORD:
+            code = _generate_otp_code()
+            
+            # Store in DB
+            otp = OTPCode(
+                user_id=user.id,
+                code=code,
+                otp_token=otp_token,
+                channel="sms",
+                expires_at=expires_at,
+            )
+            db.add(otp)
+            await db.flush()
+            
+            from app.core.nimbus_sms import send_nimbus_sms
+            from app.utils.aws_notifications import build_otp_sms_message
+            sms_msg = build_otp_sms_message(code)
+            sms_sent = await send_nimbus_sms(user.phone, sms_msg)
+            if sms_sent:
+                channels_sent.append("sms")
     else:
         # Fallback to standard Email OTP
         code = _generate_otp_code()
@@ -382,16 +404,28 @@ async def verify_otp(db: AsyncSession, otp_token: str, code: str) -> User:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No mobile number registered for SMS verification.",
             )
-        from app.core.twilio_otp import check_twilio_otp
-        is_valid = await check_twilio_otp(user.phone, code)
-        if not is_valid:
-            otp.attempts += 1
-            await db.flush()
-            remaining = MAX_OTP_ATTEMPTS - otp.attempts
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Incorrect SMS code. {remaining} attempt(s) remaining.",
-            )
+        # Verify using Twilio Verify if configured
+        if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_SERVICE_SID:
+            from app.core.twilio_otp import check_twilio_otp
+            is_valid = await check_twilio_otp(user.phone, code)
+            if not is_valid:
+                otp.attempts += 1
+                await db.flush()
+                remaining = MAX_OTP_ATTEMPTS - otp.attempts
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Incorrect SMS code. {remaining} attempt(s) remaining.",
+                )
+        else:
+            # Fallback for gateways like Nimbus where the code is sent manually and stored in the database
+            if otp.code != code.strip():
+                otp.attempts += 1
+                await db.flush()
+                remaining = MAX_OTP_ATTEMPTS - otp.attempts
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Incorrect SMS code. {remaining} attempt(s) remaining.",
+                )
     else:
         # Standard Email validation
         if otp.code != code.strip():
@@ -405,6 +439,7 @@ async def verify_otp(db: AsyncSession, otp_token: str, code: str) -> User:
 
     # Mark as used
     otp.is_used = True
+    user.is_verified = True
     await db.flush()
 
     logger.info("otp_verified", user_id=user.id)

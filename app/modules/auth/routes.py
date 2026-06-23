@@ -12,13 +12,13 @@ from app.modules.auth.models import User
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.post("/register", response_model=schemas.TokenResponse, status_code=201)
+@router.post("/register", response_model=Union[schemas.TokenResponse, schemas.OTPPendingResponse], status_code=201)
 async def register(
     body: schemas.RegisterRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Register a new student account and return JWT tokens.""" 
+    """Register a new student account and return OTP pending response.""" 
     user = await services.register_user(
         db,
         email=body.email,
@@ -28,16 +28,20 @@ async def register(
         city=body.city,
     )   
     
-    tokens = await services.create_session(
-        db,
-        user,
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-    )
-    return schemas.TokenResponse(
-        access_token=tokens["access_token"],
-        refresh_token=tokens["refresh_token"],
-        user=schemas.UserResponse.model_validate(user),
+    channel = "sms" if user.phone else "email"
+    otp_result = await services.generate_and_send_otp(db, user, channel=channel)
+    
+    message_text = "Verification code sent to your email."
+    if "sms" in otp_result.get("channels", []):
+        message_text = "Verification code sent to your mobile number via SMS."
+        
+    await db.commit()
+    
+    return schemas.OTPPendingResponse(
+        message=message_text,
+        otp_token=otp_result["otp_token"],
+        expires_in_seconds=otp_result["expires_in_seconds"],
+        channels=otp_result["channels"],
     )
 
 
