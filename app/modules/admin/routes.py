@@ -825,8 +825,9 @@ async def upload_media(
         filepath = os.path.join("uploads", unique_name)
         
         with open(filepath, "wb") as f:
-            content = await file.read()
-            f.write(content)
+            # Read and write in 1MB chunks to support files of any size without high RAM consumption
+            while chunk := await file.read(1024 * 1024):
+                f.write(chunk)
             
         return {"url": f"/uploads/{unique_name}"}
     except Exception as e:
