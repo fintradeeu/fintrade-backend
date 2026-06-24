@@ -1,8 +1,9 @@
 """Settings module — API routes."""
 
 from typing import Any, Dict, List
+import json
 
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends, Body, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import require_roles
@@ -27,6 +28,32 @@ async def get_landing_page(db: AsyncSession = Depends(get_db)):
     """Get landing page CMS config (public — no auth needed)."""
     config = await services.get_landing_page_config(db)
     return config
+
+
+@router.get("/settings/{key}")
+async def get_setting_by_key(key: str, db: AsyncSession = Depends(get_db)):
+    """Get a single setting by key (public)."""
+    setting = await services.get_setting_by_key(db, key)
+    if not setting:
+        if key == "about-us":
+            return {
+                "slides": [],
+                "stats": [],
+                "text": [],
+                "vision": {"title": "", "content": ""},
+                "mission": {"title": "", "content": ""},
+            }
+        elif key == "advisors":
+            return {"advisors": []}
+        else:
+            raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
+            
+    if setting.value:
+        try:
+            return json.loads(setting.value)
+        except Exception:
+            return {"value": setting.value}
+    return None
 
 
 # ── Admin endpoints ─────────────────────────────────────────────────
@@ -61,12 +88,22 @@ async def update_landing_page(
 @router.put("/admin/settings/{key}", response_model=schemas.SettingResponse)
 async def update_setting(
     key: str,
-    body: schemas.SettingUpdateRequest,
+    body: Any = Body(...),
     admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a single setting (admin only)."""
-    setting = await services.update_setting(db, key, body.value, admin.id)
+    if isinstance(body, dict) and "value" in body and len(body) == 1:
+        val = body["value"]
+    else:
+        val = body
+
+    if isinstance(val, (dict, list)):
+        serialized_val = json.dumps(val)
+    else:
+        serialized_val = str(val)
+
+    setting = await services.update_setting(db, key, serialized_val, admin.id)
     return schemas.SettingResponse.model_validate(setting)
 
 

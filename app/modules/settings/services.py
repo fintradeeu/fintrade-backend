@@ -421,20 +421,38 @@ async def get_all_settings(db: AsyncSession) -> Dict[str, List[PlatformSetting]]
     return grouped
 
 
+async def get_setting_by_key(db: AsyncSession, key: str) -> Optional[PlatformSetting]:
+    """Get a single setting by key."""
+    result = await db.execute(
+        select(PlatformSetting).where(PlatformSetting.key == key)
+    )
+    return result.scalar_one_or_none()
+
+
 async def update_setting(db: AsyncSession, key: str, value: str, admin_id: int) -> PlatformSetting:
-    """Update a single setting by key."""
+    """Update a single setting by key (upsert)."""
     result = await db.execute(
         select(PlatformSetting).where(PlatformSetting.key == key)
     )
     setting = result.scalar_one_or_none()
+    
     if not setting:
-        raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
-
-    setting.value = value
-    setting.updated_by = admin_id
+        setting = PlatformSetting(
+            key=key,
+            value=value,
+            category="general",
+            label=key.replace("-", " ").replace("_", " ").title(),
+            updated_by=admin_id,
+        )
+        db.add(setting)
+    else:
+        setting.value = value
+        setting.updated_by = admin_id
+        
     await db.commit()
     await db.refresh(setting)
     return setting
+
 
 
 async def bulk_update_settings(db: AsyncSession, settings: Dict[str, str], admin_id: int) -> int:
