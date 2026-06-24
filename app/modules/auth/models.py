@@ -127,6 +127,8 @@ class Student(Base):
     course_id = Column(Integer, nullable=True)
     address = Column(Text, nullable=True)
     qualification = Column(String(255), nullable=True)
+    gender = Column(String(50), nullable=True)
+    dob = Column(String(50), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),
@@ -135,3 +137,21 @@ class Student(Base):
     )
 
     user = relationship("User")
+
+
+class MobileOTPCode(Base):
+    """Stores one-time verification codes for mobile authentication."""
+    __tablename__ = "mobile_otp_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    mobile = Column(String(20), nullable=False, index=True)
+    code = Column(String(6), nullable=False)
+    otp_token = Column(String(64), nullable=False, unique=True, index=True)
+    is_used = Column(Boolean, default=False)
+    attempts = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    def __repr__(self):
+        return f"<MobileOTPCode {self.mobile}>"
+
