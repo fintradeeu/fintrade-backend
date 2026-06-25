@@ -57,33 +57,12 @@ async def initiate_payment(db: AsyncSession, user: User, course_id: int, base_ur
                 detail="You must pass the entrance exam before you can purchase this course."
             )
 
-    gateway = settings.ACTIVE_PAYMENT_GATEWAY.lower() if settings.ACTIVE_PAYMENT_GATEWAY else "sandbox"
-
-    if gateway == "razorpay" and settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET:
-        return await initiate_razorpay_payment(db, user, course, base_url)
-    elif gateway == "easebuzz" and settings.EASEBUZZ_KEY and settings.EASEBUZZ_SALT:
-        return await initiate_easebuzz_payment(db, user, course, base_url)
-    else:
-        # Fall back to Sandbox mockup flow
-        txnid = f"TXN{uuid.uuid4().hex[:12].upper()}"
-        
-        # Create pending transaction
-        transaction = PaymentTransaction(
-            user_id=user.id,
-            course_id=course_id,
-            txnid=txnid,
-            amount=course.price,
-            status="pending"
+    if not settings.RAZORPAY_KEY_ID or not settings.RAZORPAY_KEY_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail="Razorpay is compulsory but credentials (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET) are missing."
         )
-        db.add(transaction)
-        await db.commit()
-        
-        clean_base = base_url.rstrip('/')
-        return {
-            "txnid": txnid,
-            "access_key": "MOCK_KEY",
-            "redirect_url": f"{clean_base}/payments/mock-checkout?txnid={txnid}"
-        }
+    return await initiate_razorpay_payment(db, user, course, base_url)
 
 
 async def initiate_razorpay_payment(db: AsyncSession, user: User, course: Course, base_url: str) -> dict:

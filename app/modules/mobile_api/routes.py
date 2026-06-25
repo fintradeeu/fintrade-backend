@@ -508,6 +508,14 @@ async def create_mobile_user_profile(
     current_user.email = email
     current_user.phone = mobile_number
 
+    # Sync KYCSubmission mobile if it exists
+    from app.modules.kyc.models import KYCSubmission
+    kyc = await db.scalar(
+        select(KYCSubmission).where(KYCSubmission.user_id == current_user.id)
+    )
+    if kyc:
+        kyc.mobile = mobile_number
+
     # Create Student profile
     new_student = Student(
         user_id=current_user.id,
@@ -579,6 +587,14 @@ async def update_mobile_user_profile(
     current_user.full_name = name
     current_user.email = email
     current_user.phone = mobile_number
+
+    # Sync KYCSubmission mobile if it exists
+    from app.modules.kyc.models import KYCSubmission
+    kyc = await db.scalar(
+        select(KYCSubmission).where(KYCSubmission.user_id == current_user.id)
+    )
+    if kyc:
+        kyc.mobile = mobile_number
 
     await db.commit()
     await db.refresh(current_user)

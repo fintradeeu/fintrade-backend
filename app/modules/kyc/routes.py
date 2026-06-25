@@ -36,8 +36,16 @@ async def kyc_status(
     kyc = await services.get_kyc_status(db, current_user.id)
     if not kyc:
         return schemas.KYCStatusResponse(
-            id=0, user_id=current_user.id, full_name=current_user.full_name, status="not_started"
+            id=0,
+            user_id=current_user.id,
+            full_name=current_user.full_name,
+            mobile=current_user.phone,
+            status="not_started"
         )
+    if current_user.phone and kyc.mobile != current_user.phone:
+        kyc.mobile = current_user.phone
+        await db.commit()
+        await db.refresh(kyc)
     return schemas.KYCStatusResponse.model_validate(kyc)
 
 
@@ -154,7 +162,13 @@ async def list_submissions(
 ):
     """List all KYC submissions (admin only)."""
     submissions = await services.list_kyc_submissions(db, skip, limit)
-    return [schemas.AdminKYCListItem.model_validate(s) for s in submissions]
+    items = []
+    for s in submissions:
+        if s.user and s.user.phone and s.mobile != s.user.phone:
+            s.mobile = s.user.phone
+            await db.commit()
+        items.append(schemas.AdminKYCListItem.model_validate(s))
+    return items
 
 
 @router.get("/admin/submissions/{kyc_id}", response_model=schemas.KYCStatusResponse)
@@ -165,6 +179,12 @@ async def get_submission(
 ):
     """View specific KYC submission (admin only)."""
     kyc = await services.get_kyc_detail(db, kyc_id)
+    user_res = await db.execute(select(User).where(User.id == kyc.user_id))
+    user = user_res.scalar_one_or_none()
+    if user and user.phone and kyc.mobile != user.phone:
+        kyc.mobile = user.phone
+        await db.commit()
+        await db.refresh(kyc)
     return schemas.KYCStatusResponse.model_validate(kyc)
 
 
@@ -179,6 +199,12 @@ async def get_user_kyc_detail(
     kyc = await services.get_kyc_status(db, user_id)
     if not kyc:
         raise HTTPException(status_code=404, detail="No KYC submission found for this user.")
+    user_res = await db.execute(select(User).where(User.id == user_id))
+    user = user_res.scalar_one_or_none()
+    if user and user.phone and kyc.mobile != user.phone:
+        kyc.mobile = user.phone
+        await db.commit()
+        await db.refresh(kyc)
     return schemas.KYCStatusResponse.model_validate(kyc)
 
 
@@ -218,6 +244,9 @@ async def list_contracts(
     for c in contracts:
         # Get KYC status for each contract
         kyc = await services.get_kyc_detail(db, c.kyc_id)
+        if c.user and kyc and kyc.mobile != c.user.phone:
+            kyc.mobile = c.user.phone
+            await db.commit()
         
         course_title = None
         if c.course_id:

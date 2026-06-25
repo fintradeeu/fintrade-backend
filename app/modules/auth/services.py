@@ -234,7 +234,16 @@ async def update_user_profile(
         user.email = normalized_email
 
     user.full_name = full_name.strip()
-    user.phone = phone.strip() if phone else None
+    new_phone = phone.strip() if phone else None
+    if new_phone != user.phone:
+        user.phone = new_phone
+        from app.modules.kyc.models import KYCSubmission
+        kyc_result = await db.execute(
+            select(KYCSubmission).where(KYCSubmission.user_id == user.id)
+        )
+        kyc = kyc_result.scalar_one_or_none()
+        if kyc:
+            kyc.mobile = new_phone
     if city is not None:
         user.city = city.strip()
     await db.flush()
@@ -263,72 +272,68 @@ async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
     
     channels_sent = []
+    code = _generate_otp_code()
     
-    use_sms = False
-    if channel == "sms":
-        use_sms = True
+    send_sms = False
+    send_email_msg = False
+    
+    if channel == "both":
+        send_sms = bool(user.phone)
+        send_email_msg = True
+    elif channel == "sms":
+        send_sms = bool(user.phone)
+        send_email_msg = not send_sms
     elif channel == "email":
-        use_sms = False
+        send_email_msg = True
+        send_sms = False
     else:
-        use_sms = bool(user.phone)
+        send_sms = bool(user.phone)
+        send_email_msg = not send_sms
+
+    # We store the code in DB
+    db_channel = "both" if (send_sms and send_email_msg) else ("sms" if send_sms else "email")
+    
+    # Check if we should use Twilio for SMS
+    is_twilio = send_sms and bool(settings.TWILIO_ACCOUNT_SID and settings.TWILIO_SERVICE_SID)
+    
+    # Warning: If we send both SMS and Email, and Twilio is configured, we must not use "000000" code in DB,
+    # because the user needs to be able to verify via the email code too.
+    if is_twilio and not send_email_msg:
+        code = "000000"
         
-    # Check if user has phone number for SMS OTP
-    if use_sms and user.phone:
-        # Check if Twilio Verify is configured
-        if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_SERVICE_SID:
-            code = "000000"  # Placeholder code in DB for Twilio Verify
-            
-            # Store in DB
-            otp = OTPCode(
-                user_id=user.id,
-                code=code,
-                otp_token=otp_token,
-                channel="sms",
-                expires_at=expires_at,
-            )
-            db.add(otp)
-            await db.flush()
-            
+    otp = OTPCode(
+        user_id=user.id,
+        code=code,
+        otp_token=otp_token,
+        channel=db_channel,
+        expires_at=expires_at,
+    )
+    db.add(otp)
+    await db.flush()
+    
+    # 1. Send SMS if active
+    if send_sms:
+        sms_sent = False
+        if is_twilio and not send_email_msg:
             from app.core.twilio_otp import send_twilio_otp
             sms_sent = await send_twilio_otp(user.phone)
-            if sms_sent:
-                channels_sent.append("sms")
-        # Fall back to Nimbus SMS Gateway if configured
-        elif settings.NIMBUS_SMS_USER_ID and settings.NIMBUS_SMS_PASSWORD:
-            code = _generate_otp_code()
+        else:
+            # Nimbus SMS Gateway or Fallback mock print
+            if settings.NIMBUS_SMS_USER_ID and settings.NIMBUS_SMS_PASSWORD:
+                from app.core.nimbus_sms import send_nimbus_sms
+                from app.utils.aws_notifications import build_otp_sms_message
+                sms_msg = build_otp_sms_message(code)
+                sms_sent = await send_nimbus_sms(user.phone, sms_msg)
+            else:
+                # If neither is configured, fallback in dev mode: print code
+                print(f"\n[DEVELOPMENT ONLY] SMS OTP for {user.phone} is {code} (Token: {otp_token})\n")
+                sms_sent = True
+                
+        if sms_sent:
+            channels_sent.append("sms")
             
-            # Store in DB
-            otp = OTPCode(
-                user_id=user.id,
-                code=code,
-                otp_token=otp_token,
-                channel="sms",
-                expires_at=expires_at,
-            )
-            db.add(otp)
-            await db.flush()
-            
-            from app.core.nimbus_sms import send_nimbus_sms
-            from app.utils.aws_notifications import build_otp_sms_message
-            sms_msg = build_otp_sms_message(code)
-            sms_sent = await send_nimbus_sms(user.phone, sms_msg)
-            if sms_sent:
-                channels_sent.append("sms")
-    else:
-        # Fallback to standard Email OTP
-        code = _generate_otp_code()
-        
-        # Store in DB
-        otp = OTPCode(
-            user_id=user.id,
-            code=code,
-            otp_token=otp_token,
-            channel="email",
-            expires_at=expires_at,
-        )
-        db.add(otp)
-        await db.flush()
-        
+    # 2. Send Email if active
+    if send_email_msg:
         email_html = build_otp_email_html(code, user.full_name)
         email_sent = await send_email(
             to_email=user.email,
@@ -337,10 +342,13 @@ async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[
         )
         if email_sent:
             channels_sent.append("email")
+        else:
+            # Mock email send print if failed/not configured in dev mode
+            print(f"\n[DEVELOPMENT ONLY] Email OTP for {user.email} is {code} (Token: {otp_token})\n")
+            channels_sent.append("email")
 
     if not channels_sent:
         logger.warning("otp_delivery_failed", user_id=user.id)
-        # Even if delivery fails, we can add a fallback channel for safety
         channels_sent.append("email" if not user.phone else "sms")
 
     logger.info("otp_generated", user_id=user.id, channels=channels_sent)
@@ -350,6 +358,7 @@ async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[
         "expires_in_seconds": settings.OTP_EXPIRY_MINUTES * 60,
         "channels": channels_sent,
     }
+
 
 
 async def verify_otp(db: AsyncSession, otp_token: str, code: str) -> User:

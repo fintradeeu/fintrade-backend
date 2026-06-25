@@ -1126,7 +1126,14 @@ async def update_admin_role(
         raise HTTPException(status_code=404, detail="Admin user not found")
 
     user.full_name = data.get("name", user.full_name)
-    user.phone = data.get("phone", user.phone)
+    new_phone = data.get("phone", user.phone)
+    if new_phone != user.phone:
+        user.phone = new_phone
+        from app.modules.kyc.models import KYCSubmission
+        kyc_res = await db.execute(select(KYCSubmission).where(KYCSubmission.user_id == user.id))
+        kyc = kyc_res.scalar_one_or_none()
+        if kyc:
+            kyc.mobile = new_phone
     user.is_active = True if data.get("status") == "Active" else False
 
     new_email = data.get("email")

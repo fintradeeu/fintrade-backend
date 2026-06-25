@@ -163,9 +163,21 @@ async def update_user(db: AsyncSession, user_id: int, data: dict) -> User:
             )
             
     # Update user fields
+    phone_updated = False
     for field in ["email", "full_name", "phone", "city", "is_active", "permissions"]:
         if field in data and data[field] is not None:
+            if field == "phone" and getattr(user, "phone") != data[field]:
+                phone_updated = True
             setattr(user, field, data[field])
+            
+    if phone_updated:
+        from app.modules.kyc.models import KYCSubmission
+        kyc_result = await db.execute(
+            select(KYCSubmission).where(KYCSubmission.user_id == user_id)
+        )
+        kyc = kyc_result.scalar_one_or_none()
+        if kyc:
+            kyc.mobile = user.phone
             
     # Check if user is a distributor and update distributor fields
     is_distributor = any(role.name == "distributor" for role in user.roles)

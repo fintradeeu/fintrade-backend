@@ -28,12 +28,16 @@ async def register(
         city=body.city,
     )   
     
-    channel = "sms" if user.phone else "email"
+    channel = "both" if user.phone else "email"
     otp_result = await services.generate_and_send_otp(db, user, channel=channel)
     
-    message_text = "Verification code sent to your email."
-    if "sms" in otp_result.get("channels", []):
+    sent_channels = otp_result.get("channels", [])
+    if "sms" in sent_channels and "email" in sent_channels:
+        message_text = "Verification code sent to your email and mobile number via SMS."
+    elif "sms" in sent_channels:
         message_text = "Verification code sent to your mobile number via SMS."
+    else:
+        message_text = "Verification code sent to your email."
         
     await db.commit()
     

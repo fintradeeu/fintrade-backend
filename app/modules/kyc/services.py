@@ -17,6 +17,12 @@ from app.modules.kyc.models import KYCSubmission, Contract
 
 async def submit_kyc(db: AsyncSession, user_id: int, data: dict) -> KYCSubmission:
     """Create or update KYC submission for a user."""
+    from app.modules.auth.models import User
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    if user and user.phone:
+        data["mobile"] = user.phone
+
     result = await db.execute(
         select(KYCSubmission).where(KYCSubmission.user_id == user_id)
     )
@@ -47,21 +53,29 @@ from datetime import timedelta
 
 async def send_mobile_otp(db: AsyncSession, user_id: int) -> bool:
     """Send an SMS OTP using Twilio Verify to the user's KYC mobile number."""
+    from app.modules.auth.models import User
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    if not user or not user.phone:
+        raise HTTPException(
+            status_code=400,
+            detail="User or phone number not found. Please update your profile first."
+        )
+
+    # Sync to KYCSubmission.mobile if it exists
     result = await db.execute(
         select(KYCSubmission).where(KYCSubmission.user_id == user_id)
     )
     kyc = result.scalar_one_or_none()
-    if not kyc or not kyc.mobile:
-        raise HTTPException(
-            status_code=400,
-            detail="KYC submission or mobile number not found. Submit personal details first."
-        )
+    if kyc and kyc.mobile != user.phone:
+        kyc.mobile = user.phone
+        await db.commit()
     
     try:
         from app.core.twilio_otp import send_twilio_otp
-        await send_twilio_otp(kyc.mobile)
+        await send_twilio_otp(user.phone)
     except Exception:
-        # Gracefully handle Twilio exceptions during development/deployments withoutTwilio creds
+        # Gracefully handle Twilio exceptions during development/deployments without Twilio creds
         pass
     return True
 
@@ -109,12 +123,18 @@ async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) ->
         raise HTTPException(status_code=404, detail="KYC submission not found. Submit personal details first.")
 
     if otp_type == "mobile":
-        if not kyc.mobile:
+        from app.modules.auth.models import User
+        user_result = await db.execute(select(User).where(User.id == user_id))
+        user = user_result.scalar_one_or_none()
+        if not user or not user.phone:
             raise HTTPException(status_code=400, detail="No mobile number registered for verification.")
+        
+        if kyc.mobile != user.phone:
+            kyc.mobile = user.phone
         
         try:
             from app.core.twilio_otp import check_twilio_otp
-            is_valid = await check_twilio_otp(kyc.mobile, otp)
+            is_valid = await check_twilio_otp(user.phone, otp)
         except Exception:
             is_valid = False
 
@@ -208,6 +228,14 @@ async def generate_contract(
     kyc = result.scalar_one_or_none()
     if not kyc:
         raise HTTPException(status_code=404, detail="KYC submission not found")
+
+    from app.modules.auth.models import User
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    if user and user.phone and kyc.mobile != user.phone:
+        kyc.mobile = user.phone
+        await db.commit()
+
     if kyc.status != "verified":
         kyc.status = "verified"
         await db.commit()
@@ -328,6 +356,7 @@ async def list_contracts(db: AsyncSession, skip: int = 0, limit: int = 50):
     """List all contracts (admin)."""
     result = await db.execute(
         select(Contract)
+        .options(selectinload(Contract.user))
         .order_by(Contract.created_at.desc())
         .offset(skip)
         .limit(limit)
@@ -338,7 +367,9 @@ async def list_contracts(db: AsyncSession, skip: int = 0, limit: int = 50):
 async def get_contract_detail(db: AsyncSession, contract_id: int) -> Contract:
     """Get a specific contract by ID."""
     result = await db.execute(
-        select(Contract).where(Contract.id == contract_id)
+        select(Contract)
+        .options(selectinload(Contract.user))
+        .where(Contract.id == contract_id)
     )
     contract = result.scalar_one_or_none()
     if not contract:
