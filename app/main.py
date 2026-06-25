@@ -35,6 +35,7 @@ from app.modules.mobile_api.routes import (
     student_router as mobile_students_router,
     mobile_auth_router,
     mobile_profile_router,
+    mobile_v1_router,
 )
 
 
@@ -151,6 +152,7 @@ app.include_router(mobile_users_router, prefix="/api")
 app.include_router(mobile_students_router, prefix="/api")
 app.include_router(mobile_auth_router, prefix="/api")
 app.include_router(mobile_profile_router, prefix="/api")
+app.include_router(mobile_v1_router, prefix="/api")
 
 
 import os

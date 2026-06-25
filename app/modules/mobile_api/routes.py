@@ -467,3 +467,158 @@ async def update_mobile_profile(
         success=True,
         message="Profile updated successfully"
     )
+
+# --- Mobile Profile V1 Router ---
+mobile_v1_router = APIRouter(prefix="/v1", tags=["Mobile Profile V1"])
+
+@mobile_v1_router.post("/user", response_model=schemas.MobileUserProfileResponse, status_code=201)
+async def create_mobile_user_profile(
+    body: schemas.MobileUserProfileCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a student profile linked to the authenticated user and update their details."""
+    name = body.name.strip()
+    email = body.email.strip().lower()
+    mobile_number = body.mobileNumber.strip()
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    if not mobile_number:
+        raise HTTPException(status_code=400, detail="Mobile number is required")
+
+    # Prevent duplicate profile creation (check if Student record already exists for current user)
+    existing_student = await db.scalar(
+        select(Student).where(Student.user_id == current_user.id)
+    )
+    if existing_student:
+        raise HTTPException(status_code=400, detail="Profile already exists for this user")
+
+    # Check email uniqueness (must not be in use by a DIFFERENT user)
+    email_user = await db.scalar(
+        select(User).where(User.email == email, User.id != current_user.id)
+    )
+    if email_user:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+
+    # Update User model details
+    current_user.full_name = name
+    current_user.email = email
+    current_user.phone = mobile_number
+
+    # Create Student profile
+    new_student = Student(
+        user_id=current_user.id,
+        course_id=None,
+        address=None,
+        qualification=None,
+        gender=None,
+        dob=None
+    )
+    db.add(new_student)
+    await db.commit()
+    await db.refresh(current_user)
+
+    data = schemas.MobileUserProfileResponseData(
+        id=str(current_user.id),
+        name=current_user.full_name,
+        email=current_user.email,
+        mobileNumber=current_user.phone or ""
+    )
+
+    return schemas.MobileUserProfileResponse(
+        success=True,
+        message="User profile created successfully",
+        data=data
+    )
+
+@mobile_v1_router.put("/user/{user_id}", response_model=schemas.MobileUserProfileResponse)
+async def update_mobile_user_profile(
+    user_id: int,
+    body: schemas.MobileUserProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update profile details for the authenticated user."""
+    # Ensure current user is updating their own profile
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="You do not have permission to update this profile")
+
+    name = body.name.strip()
+    email = body.email.strip().lower()
+    mobile_number = body.mobileNumber.strip()
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    if not mobile_number:
+        raise HTTPException(status_code=400, detail="Mobile number is required")
+
+    # Ensure profile already exists (Student record must exist)
+    existing_student = await db.scalar(
+        select(Student).where(Student.user_id == current_user.id)
+    )
+    if not existing_student:
+        raise HTTPException(status_code=400, detail="Profile does not exist. Please create it first.")
+
+    # Check email uniqueness (must not be in use by another user)
+    email_user = await db.scalar(
+        select(User).where(User.email == email, User.id != current_user.id)
+    )
+    if email_user:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+
+    # Update User model details
+    current_user.full_name = name
+    current_user.email = email
+    current_user.phone = mobile_number
+
+    await db.commit()
+    await db.refresh(current_user)
+
+    data = schemas.MobileUserProfileResponseData(
+        id=str(current_user.id),
+        name=current_user.full_name,
+        email=current_user.email,
+        mobileNumber=current_user.phone or ""
+    )
+
+    return schemas.MobileUserProfileResponse(
+        success=True,
+        message="User profile updated successfully",
+        data=data
+    )
+
+@mobile_v1_router.get("/auth/me", response_model=schemas.MobileAuthMeResponse)
+async def get_mobile_auth_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Retrieve details for the currently logged in user/student profile."""
+    # Check if student profile exists
+    student = await db.scalar(
+        select(Student).where(Student.user_id == current_user.id)
+    )
+    if not student:
+        # Profile does not exist yet (but authenticated user does)
+        return schemas.MobileAuthMeResponse(
+            success=True,
+            data=None
+        )
+
+    # Return profile data
+    data = schemas.MobileUserProfileResponseData(
+        id=str(current_user.id),
+        name=current_user.full_name,
+        email=current_user.email,
+        mobileNumber=current_user.phone or ""
+    )
+
+    return schemas.MobileAuthMeResponse(
+        success=True,
+        data=data
+    )
+
