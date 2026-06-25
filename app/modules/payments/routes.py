@@ -1,6 +1,6 @@
 """Payments module — API routes."""
 
-from fastapi import APIRouter, Depends, Request, Form
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
@@ -19,7 +19,7 @@ async def create_payment(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Initiate a course payment via Easebuzz."""
+    """Initiate a course payment through the configured gateway."""
     return await services.initiate_payment(
         db,
         user=current_user,
@@ -27,6 +27,22 @@ async def create_payment(
         base_url=str(request.base_url),
         coupon_code=body.coupon_code,
         discounted_price=body.discounted_price,
+    )
+
+@router.post("/verify-razorpay")
+async def verify_razorpay_payment(
+    body: schemas.RazorpayVerifyRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify Razorpay checkout signature and unlock the course."""
+    return await services.verify_razorpay_payment(
+        db,
+        user_id=current_user.id,
+        txnid=body.txnid,
+        razorpay_order_id=body.razorpay_order_id,
+        razorpay_payment_id=body.razorpay_payment_id,
+        razorpay_signature=body.razorpay_signature,
     )
 
 @router.post("/success")
