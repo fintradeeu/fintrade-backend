@@ -812,6 +812,56 @@ import uuid
 from fastapi import UploadFile, File, HTTPException
 from app.modules.admin.schemas import MessageResponse
 
+@router.get("/upload/presigned-url", response_model=dict)
+async def get_presigned_upload_url(
+    filename: str,
+    content_type: str,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+):
+    """Generate a presigned PUT URL for direct browser uploads to S3."""
+    import boto3
+    from botocore.config import Config
+    import uuid
+    import os
+    from app.config import settings
+    from fastapi import HTTPException
+    
+    if not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
+        raise HTTPException(status_code=500, detail="AWS credentials not configured on the server")
+        
+    bucket_name = settings.AWS_S3_BUCKET or "thefintrade-prd"
+    ext = os.path.splitext(filename)[1]
+    unique_key = f"uploads/{uuid.uuid4()}{ext}"
+    
+    try:
+        s3_client = boto3.client(
+            "s3",
+            region_name=settings.AWS_REGION,
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            config=Config(signature_version="s3v4")
+        )
+        
+        presigned_url = s3_client.generate_presigned_url(
+            ClientMethod="put_object",
+            Params={
+                "Bucket": bucket_name,
+                "Key": unique_key,
+                "ContentType": content_type
+            },
+            ExpiresIn=3600  # URL expires in 1 hour
+        )
+        
+        file_url = f"https://{bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com/{unique_key}"
+        
+        return {
+            "upload_url": presigned_url,
+            "file_url": file_url
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not generate presigned URL: {str(e)}")
+
+
 @router.post("/upload", response_model=dict, status_code=201)
 async def upload_media(
     file: UploadFile = File(...),
