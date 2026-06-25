@@ -1,7 +1,7 @@
 """Mobile API Integration — validation schemas."""
 
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 
 # Existing schemas (keep for backwards compatibility)
 class MobileUserCreateRequest(BaseModel):
@@ -106,3 +106,30 @@ class MobileProfileUpdateRequest(BaseModel):
 class MobileProfileUpdateResponse(BaseModel):
     success: bool
     message: str
+
+# New Mobile V1 Profile Schemas
+class MobileUserProfileCreateRequest(BaseModel):
+    name: str
+    email: EmailStr
+    mobileNumber: str
+
+class MobileUserProfileUpdateRequest(BaseModel):
+    name: str
+    email: EmailStr
+    mobileNumber: str
+
+class MobileUserProfileResponseData(BaseModel):
+    id: str
+    name: str
+    email: str
+    mobileNumber: str
+    role: str
+
+class MobileUserProfileResponse(BaseModel):
+    success: bool
+    message: str
+    data: MobileUserProfileResponseData
+
+class MobileAuthMeResponse(BaseModel):
+    success: bool
+    data: Optional[MobileUserProfileResponseData] = None

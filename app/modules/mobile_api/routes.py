@@ -521,11 +521,15 @@ async def create_mobile_user_profile(
     await db.commit()
     await db.refresh(current_user)
 
+    role_names = [r.name for r in current_user.roles]
+    primary_role = role_names[0] if role_names else "user"
+
     data = schemas.MobileUserProfileResponseData(
         id=str(current_user.id),
         name=current_user.full_name,
         email=current_user.email,
-        mobileNumber=current_user.phone or ""
+        mobileNumber=current_user.phone or "",
+        role=primary_role
     )
 
     return schemas.MobileUserProfileResponse(
@@ -579,11 +583,15 @@ async def update_mobile_user_profile(
     await db.commit()
     await db.refresh(current_user)
 
+    role_names = [r.name for r in current_user.roles]
+    primary_role = role_names[0] if role_names else "user"
+
     data = schemas.MobileUserProfileResponseData(
         id=str(current_user.id),
         name=current_user.full_name,
         email=current_user.email,
-        mobileNumber=current_user.phone or ""
+        mobileNumber=current_user.phone or "",
+        role=primary_role
     )
 
     return schemas.MobileUserProfileResponse(
@@ -610,11 +618,15 @@ async def get_mobile_auth_me(
         )
 
     # Return profile data
+    role_names = [r.name for r in current_user.roles]
+    primary_role = role_names[0] if role_names else "user"
+
     data = schemas.MobileUserProfileResponseData(
         id=str(current_user.id),
         name=current_user.full_name,
         email=current_user.email,
-        mobileNumber=current_user.phone or ""
+        mobileNumber=current_user.phone or "",
+        role=primary_role
     )
 
     return schemas.MobileAuthMeResponse(
