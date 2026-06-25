@@ -35,6 +35,10 @@ class AboutUsConfig(BaseModel):
     leadership: Optional[List[Dict[str, Any]]] = None
 
 
+class AdvisorsConfig(BaseModel):
+    advisors: Optional[List[Dict[str, Any]]] = None
+
+
 class LandingPageUpdateRequest(BaseModel):
     hero: Optional[Dict[str, Any]] = None
     contact: Optional[Dict[str, Any]] = None

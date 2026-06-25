@@ -105,6 +105,25 @@ async def update_about_us(
     )
 
 
+@router.get("/settings/advisors", response_model=schemas.AdvisorsConfig)
+async def get_advisors(db: AsyncSession = Depends(get_db)):
+    """Get the advisors/leadership list for the public website (public)."""
+    config = await services.get_landing_page_config(db)
+    return schemas.AdvisorsConfig(advisors=config.get("advisors", []))
+
+
+@router.put("/admin/settings/advisors", response_model=schemas.AdvisorsConfig)
+async def update_advisors(
+    body: schemas.AdvisorsConfig,
+    admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the advisors/leadership list (admin only)."""
+    config_update = {"advisors": body.advisors if body.advisors is not None else []}
+    updated_config = await services.update_landing_page_config(db, config_update, admin.id)
+    return schemas.AdvisorsConfig(advisors=updated_config.get("advisors", []))
+
+
 @router.put("/admin/settings/{key}", response_model=schemas.SettingResponse)
 async def update_setting(
     key: str,
