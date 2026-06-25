@@ -30,6 +30,40 @@ async def get_landing_page(db: AsyncSession = Depends(get_db)):
     return config
 
 
+@router.get("/settings/advisors")
+async def get_advisors_setting(db: AsyncSession = Depends(get_db)):
+    """Get advisors settings (public)."""
+    setting = await services.get_setting_by_key(db, "advisors")
+    if not setting:
+        return {"advisors": []}
+    if setting.value:
+        try:
+            return json.loads(setting.value)
+        except Exception:
+            return {"value": setting.value}
+    return {"advisors": []}
+
+
+@router.get("/settings/about-us")
+async def get_about_us_setting(db: AsyncSession = Depends(get_db)):
+    """Get about-us settings (public)."""
+    setting = await services.get_setting_by_key(db, "about-us")
+    if not setting:
+        return {
+            "slides": [],
+            "stats": [],
+            "text": [],
+            "vision": {"title": "", "content": ""},
+            "mission": {"title": "", "content": ""},
+        }
+    if setting.value:
+        try:
+            return json.loads(setting.value)
+        except Exception:
+            return {"value": setting.value}
+    return {}
+
+
 @router.get("/settings/{key}")
 async def get_setting_by_key(key: str, db: AsyncSession = Depends(get_db)):
     """Get a single setting by key (public)."""
@@ -83,6 +117,48 @@ async def update_landing_page(
     config = body.model_dump(exclude_unset=True)
     result = await services.update_landing_page_config(db, config, admin.id)
     return result
+
+
+@router.put("/admin/settings/advisors", response_model=schemas.SettingResponse)
+async def update_advisors_setting(
+    body: Any = Body(...),
+    admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update advisors settings (admin only)."""
+    if isinstance(body, dict) and "value" in body and len(body) == 1:
+        val = body["value"]
+    else:
+        val = body
+
+    if isinstance(val, (dict, list)):
+        serialized_val = json.dumps(val)
+    else:
+        serialized_val = str(val)
+
+    setting = await services.update_setting(db, "advisors", serialized_val, admin.id)
+    return schemas.SettingResponse.model_validate(setting)
+
+
+@router.put("/admin/settings/about-us", response_model=schemas.SettingResponse)
+async def update_about_us_setting(
+    body: Any = Body(...),
+    admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update about-us settings (admin only)."""
+    if isinstance(body, dict) and "value" in body and len(body) == 1:
+        val = body["value"]
+    else:
+        val = body
+
+    if isinstance(val, (dict, list)):
+        serialized_val = json.dumps(val)
+    else:
+        serialized_val = str(val)
+
+    setting = await services.update_setting(db, "about-us", serialized_val, admin.id)
+    return schemas.SettingResponse.model_validate(setting)
 
 
 @router.put("/admin/settings/{key}", response_model=schemas.SettingResponse)
