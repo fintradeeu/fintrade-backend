@@ -46,6 +46,7 @@ async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     import asyncio
     import logging
+    import traceback
     logger = logging.getLogger(__name__)
 
     def run_alembic_upgrade():
@@ -65,36 +66,41 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Automated database migrations failed: {e}")
 
-    await asyncio.to_thread(run_alembic_upgrade)
+    try:
+        await asyncio.to_thread(run_alembic_upgrade)
 
-    setup_logging(debug=settings.DEBUG)
-    await init_db()
+        setup_logging(debug=settings.DEBUG)
+        await init_db()
 
     # Seed default roles and admin user (idempotent — skips if already present)
-    from app.db.seed import seed
-    try:
-        await seed(skip_init_db=True)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Seed skipped or failed: {e}")
+        from app.db.seed import seed
+        try:
+            await seed(skip_init_db=True)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Seed skipped or failed: {e}")
 
     # Auto-repair news schema on startup to prevent UndefinedColumnError on fresh deployments
-    try:
-        from app.db.database import AsyncSessionLocal
-        async with AsyncSessionLocal() as session:
-            await _repair_users_schema_async(session)
-            await _repair_courses_schema_async(session)
-            await _repair_feedback_schema_async(session)
-            await _repair_news_schema_async(session)
-            await _repair_lectures_schema_async(session)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Schema auto-repair skipped or failed: {e}")
+        try:
+            from app.db.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as session:
+                await _repair_users_schema_async(session)
+                await _repair_courses_schema_async(session)
+                await _repair_feedback_schema_async(session)
+                await _repair_news_schema_async(session)
+                await _repair_lectures_schema_async(session)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Schema auto-repair skipped or failed: {e}")
 
     # Start background live class scheduler
-    from app.utils.live_class_scheduler import live_class_scheduler_loop
-    import asyncio
-    asyncio.create_task(live_class_scheduler_loop())
+        from app.utils.live_class_scheduler import live_class_scheduler_loop
+        import asyncio
+        asyncio.create_task(live_class_scheduler_loop())
+    except Exception:
+        logging.basicConfig(level=logging.INFO)
+        logger.critical("Application startup failed:\n%s", traceback.format_exc())
+        raise
 
     yield
 
