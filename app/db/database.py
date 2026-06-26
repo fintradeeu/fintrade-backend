@@ -13,6 +13,13 @@ def get_engine_args():
     url = settings.async_database_url
     connect_args = {}
 
+    if url.startswith("sqlite+aiosqlite://"):
+        return {
+            "url": url,
+            "echo": settings.DEBUG,
+            "connect_args": connect_args,
+        }
+
     # Hosted Postgres providers commonly require SSL.
     if "render.com" in url or "neon.tech" in url or "vercel-storage" in url:
         ssl_ctx = ssl.create_default_context()

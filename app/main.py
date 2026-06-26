@@ -52,10 +52,13 @@ async def lifespan(app: FastAPI):
     def run_alembic_upgrade():
         try:
             import os
+            import sys
+            import traceback
             from alembic.config import Config
             from alembic import command
             
             logger.info("Running automated database migrations on startup...")
+            print("Running automated database migrations on startup...", file=sys.stderr, flush=True)
             root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             if not os.path.exists(os.path.join(root_dir, "alembic.ini")):
                 root_dir = os.getcwd()
@@ -63,8 +66,11 @@ async def lifespan(app: FastAPI):
             alembic_cfg = Config(os.path.join(root_dir, "alembic.ini"))
             command.upgrade(alembic_cfg, "head")
             logger.info("Database migrations completed successfully.")
-        except Exception as e:
-            logger.error(f"Automated database migrations failed: {e}")
+            print("Database migrations completed successfully.", file=sys.stderr, flush=True)
+        except BaseException:
+            message = "Automated database migrations failed:\n" + traceback.format_exc()
+            logger.error(message)
+            print(message, file=sys.stderr, flush=True)
 
     try:
         await asyncio.to_thread(run_alembic_upgrade)
@@ -97,9 +103,12 @@ async def lifespan(app: FastAPI):
         from app.utils.live_class_scheduler import live_class_scheduler_loop
         import asyncio
         asyncio.create_task(live_class_scheduler_loop())
-    except Exception:
+    except BaseException:
+        import sys
         logging.basicConfig(level=logging.INFO)
-        logger.critical("Application startup failed:\n%s", traceback.format_exc())
+        message = "Application startup failed:\n" + traceback.format_exc()
+        logger.critical(message)
+        print(message, file=sys.stderr, flush=True)
         raise
 
     yield

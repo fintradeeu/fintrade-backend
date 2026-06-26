@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000,http://localhost:8001,http://127.0.0.1:8001,https://fintrade-frontend-three.vercel.app,https://www.thefintrade.com,https://thefintrade.com"
 
     # ── Database ─────────────────────────────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://lms_user:lms_password@localhost:5432/lms_db"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./fintrade.db"
 
     @property
     def async_database_url(self) -> str:
