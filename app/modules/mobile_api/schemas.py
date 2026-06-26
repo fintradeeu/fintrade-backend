@@ -110,12 +110,14 @@ class MobileProfileUpdateResponse(BaseModel):
 # New Mobile V1 Profile Schemas
 class MobileUserProfileCreateRequest(BaseModel):
     name: str
-    email: EmailStr
+    email: Optional[EmailStr] = None
+    emailId: Optional[EmailStr] = None
     mobileNumber: str
 
 class MobileUserProfileUpdateRequest(BaseModel):
     name: str
-    email: EmailStr
+    email: Optional[EmailStr] = None
+    emailId: Optional[EmailStr] = None
     mobileNumber: str
 
 class MobileUserProfileResponseData(BaseModel):

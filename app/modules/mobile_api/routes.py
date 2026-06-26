@@ -478,13 +478,14 @@ async def create_mobile_user_profile(
 ):
     """Create or update a user and student profile without requiring authentication."""
     name = body.name.strip()
-    email = body.email.strip().lower()
+    email_val = body.email or body.emailId
+    if not email_val:
+        raise HTTPException(status_code=400, detail="Email is required")
+    email = email_val.strip().lower()
     mobile_number = body.mobileNumber.strip()
 
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
-    if not email:
-        raise HTTPException(status_code=400, detail="Email is required")
     if not mobile_number:
         raise HTTPException(status_code=400, detail="Mobile number is required")
 
@@ -569,13 +570,14 @@ async def update_mobile_user_profile(
         raise HTTPException(status_code=403, detail="You do not have permission to update this profile")
 
     name = body.name.strip()
-    email = body.email.strip().lower()
+    email_val = body.email or body.emailId
+    if not email_val:
+        raise HTTPException(status_code=400, detail="Email is required")
+    email = email_val.strip().lower()
     mobile_number = body.mobileNumber.strip()
 
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
-    if not email:
-        raise HTTPException(status_code=400, detail="Email is required")
     if not mobile_number:
         raise HTTPException(status_code=400, detail="Mobile number is required")
 
