@@ -38,6 +38,8 @@ services:
         value: "1.0.0"
       - key: DEBUG
         value: "false"
+      - key: PYTHONUNBUFFERED
+        value: "true"
       - key: CORS_ORIGINS
         value: "*"
       - key: OPENAI_API_KEY
