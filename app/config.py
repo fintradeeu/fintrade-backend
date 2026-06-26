@@ -35,6 +35,12 @@ class Settings(BaseSettings):
 
         parsed = urlparse(url)
 
+        # Render injects PORT for web services. If a Render deploy still has a
+        # local-only database URL from development, avoid crashing while trying
+        # to connect to localhost inside the container.
+        if os.getenv("PORT") and parsed.hostname in {"localhost", "127.0.0.1", "postgres", "db"}:
+            return "sqlite+aiosqlite:///./fintrade.db"
+
         # docker-compose exposes Postgres as db:5432 inside containers, but as
         # localhost:5433 when the backend is run directly on Windows/macOS/Linux.
         if parsed.hostname == "db" and not os.path.exists("/.dockerenv"):
