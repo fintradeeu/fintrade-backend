@@ -86,7 +86,7 @@ TICKERS_CONFIG = [
     {
         "label": "CRUDE OIL",
         "symbol": "CL=F",
-        "tv_symbol": "NYMEX:CL1!",
+        "tv_symbol": "TVC:USOIL",
         "type": "commodity",
         "fallback_price": 78.50,
         "fallback_prev_close": 78.75
@@ -94,7 +94,7 @@ TICKERS_CONFIG = [
     {
         "label": "USD/INR",
         "symbol": "USDINR=X",
-        "tv_symbol": "FX_IDC:USDINR",
+        "tv_symbol": "FX:USDINR",
         "type": "forex",
         "fallback_price": 83.45,
         "fallback_prev_close": 83.54
