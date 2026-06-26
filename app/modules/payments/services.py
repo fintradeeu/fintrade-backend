@@ -244,7 +244,7 @@ async def initiate_easebuzz_payment(
     course: Course,
     base_url: str,
     charge_amount: float,
-    coupon_code: Optional[str] = None,
+    coupon_code: str | None = None,
 ) -> dict:
     """Initiate an Easebuzz payment for a course."""
     txnid = f"TXN{uuid.uuid4().hex[:12].upper()}"
