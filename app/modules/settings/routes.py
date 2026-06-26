@@ -30,38 +30,25 @@ async def get_landing_page(db: AsyncSession = Depends(get_db)):
     return config
 
 
-@router.get("/settings/advisors")
-async def get_advisors_setting(db: AsyncSession = Depends(get_db)):
-    """Get advisors settings (public)."""
-    setting = await services.get_setting_by_key(db, "advisors")
-    if not setting:
-        return {"advisors": []}
-    if setting.value:
-        try:
-            return json.loads(setting.value)
-        except Exception:
-            return {"value": setting.value}
-    return {"advisors": []}
+@router.get("/settings/about-us", response_model=schemas.AboutUsConfig)
+async def get_about_us(db: AsyncSession = Depends(get_db)):
+    """Get specifically the About Us page content from CMS (public)."""
+    config = await services.get_landing_page_config(db)
+    return schemas.AboutUsConfig(
+        slides=config.get("about_us_slides"),
+        stats=config.get("about_us_stats"),
+        text=config.get("about_us_text"),
+        vision=config.get("about_us_vision"),
+        mission=config.get("about_us_mission"),
+        leadership=config.get("leadership")
+    )
 
 
-@router.get("/settings/about-us")
-async def get_about_us_setting(db: AsyncSession = Depends(get_db)):
-    """Get about-us settings (public)."""
-    setting = await services.get_setting_by_key(db, "about-us")
-    if not setting:
-        return {
-            "slides": [],
-            "stats": [],
-            "text": [],
-            "vision": {"title": "", "content": ""},
-            "mission": {"title": "", "content": ""},
-        }
-    if setting.value:
-        try:
-            return json.loads(setting.value)
-        except Exception:
-            return {"value": setting.value}
-    return {}
+@router.get("/settings/advisors", response_model=schemas.AdvisorsConfig)
+async def get_advisors(db: AsyncSession = Depends(get_db)):
+    """Get the advisors/leadership list for the public website (public)."""
+    config = await services.get_landing_page_config(db)
+    return schemas.AdvisorsConfig(advisors=config.get("advisors", []))
 
 
 @router.get("/settings/{key}")
@@ -119,19 +106,6 @@ async def update_landing_page(
     return result
 
 
-@router.get("/settings/about-us", response_model=schemas.AboutUsConfig)
-async def get_about_us(db: AsyncSession = Depends(get_db)):
-    """Get specifically the About Us page content from CMS (public)."""
-    config = await services.get_landing_page_config(db)
-    return schemas.AboutUsConfig(
-        slides=config.get("about_us_slides"),
-        stats=config.get("about_us_stats"),
-        text=config.get("about_us_text"),
-        vision=config.get("about_us_vision"),
-        mission=config.get("about_us_mission"),
-        leadership=config.get("leadership")
-    )
-
 
 @router.put("/admin/settings/about-us", response_model=schemas.AboutUsConfig)
 async def update_about_us(
@@ -165,12 +139,6 @@ async def update_about_us(
         leadership=updated_config.get("leadership")
     )
 
-
-@router.get("/settings/advisors", response_model=schemas.AdvisorsConfig)
-async def get_advisors(db: AsyncSession = Depends(get_db)):
-    """Get the advisors/leadership list for the public website (public)."""
-    config = await services.get_landing_page_config(db)
-    return schemas.AdvisorsConfig(advisors=config.get("advisors", []))
 
 
 @router.put("/admin/settings/advisors", response_model=schemas.AdvisorsConfig)
