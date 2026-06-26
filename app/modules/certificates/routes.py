@@ -12,6 +12,19 @@ from app.modules.certificates import schemas, services
 router = APIRouter(prefix="/certificates", tags=["Certificates"])
 
 
+def certificate_response(cert) -> schemas.CertificateResponse:
+    return schemas.CertificateResponse(
+        id=cert.id,
+        user_id=cert.user_id,
+        course_id=cert.course_id,
+        course_title=cert.course.title if getattr(cert, "course", None) else None,
+        certificate_number=f"FT-{cert.unique_code}",
+        unique_code=cert.unique_code,
+        certificate_url=cert.certificate_url,
+        issued_at=cert.issued_at,
+    )
+
+
 @router.post("/generate", response_model=schemas.CertificateResponse, status_code=201)
 async def generate_certificate(
     req: schemas.CertificateGenerateRequest,
@@ -20,7 +33,7 @@ async def generate_certificate(
 ):
     """Generate a certificate after completing a course."""
     cert = await services.generate_certificate(db, current_user.id, req.course_id)
-    return schemas.CertificateResponse.model_validate(cert)
+    return certificate_response(cert)
 
 @router.get("", response_model=list[schemas.CertificateResponse])
 async def list_user_certificates(
@@ -29,7 +42,7 @@ async def list_user_certificates(
 ):
     """List all certificates for the currently logged-in student."""
     certs = await services.list_certificates_for_user(db, current_user.id)
-    return [schemas.CertificateResponse.model_validate(c) for c in certs]
+    return [certificate_response(c) for c in certs]
 
 
 @router.get("/{cert_id}", response_model=schemas.CertificateResponse)
@@ -40,7 +53,7 @@ async def get_certificate(
 ):
     """View certificate metadata."""
     cert = await services.get_certificate(db, cert_id, current_user.id)
-    return schemas.CertificateResponse.model_validate(cert)
+    return certificate_response(cert)
 
 
 @router.get("/download/{cert_id}")

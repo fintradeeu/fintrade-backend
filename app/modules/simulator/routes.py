@@ -13,32 +13,182 @@ from app.modules.simulator import schemas, services
 router = APIRouter(prefix="/simulator", tags=["Trading Simulator"])
 
 import random
+import httpx
+import asyncio
+import time
+
+# Tickers definitions for Yahoo Finance fetch and TradingView widget match
+TICKERS_CONFIG = [
+    {
+        "label": "SENSEX",
+        "symbol": "^BSESN",
+        "tv_symbol": "BSE:SENSEX",
+        "type": "index",
+        "fallback_price": 74243.34,
+        "fallback_prev_close": 74360.01
+    },
+    {
+        "label": "SBI",
+        "symbol": "SBIN.NS",
+        "tv_symbol": "NSE:SBIN",
+        "type": "stock",
+        "fallback_price": 834.50,
+        "fallback_prev_close": 822.20
+    },
+    {
+        "label": "RELIANCE",
+        "symbol": "RELIANCE.NS",
+        "tv_symbol": "NSE:RELIANCE",
+        "type": "stock",
+        "fallback_price": 2934.10,
+        "fallback_prev_close": 2888.90
+    },
+    {
+        "label": "HDFC BANK",
+        "symbol": "HDFCBANK.NS",
+        "tv_symbol": "NSE:HDFCBANK",
+        "type": "stock",
+        "fallback_price": 1520.40,
+        "fallback_prev_close": 1526.00
+    },
+    {
+        "label": "TCS",
+        "symbol": "TCS.NS",
+        "tv_symbol": "NSE:TCS",
+        "type": "stock",
+        "fallback_price": 3890.00,
+        "fallback_prev_close": 3864.60
+    },
+    {
+        "label": "INFOSYS",
+        "symbol": "INFY.NS",
+        "tv_symbol": "NSE:INFY",
+        "type": "stock",
+        "fallback_price": 1450.20,
+        "fallback_prev_close": 1435.10
+    },
+    {
+        "label": "GOLD",
+        "symbol": "GC=F",
+        "tv_symbol": "TVC:GOLD",
+        "type": "commodity",
+        "fallback_price": 2350.00,
+        "fallback_prev_close": 2364.20
+    },
+    {
+        "label": "SILVER",
+        "symbol": "SI=F",
+        "tv_symbol": "TVC:SILVER",
+        "type": "commodity",
+        "fallback_price": 63.50,
+        "fallback_prev_close": 65.30
+    },
+    {
+        "label": "CRUDE OIL",
+        "symbol": "CL=F",
+        "tv_symbol": "NYMEX:CL1!",
+        "type": "commodity",
+        "fallback_price": 78.50,
+        "fallback_prev_close": 78.75
+    },
+    {
+        "label": "USD/INR",
+        "symbol": "USDINR=X",
+        "tv_symbol": "FX_IDC:USDINR",
+        "type": "forex",
+        "fallback_price": 83.45,
+        "fallback_prev_close": 83.54
+    },
+    {
+        "label": "BITCOIN",
+        "symbol": "BTC-USD",
+        "tv_symbol": "CRYPTO:BTCUSD",
+        "type": "crypto",
+        "fallback_price": 64230.00,
+        "fallback_prev_close": 63030.00
+    }
+]
+
+# In-memory cache variables
+_market_data_cache = None
+_market_data_last_fetched = 0.0
+CACHE_TTL = 60.0
+
+async def fetch_ticker_data(client: httpx.AsyncClient, cfg: dict) -> dict:
+    symbol = cfg["symbol"]
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1d"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": "https://finance.yahoo.com",
+        "Referer": "https://finance.yahoo.com/"
+    }
+    try:
+        response = await client.get(url, headers=headers, timeout=4.0)
+        if response.status_code == 200:
+            res_json = response.json()
+            meta = res_json["chart"]["result"][0]["meta"]
+            price = meta.get("regularMarketPrice")
+            prev_close = meta.get("chartPreviousClose")
+            if price is not None and prev_close is not None:
+                return {
+                    "symbol": cfg["label"],
+                    "raw_price": float(price),
+                    "raw_prev_close": float(prev_close),
+                    "cfg": cfg,
+                    "success": True
+                }
+    except Exception:
+        pass
+    
+    return {
+        "symbol": cfg["label"],
+        "raw_price": cfg["fallback_price"],
+        "raw_prev_close": cfg["fallback_prev_close"],
+        "cfg": cfg,
+        "success": False
+    }
 
 @router.get("/market-data")
 async def get_market_data():
-    """Simulated randomized live market data feed."""
-    base_prices = {
-        "NIFTY 50": 58720,
-        "BANK NIFTY": 42580,
-        "RELIANCE": 2456,
-        "HDFC BANK": 1650,
-        "TCS": 3800
-    }
-    
-    data = []
-    for symbol, base in base_prices.items():
-        # Fluctuate by +/- 1%
-        fluctuation = base * 0.01 * random.uniform(-1, 1)
-        current = round(base + fluctuation, 2)
-        change_pct = round((fluctuation / base) * 100, 2)
-        volume = f"{random.randint(10, 300)}M"
-        data.append({
-            "symbol": symbol,
-            "price": current,
-            "change": change_pct,
-            "volume": volume
+    """Live market data feed fetched from Yahoo Finance with memory cache and staggered fetching."""
+    global _market_data_cache, _market_data_last_fetched
+    now = time.time()
+    if _market_data_cache is not None and (now - _market_data_last_fetched) < CACHE_TTL:
+        return _market_data_cache
+
+    results = []
+    async with httpx.AsyncClient() as client:
+        for cfg in TICKERS_CONFIG:
+            res = await fetch_ticker_data(client, cfg)
+            results.append(res)
+            # Add a small delay between requests to avoid triggering Yahoo's rate limiter / 429 blocks
+            await asyncio.sleep(0.2)
+
+    final_data = []
+    for item in results:
+        cfg = item["cfg"]
+        price = item["raw_price"]
+        prev_close = item["raw_prev_close"]
+        
+        price = round(price, 2)
+        prev_close = round(prev_close, 2)
+        change = round(price - prev_close, 2)
+        change_pct = round((change / prev_close * 100) if prev_close else 0.0, 2)
+        
+        final_data.append({
+            "symbol": cfg["label"],
+            "price": price,
+            "change": change,
+            "change_pct": change_pct,
+            "tv_symbol": cfg["tv_symbol"],
+            "volume": f"{random.randint(10, 300)}M"
         })
-    return data
+
+    _market_data_cache = final_data
+    _market_data_last_fetched = now
+    return final_data
 
 
 

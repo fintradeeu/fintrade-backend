@@ -67,6 +67,92 @@ async def seed(skip_init_db: bool = False):
             else:
                 print(f"  · Admin already exists: {DEFAULT_ADMIN['email']}")
 
+            # Create default superadmin
+            super_email = "superadmin@gmail.com"
+            result_super = await db.execute(
+                select(User).where(User.email == super_email)
+            )
+            superadmin = result_super.scalar_one_or_none()
+
+            if superadmin is None:
+                # Get super_admin role
+                role_result_super = await db.execute(select(Role).where(Role.name == "super_admin"))
+                super_role = role_result_super.scalar_one()
+
+                superadmin = User(
+                    email=super_email,
+                    full_name="Super Admin",
+                    hashed_password=hash_password("super@123"),
+                    is_active=True,
+                    is_verified=True,
+                )
+                superadmin.roles.append(super_role)
+                db.add(superadmin)
+                await db.flush()
+                print(f"  ✓ Created superadmin: {super_email} (password: super@123)")
+            else:
+                print(f"  · Superadmin already exists: {super_email}")
+
+            # Create default Introducing Broker (IB) distributor
+            ib_email = "ib@gmail.com"
+            result_ib = await db.execute(
+                select(User).where(User.email == ib_email)
+            )
+            ib_user = result_ib.scalar_one_or_none()
+
+            if ib_user is None:
+                # Get distributor role
+                role_result_ib = await db.execute(select(Role).where(Role.name == "distributor"))
+                ib_role = role_result_ib.scalar_one()
+
+                ib_user = User(
+                    email=ib_email,
+                    full_name="Introducing Broker (IB)",
+                    hashed_password=hash_password("ib@gmail.com"),
+                    is_active=True,
+                    is_verified=True,
+                )
+                ib_user.roles.append(ib_role)
+                db.add(ib_user)
+                await db.flush()
+                
+                # Import Distributor here to avoid circular dependencies
+                from app.modules.distributors.models import Distributor
+                
+                ib_profile = Distributor(
+                    user_id=ib_user.id,
+                    region="Global",
+                    referral_code="IB100",
+                    discount_percentage=10.0,
+                )
+                db.add(ib_profile)
+                await db.flush()
+                print(f"  ✓ Created IB (Distributor) user: {ib_email} (password: {ib_email}) with referral_code: IB100")
+            else:
+                # Update password and profile just to be safe
+                ib_user.hashed_password = hash_password("ib@gmail.com")
+                db.add(ib_user)
+                
+                # Import Distributor here to avoid circular dependencies
+                from app.modules.distributors.models import Distributor
+                
+                dist_res = await db.execute(select(Distributor).where(Distributor.user_id == ib_user.id))
+                ib_profile = dist_res.scalar_one_or_none()
+                if ib_profile is None:
+                    ib_profile = Distributor(
+                        user_id=ib_user.id,
+                        region="Global",
+                        referral_code="IB100",
+                        discount_percentage=10.0,
+                    )
+                    db.add(ib_profile)
+                else:
+                    ib_profile.referral_code = "IB100"
+                    ib_profile.discount_percentage = 10.0
+                    db.add(ib_profile)
+                await db.flush()
+                print(f"  ✓ Updated existing IB (Distributor) user: {ib_email} (password: {ib_email}) with referral_code: IB100")
+
             await db.commit()
             print("\n✅ Seed completed successfully!")
 

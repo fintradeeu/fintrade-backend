@@ -37,6 +37,8 @@ from app.modules.mobile_api.routes import (
     mobile_profile_router,
     mobile_v1_router,
 )
+from app.modules.commissions.routes import router as commissions_router
+
 
 
 @asynccontextmanager
@@ -80,10 +82,19 @@ async def lifespan(app: FastAPI):
     try:
         from app.db.database import AsyncSessionLocal
         async with AsyncSessionLocal() as session:
+            await _repair_users_schema_async(session)
+            await _repair_courses_schema_async(session)
+            await _repair_feedback_schema_async(session)
             await _repair_news_schema_async(session)
+            await _repair_lectures_schema_async(session)
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"News schema auto-repair skipped or failed: {e}")
+        logging.getLogger(__name__).warning(f"Schema auto-repair skipped or failed: {e}")
+
+    # Start background live class scheduler
+    from app.utils.live_class_scheduler import live_class_scheduler_loop
+    import asyncio
+    asyncio.create_task(live_class_scheduler_loop())
 
     yield
 
@@ -121,9 +132,25 @@ async def global_exception_handler(request: Request, exc: Exception):
     tb = _tb.format_exc()
     import logging
     logging.getLogger("uvicorn.error").error(f"Unhandled error on {request.method} {request.url}: {error_detail}\n{tb}")
+    
+    headers = {}
+    origin = request.headers.get("origin")
+    if origin:
+        if "*" in settings.cors_origins_list or origin in settings.cors_origins_list:
+            headers["Access-Control-Allow-Origin"] = origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+            headers["Access-Control-Allow-Methods"] = "*"
+            headers["Access-Control-Allow-Headers"] = "*"
+            
+    public_detail = (
+        f"Internal Server Error: {error_detail}"
+        if settings.DEBUG
+        else "An unexpected server error occurred. Please try again."
+    )
     return JSONResponse(
         status_code=500,
-        content={"detail": f"Internal Server Error: {error_detail}"},
+        content={"detail": public_detail},
+        headers=headers,
     )
 
 
@@ -153,6 +180,8 @@ app.include_router(mobile_students_router, prefix="/api")
 app.include_router(mobile_auth_router, prefix="/api")
 app.include_router(mobile_profile_router, prefix="/api")
 app.include_router(mobile_v1_router, prefix="/api")
+app.include_router(commissions_router)
+
 
 
 import os
@@ -172,7 +201,8 @@ def trigger_db_migration(secret_key: str):
         raise HTTPException(status_code=403, detail="Invalid secret key")
     
     try:
-        from alembic.config import Config
+        # pyrefly: ignore [missing-import]
+        from alembic.config import Config   
         from alembic import command
         import os
         
@@ -198,6 +228,20 @@ def trigger_db_migration(secret_key: str):
             "006_repair_news_articles_schema.py",
             "007_fix_news_enums_drop_video_type.py",
             "008_add_user_permissions.py",
+            "009_add_lecture_registrations.py",
+            "009_force_drop_video_type.py",
+            "010_add_user_city.py",
+            "011_add_lecture_recordings.py",
+            "012_add_is_popular_to_courses.py",
+            "013_repair_payment_transactions_schema.py",
+            "014_add_commission_wallet_tables.py",
+            "015_add_referral_leads.py",
+            "016_add_ib_self_registration_fields.py",
+            "017_make_student_referral_course_nullable.py",
+            "3abe91512295_add_author_name_to_newsarticle.py",
+            "621bf7ebb607_add_feedback_forms.py",
+            "de8dc5db081f_merge_all_heads.py",
+            "df05f2889739_add_ai_tables.py",
             ".gitkeep",
         }
         for f in glob.glob(os.path.join(versions_dir, "*")):
@@ -210,7 +254,8 @@ def trigger_db_migration(secret_key: str):
                     pass
                 
         # 2. Proactively clear any duplicate heads in alembic_version table and stamp to 004
-        import sqlalchemy as sa
+        # pyrefly: ignore [missing-import]
+        import sqlalchemy as sa 
         sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://").replace("sqlite+aiosqlite://", "sqlite://")
         sync_engine = sa.create_engine(sync_url)
         try:
@@ -249,6 +294,7 @@ async def inspect_db(secret_key: str):
     
     try:
         from app.db.database import AsyncSessionLocal
+        # pyrefly: ignore [missing-import]
         import sqlalchemy as sa
         async with AsyncSessionLocal() as session:
             # Query table columns
@@ -290,6 +336,7 @@ async def inspect_db(secret_key: str):
 
 def _repair_news_schema(sync_engine):
     """Repair production news schema when Alembic graph is polluted."""
+    # pyrefly: ignore [missing-import]
     import sqlalchemy as sa
 
     statements = [
@@ -327,9 +374,7 @@ def _repair_news_schema(sync_engine):
         """,
         "UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status::varchar = ''",
         "UPDATE news_articles SET views_count = 0 WHERE views_count IS NULL",
-        "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)",
-        "DELETE FROM alembic_version",
-        "INSERT INTO alembic_version (version_num) VALUES ('006_repair_news_articles_schema')"
+        "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)"
     ]
 
     for statement in statements:
@@ -340,6 +385,77 @@ def _repair_news_schema(sync_engine):
             import logging
             logging.getLogger(__name__).warning(
                 f"News schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+            )
+
+
+async def _repair_users_schema_async(db):
+    """Repair users table columns expected by the current auth model."""
+    # pyrefly: ignore [missing-import]
+    import sqlalchemy as sa
+
+    statements = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR(100)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSON",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON users (google_id)",
+    ]
+
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Users schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+            )
+
+
+async def _repair_courses_schema_async(db):
+    """Repair courses table columns expected by the current course model."""
+    import sqlalchemy as sa
+
+    statements = [
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS is_popular BOOLEAN DEFAULT false",
+    ]
+
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Courses schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+            )
+
+
+async def _repair_feedback_schema_async(db):
+    """Repair feedback table columns expected by the current feedback model."""
+    import sqlalchemy as sa
+
+    statements = [
+        "ALTER TABLE feedback ADD COLUMN IF NOT EXISTS form_id INTEGER REFERENCES feedback_forms(id) ON DELETE SET NULL",
+        "ALTER TABLE feedback ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)",
+        "ALTER TABLE feedback ADD COLUMN IF NOT EXISTS email VARCHAR(255)",
+        "ALTER TABLE feedback ADD COLUMN IF NOT EXISTS show_on_landing_page BOOLEAN DEFAULT false",
+    ]
+
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Feedback schema repair statement failed: {statement.strip()[:60]}... error: {e}"
             )
 
 
@@ -369,6 +485,7 @@ async def _repair_news_schema_async(db):
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS thumbnail_url TEXT",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'published'",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 0",
+        "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS author_name VARCHAR(255)",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
@@ -382,9 +499,7 @@ async def _repair_news_schema_async(db):
         """,
         "UPDATE news_articles SET status = 'published' WHERE status IS NULL OR status::varchar = ''",
         "UPDATE news_articles SET views_count = 0 WHERE views_count IS NULL",
-        "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)",
-        "DELETE FROM alembic_version",
-        "INSERT INTO alembic_version (version_num) VALUES ('006_repair_news_articles_schema')"
+        "CREATE INDEX IF NOT EXISTS ix_news_articles_id ON news_articles (id)"
     ]
 
     for statement in statements:
@@ -396,6 +511,23 @@ async def _repair_news_schema_async(db):
             import logging
             logging.getLogger(__name__).warning(
                 f"News schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+            )
+
+async def _repair_lectures_schema_async(db):
+    """Repair lecture registrations table to add one_hour_email_sent column if not exists."""
+    import sqlalchemy as sa
+    statements = [
+        "ALTER TABLE lecture_registrations ADD COLUMN IF NOT EXISTS one_hour_email_sent BOOLEAN DEFAULT false",
+    ]
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Lectures schema repair statement failed: {statement.strip()[:60]}... error: {e}"
             )
 
 # Mount static uploads

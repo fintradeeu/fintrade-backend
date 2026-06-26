@@ -32,6 +32,7 @@ class Course(Base):
     original_price = Column(Float, nullable=True)  # Strikethrough price on landing page
     is_published = Column(Boolean, default=False)
     is_featured = Column(Boolean, default=False)  # Show on landing page
+    is_popular = Column(Boolean, default=False)   # Show "Most Popular" badge on landing page
     difficulty_level = Column(String(50), default="beginner")  # beginner, intermediate, advanced
     duration_hours = Column(Integer, nullable=True)
     marketing_highlights = Column(JSON, nullable=True)  # List of bullet points for landing page

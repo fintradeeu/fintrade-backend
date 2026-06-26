@@ -2,14 +2,15 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File
+from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import require_roles
+from app.core.security import require_roles, get_current_user
 from app.db.database import get_db
 from app.modules.admin import schemas, services
 from app.modules.auth.models import User
 from app.modules.auth.schemas import UserResponse
+from app.modules.distributors.schemas import ReferralResponse
 
 # Course / Exam / Lecture / Offer schemas for creation
 from app.modules.courses import schemas as course_schemas, services as course_services
@@ -18,6 +19,11 @@ from app.modules.lectures import schemas as lecture_schemas, services as lecture
 from app.modules.offers import schemas as offer_schemas, services as offer_services
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+def require_super_admin_user(user: User) -> None:
+    if not any(role.name == "super_admin" for role in user.roles):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires Super Admin role")
 
 
 # ── Dashboard ────────────────────────────────────────────────────────
@@ -35,14 +41,20 @@ async def admin_stats(
 async def list_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    _admin: User = Depends(require_roles(["admin"])),
+    admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
     """List all users (admin only)."""
     data = await services.list_users(db, skip=skip, limit=limit)
+    users = data["users"]
+    users = [
+        user
+        for user in users
+        if not any(role.name == "distributor" for role in user.roles)
+    ]
     return schemas.UserListResponse(
-        users=[UserResponse.model_validate(u) for u in data["users"]],
-        total=data["total"],
+        users=[UserResponse.model_validate(u) for u in users],
+        total=len(users) if users != data["users"] else data["total"],
     )
 
 
@@ -54,6 +66,13 @@ async def create_admin(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new admin account (admin only)."""
+    user_role_names = {r.name for r in admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admin has access to create Admin users"
+        )
     user = await services.create_user_with_role(
         db,
         email=body.email,
@@ -63,6 +82,11 @@ async def create_admin(
         created_by=admin.id,
         phone=body.phone,
         city=body.city,
+        bank_account_holder_name=body.bank_account_holder_name,
+        bank_name=body.bank_name,
+        bank_account_number=body.bank_account_number,
+        bank_ifsc_code=body.bank_ifsc_code,
+        bank_upi_id=body.bank_upi_id,
     )
     return UserResponse.model_validate(user)
 
@@ -94,7 +118,14 @@ async def create_distributor(
     admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new distributor account with profile (admin only)."""
+    """Create a new distributor/IB account (Super Admin only)."""
+    user_role_names = {r.name for r in admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admin can create Introducing Broker (IB) accounts"
+        )
     user, distributor = await services.create_distributor_user(
         db,
         email=body.email,
@@ -136,11 +167,32 @@ async def delete_user(
 # ── Distributor management ──────────────────────────────────────────
 @router.get("/distributors", response_model=List[schemas.AdminDistributorResponse])
 async def list_distributors(
-    _admin: User = Depends(require_roles(["admin"])),
+    admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all distributors (admin only)."""
+    """List all distributors (Super Admin only)."""
+    require_super_admin_user(admin)
+    from sqlalchemy import select, func
+    from app.modules.distributors.models import StudentReferral
+    from app.modules.courses.models import CourseEnrollment
+
     distributors = await services.list_distributors(db)
+    
+    # Query count of referred students grouped by distributor_id
+    counts_res = await db.execute(
+        select(StudentReferral.distributor_id, func.count(func.distinct(StudentReferral.student_id)))
+        .group_by(StudentReferral.distributor_id)
+    )
+    counts_map = {row[0]: row[1] for row in counts_res.all()}
+
+    # Query total revenue generated grouped by distributor_id
+    revenue_res = await db.execute(
+        select(CourseEnrollment.distributor_id, func.coalesce(func.sum(CourseEnrollment.price_paid), 0.0))
+        .where(CourseEnrollment.distributor_id.isnot(None))
+        .group_by(CourseEnrollment.distributor_id)
+    )
+    revenue_map = {row[0]: float(row[1]) for row in revenue_res.all()}
+
     return [
         schemas.AdminDistributorResponse(
             id=d.id,
@@ -151,6 +203,20 @@ async def list_distributors(
             created_at=d.created_at,
             user_name=d.user.full_name if d.user else None,
             user_email=d.user.email if d.user else None,
+            phone=d.user.phone if d.user else None,
+            city=d.user.city if d.user else None,
+            profile_photo_url=d.profile_photo_url,
+            aadhaar_card_url=d.aadhaar_card_url,
+            pan_card_url=d.pan_card_url,
+            bank_account_holder_name=d.bank_account_holder_name,
+            bank_name=d.bank_name,
+            bank_account_number=d.bank_account_number,
+            bank_ifsc_code=d.bank_ifsc_code,
+            bank_upi_id=d.bank_upi_id,
+            self_registered=d.self_registered,
+            verification_status=d.verification_status,
+            total_students_referred=counts_map.get(d.id, 0),
+            total_revenue_generated=revenue_map.get(d.id, 0.0),
         )
         for d in distributors
     ]
@@ -159,12 +225,38 @@ async def list_distributors(
 @router.get("/distributors/{distributor_id}/stats", response_model=schemas.AdminDistributorStatsResponse)
 async def distributor_stats(
     distributor_id: int,
-    _admin: User = Depends(require_roles(["admin"])),
+    admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get stats for a specific distributor (admin only)."""
+    """Get stats for a specific distributor (Super Admin only)."""
+    require_super_admin_user(admin)
     stats = await services.get_distributor_stats(db, distributor_id)
     return schemas.AdminDistributorStatsResponse(**stats)
+
+
+@router.get("/distributors/{distributor_id}/referrals", response_model=List[ReferralResponse])
+async def list_distributor_referrals(
+    distributor_id: int,
+    admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """List referred students for a specific distributor (Super Admin only)."""
+    require_super_admin_user(admin)
+    from app.modules.distributors import services as dist_services
+    
+    referrals = await dist_services.list_referrals(db, distributor_id)
+    return [
+        ReferralResponse(
+            id=r.id,
+            student_id=r.student_id,
+            student_name=r.student.full_name if r.student else None,
+            student_email=r.student.email if r.student else None,
+            course_id=r.course_id,
+            course_title=r.course.title if r.course else None,
+            created_at=r.created_at,
+        )
+        for r in referrals
+    ]
 
 
 # ── Course management ────────────────────────────────────────────────
@@ -656,6 +748,13 @@ async def create_offer(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new offer (admin only)."""
+    user_role_names = {r.name for r in admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     data = body.model_dump()
     data["created_by_admin"] = admin.id
     offer = await offer_services.create_offer(db, data)
@@ -668,6 +767,13 @@ async def list_all_offers(
     db: AsyncSession = Depends(get_db),
 ):
     """List all offers including inactive ones (admin only)."""
+    user_role_names = {r.name for r in _admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     offers = await offer_services.list_offers(db, active_only=False)
     return [offer_schemas.OfferResponse.model_validate(o) for o in offers]
 
@@ -680,6 +786,13 @@ async def update_offer(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing offer/coupon (admin only)."""
+    user_role_names = {r.name for r in _admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     offer = await offer_services.update_offer(db, offer_id, body.model_dump(exclude_unset=True))
     return offer_schemas.OfferResponse.model_validate(offer)
 
@@ -691,6 +804,13 @@ async def delete_offer(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete an offer/coupon (admin only)."""
+    user_role_names = {r.name for r in _admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     await offer_services.delete_offer(db, offer_id)
     return schemas.MessageResponse(message="Offer deleted successfully")
 
@@ -702,6 +822,13 @@ async def toggle_offer(
     db: AsyncSession = Depends(get_db),
 ):
     """Toggle offer active/inactive status (admin only)."""
+    user_role_names = {r.name for r in _admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     offer = await offer_services.toggle_offer(db, offer_id)
     return offer_schemas.OfferResponse.model_validate(offer)
 
@@ -712,21 +839,94 @@ async def offer_stats(
     db: AsyncSession = Depends(get_db),
 ):
     """Get coupon/offer usage statistics (admin only)."""
+    user_role_names = {r.name for r in _admin.roles}
+    if "super_admin" not in user_role_names:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Requires Super Admin role"
+        )
     return await offer_services.get_offer_stats(db)
 
 
 @router.get("/revenue/stats", response_model=dict)
 async def revenue_stats(
-    _admin: User = Depends(require_roles(["admin"])),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get revenue statistics (hardcoded for now, Finance/Super Admin only)."""
+    """Get revenue statistics (Super Admin only)."""
+    from fastapi import HTTPException
+    
+    user_role_names = {r.name for r in current_user.roles}
+    if "super_admin" not in user_role_names:
+        raise HTTPException(status_code=403, detail="Requires Super Admin role")
+
+    # Calculate actual revenue from database
+    from app.modules.payments.models import PaymentTransaction
+    from sqlalchemy import func, select
+    
+    total_stmt = select(func.sum(PaymentTransaction.amount)).where(PaymentTransaction.status == "success")
+    total_val = (await db.execute(total_stmt)).scalar() or 0.0
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    start_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    monthly_stmt = select(func.sum(PaymentTransaction.amount)).where(
+        PaymentTransaction.status == "success",
+        PaymentTransaction.updated_at >= start_of_month
+    )
+    monthly_val = (await db.execute(monthly_stmt)).scalar() or 0.0
+
     return {
-        "total_revenue": "₹2.45Cr",
-        "monthly_revenue": "₹24.5L",
+        "total_revenue": f"₹{total_val:,.2f}",
+        "monthly_revenue": f"₹{monthly_val:,.2f}",
         "active_coupons": (await offer_services.get_offer_stats(db))["active_coupons"],
         "total_usage": (await offer_services.get_offer_stats(db))["total_usage"],
     }
+
+
+@router.get("/revenue/details")
+async def revenue_details(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get detailed transaction history (Super Admin only)."""
+    from fastapi import HTTPException
+    
+    user_role_names = {r.name for r in current_user.roles}
+    if "super_admin" not in user_role_names:
+        raise HTTPException(status_code=403, detail="Requires Super Admin role")
+
+    from app.modules.payments.models import PaymentTransaction
+    from app.modules.courses.models import Course
+    from sqlalchemy import select
+    
+    # Query database for transactions joined with user and course
+    stmt = (
+        select(PaymentTransaction, User.full_name, User.email, Course.title)
+        .join(User, User.id == PaymentTransaction.user_id)
+        .join(Course, Course.id == PaymentTransaction.course_id)
+        .where(PaymentTransaction.status == "success")
+        .order_by(PaymentTransaction.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+    
+    return [
+        {
+            "id": tx.id,
+            "txnid": tx.txnid,
+            "amount": tx.amount,
+            "status": tx.status,
+            "payment_mode": tx.payment_mode or "N/A",
+            "created_at": tx.created_at.isoformat() if tx.created_at else None,
+            "student_name": full_name,
+            "student_email": email,
+            "course_title": title,
+        }
+        for tx, full_name, email, title in rows
+    ]
+
 
 
 # ── Lecture management ──────────────────────────────────────────────

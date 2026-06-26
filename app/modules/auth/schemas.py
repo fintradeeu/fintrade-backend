@@ -14,6 +14,7 @@ class RegisterRequest(BaseModel):
     phone: Optional[str] = Field(None, max_length=20)
     city: Optional[str] = Field(None, max_length=100)
     password: str = Field(..., min_length=8, max_length=128)
+    referral_code: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -23,8 +24,16 @@ class LoginRequest(BaseModel):
 
 class GoogleAuthRequest(BaseModel):
     """Request schema for Google OAuth sign-in."""
-    token: str = Field(..., description="Google ID token from the frontend")
+    token: Optional[str] = Field(None, description="Google ID token from the frontend")
+    access_token: Optional[str] = Field(None, description="Google access token from the frontend")
     phone: Optional[str] = Field(None, max_length=20)
+    city: Optional[str] = Field(None, max_length=100)
+
+
+class GoogleProfileCompletionRequest(BaseModel):
+    phone: str = Field(..., min_length=8, max_length=20)
+    city: Optional[str] = Field(None, max_length=100)
+    password: str = Field(..., min_length=8, max_length=128)
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -82,6 +91,7 @@ class UserResponse(BaseModel):
     is_verified: bool
     avatar_url: Optional[str] = None
     permissions: Optional[dict] = None
+    has_password: bool = False
     roles: List[RoleResponse] = []
     distributor_profile: Optional[DistributorProfileResponse] = None
     created_at: datetime
@@ -100,6 +110,7 @@ class UserResponse(BaseModel):
                 "is_verified": data.is_verified,
                 "avatar_url": data.avatar_url,
                 "permissions": data.permissions,
+                "has_password": bool(data.hashed_password),
                 "created_at": data.created_at,
             }
             if "roles" in data.__dict__:

@@ -10,6 +10,7 @@ from app.core.security import get_current_user, require_roles
 from app.db.database import get_db
 from app.modules.auth.models import User
 from app.modules.kyc import schemas, services
+from app.modules.kyc.models import Contract
 
 router = APIRouter(prefix="/kyc", tags=["KYC & Contracts"])
 
@@ -131,7 +132,7 @@ async def generate_contract(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate contract after KYC verification."""
+    """Complete KYC and generate its contract dossier."""
     contract = await services.generate_contract(
         db, current_user.id, body.course_id, body.terms_accepted
     )
@@ -238,18 +239,25 @@ async def list_contracts(
     _admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all contracts (admin only)."""
-    contracts = await services.list_contracts(db, skip, limit)
+    """List completed KYC dossiers student-wise, with contract data when available."""
+    submissions = await services.list_kyc_submissions(db, skip, limit)
     items = []
-    for c in contracts:
-        # Get KYC status for each contract
-        kyc = await services.get_kyc_detail(db, c.kyc_id)
-        if c.user and kyc and kyc.mobile != c.user.phone:
-            kyc.mobile = c.user.phone
-            await db.commit()
+    for kyc in submissions:
+        # Only show submissions that reached the document stage. This makes
+        # the admin list independent from contract-generation timing.
+        if kyc.status != "rejected" and not any((kyc.aadhaar_doc_url, kyc.pan_doc_url, kyc.photo_url, kyc.signature_url, kyc.biometric_selfie_url)):
+            continue
+
+        contract_res = await db.execute(
+            select(Contract).where(Contract.kyc_id == kyc.id).order_by(Contract.created_at.desc())
+        )
+        c = contract_res.scalars().first()
+
+        user_res = await db.execute(select(User).where(User.id == kyc.user_id))
+        student = user_res.scalar_one_or_none()
         
         course_title = None
-        if c.course_id:
+        if c and c.course_id:
             from app.modules.courses.models import Course
             course_res = await db.execute(select(Course).where(Course.id == c.course_id))
             course_obj = course_res.scalar_one_or_none()
@@ -257,11 +265,12 @@ async def list_contracts(
                 course_title = course_obj.title
                 
         items.append(schemas.AdminContractListItem(
-            id=c.id,
-            contract_number=c.contract_number,
-            user_id=c.user_id,
-            user_name=c.user.full_name if c.user else None,
-            user_email=c.user.email if c.user else None,
+            id=c.id if c else kyc.id,
+            kyc_id=kyc.id,
+            contract_number=c.contract_number if c else f"KYC-{kyc.id:05d}",
+            user_id=kyc.user_id,
+            user_name=student.full_name if student else kyc.full_name,
+            user_email=student.email if student else None,
             user_mobile=kyc.mobile if kyc else None,
             user_aadhaar=kyc.aadhaar_number if kyc else None,
             user_pan=kyc.pan_number if kyc else None,
@@ -274,10 +283,12 @@ async def list_contracts(
             signature_url=kyc.signature_url if kyc else None,
             biometric_selfie_url=kyc.biometric_selfie_url if kyc else None,
             kyc_status=kyc.status if kyc else None,
-            course_id=c.course_id,
+            rejection_reason=kyc.rejection_reason if kyc else None,
+            reviewed_at=kyc.reviewed_at,
+            course_id=c.course_id if c else None,
             course_title=course_title,
-            signed_at=c.signed_at,
-            created_at=c.created_at,
+            signed_at=c.signed_at if c else None,
+            created_at=c.created_at if c else kyc.updated_at or kyc.created_at,
         ))
     return items
 

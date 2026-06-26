@@ -64,6 +64,9 @@ async def create_course(db: AsyncSession, data: dict, created_by: int) -> Course
         difficulty_level=data.get("difficulty_level", "beginner"),
         duration_hours=data.get("duration_hours"),
         is_published=data.get("is_published", False),
+        is_featured=data.get("is_featured", False),
+        is_popular=data.get("is_popular", False),
+        marketing_highlights=data.get("marketing_highlights"),
         created_by=data.get("instructor_id") or created_by,
     )
     db.add(course)
@@ -315,6 +318,37 @@ async def enroll_user(
                 course_id=course_id,
             )
             db.add(referral)
+    else:
+        # Fallback to existing student referral (if registered via a referral link)
+        from app.modules.distributors.models import Distributor, StudentReferral
+        # Look up any existing referral for this student
+        existing_referral_res = await db.execute(
+            select(StudentReferral).where(StudentReferral.student_id == user_id)
+        )
+        existing_referral = existing_referral_res.scalars().first()
+
+        if existing_referral:
+            dist_result = await db.execute(
+                select(Distributor).where(Distributor.id == existing_referral.distributor_id)
+            )
+            distributor = dist_result.scalar_one_or_none()
+            if distributor:
+                distributor_id = distributor.id
+                if distributor.discount_percentage and distributor.discount_percentage > 0:
+                    discount_amount = original_price * (distributor.discount_percentage / 100)
+                    price_paid = max(original_price - discount_amount, 0.0)
+
+                if existing_referral.course_id is None:
+                    # Update existing pending referral with the course ID
+                    existing_referral.course_id = course_id
+                else:
+                    # Create a new referral record for this course
+                    referral = StudentReferral(
+                        student_id=user_id,
+                        distributor_id=distributor.id,
+                        course_id=course_id,
+                    )
+                    db.add(referral)
 
     enrollment = CourseEnrollment(
         user_id=user_id,
@@ -326,6 +360,11 @@ async def enroll_user(
     db.add(enrollment)
     await db.flush()
     await db.refresh(enrollment)
+    try:
+        from app.modules.commissions.services import credit_commission_for_enrollment
+        await credit_commission_for_enrollment(db, enrollment)
+    except Exception as e:
+        logger.error("commission_credit_failed", enrollment_id=enrollment.id, error=str(e))
     logger.info(
         "user_enrolled",
         user_id=user_id,

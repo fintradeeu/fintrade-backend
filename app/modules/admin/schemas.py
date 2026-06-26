@@ -47,6 +47,12 @@ class UpdateUserRequest(BaseModel):
     region: Optional[str] = Field(None, min_length=1, max_length=255)
     referral_code: Optional[str] = Field(None, min_length=3, max_length=50)
     discount_percentage: Optional[float] = Field(None, ge=0, le=100)
+    bank_account_holder_name: Optional[str] = Field(None, max_length=255)
+    bank_name: Optional[str] = Field(None, max_length=255)
+    bank_account_number: Optional[str] = Field(None, max_length=100)
+    bank_ifsc_code: Optional[str] = Field(None, max_length=50)
+    bank_upi_id: Optional[str] = Field(None, max_length=255)
+    verification_status: Optional[str] = Field(None, max_length=30)
 
 
 class CreateDistributorRequest(BaseModel):
@@ -56,8 +62,13 @@ class CreateDistributorRequest(BaseModel):
     city: Optional[str] = Field(None, max_length=100)
     password: str = Field(..., min_length=8, max_length=128)
     region: str = Field(..., min_length=1, max_length=255)
-    referral_code: str = Field(..., min_length=3, max_length=50)
+    referral_code: Optional[str] = Field(None, max_length=50)
     discount_percentage: float = Field(0.0, ge=0, le=100)
+    bank_account_holder_name: Optional[str] = Field(None, max_length=255)
+    bank_name: Optional[str] = Field(None, max_length=255)
+    bank_account_number: Optional[str] = Field(None, max_length=100)
+    bank_ifsc_code: Optional[str] = Field(None, max_length=50)
+    bank_upi_id: Optional[str] = Field(None, max_length=255)
 
 
 # ── Distributor responses ───────────────────────────────────────────
@@ -70,6 +81,20 @@ class AdminDistributorResponse(BaseModel):
     created_at: datetime
     user_name: Optional[str] = None
     user_email: Optional[str] = None
+    phone: Optional[str] = None
+    city: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+    aadhaar_card_url: Optional[str] = None
+    pan_card_url: Optional[str] = None
+    bank_account_holder_name: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc_code: Optional[str] = None
+    bank_upi_id: Optional[str] = None
+    self_registered: Optional[str] = None
+    verification_status: Optional[str] = None
+    total_students_referred: int = 0
+    total_revenue_generated: float = 0.0
 
     model_config = {"from_attributes": True}
 

@@ -7,11 +7,34 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.ai.rag_pipeline import query_rag
+from app.ai.rag_pipeline import (
+    GEMINI_UNAVAILABLE_RESPONSE,
+    LLM_SERVICE_UNAVAILABLE_RESPONSE,
+    LOCAL_LLM_UNAVAILABLE_RESPONSE,
+    query_rag,
+)
 from app.modules.ai.models import ChatMessage, ChatSession
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+from app.modules.ai.guardrails import is_question_allowed_locally, BLOCKED_RESPONSE
+from app.modules.ai.models import FAQEntry
+
+
+LOW_CONFIDENCE_ANSWER_MARKERS = (
+    "I don't have enough context to answer your question right now.",
+    GEMINI_UNAVAILABLE_RESPONSE,
+    LLM_SERVICE_UNAVAILABLE_RESPONSE,
+    LOCAL_LLM_UNAVAILABLE_RESPONSE,
+    BLOCKED_RESPONSE,
+)
+
+
+def _should_cache_faq_answer(answer: str) -> bool:
+    """Cache only useful generated answers, not guardrail or service failure text."""
+    return bool(answer and not any(marker in answer for marker in LOW_CONFIDENCE_ANSWER_MARKERS))
 
 
 async def ask_question(
@@ -36,8 +59,33 @@ async def ask_question(
         await db.flush()
         await db.refresh(session)
 
+    # Server-side guardrails validation (check allowed/blocked topics before querying RAG/OpenAI)
+    if not is_question_allowed_locally(question):
+        # Save user message to history
+        user_msg = ChatMessage(
+            session_id=session.id,
+            role="user",
+            content=question,
+        )
+        db.add(user_msg)
+        
+        # Save blocked assistant message to history
+        assistant_msg = ChatMessage(
+            session_id=session.id,
+            role="assistant",
+            content=BLOCKED_RESPONSE,
+        )
+        db.add(assistant_msg)
+        await db.flush()
+        
+        logger.info("ai_question_blocked_by_guardrails", user_id=user_id, session_id=session.id)
+        return {
+            "session_id": session.id,
+            "answer": BLOCKED_RESPONSE,
+            "sources": [],
+        }
+
     # 1. Simple Dynamic FAQ Match
-    from app.modules.ai.models import FAQEntry
     # Fetch all active FAQs to do a simplistic dynamic match
     faq_res = await db.execute(select(FAQEntry).where(FAQEntry.is_active == True))
     all_faqs = faq_res.scalars().all()
@@ -54,17 +102,19 @@ async def ask_question(
         matched_faq.frequency += 1
         await db.flush()
         answer = matched_faq.answer
-        sources = [{"source": f"FAQ - freq: {matched_faq.frequency}"}]
+        sources = [f"FAQ - freq: {matched_faq.frequency}"]
     else:
         # Run RAG pipeline
         rag_result = await query_rag(question)
         answer = rag_result["answer"]
         sources = rag_result.get("sources", [])
         
-        # Add new question to FAQ dynamically
-        new_faq = FAQEntry(question=question, answer=answer, frequency=1)
-        db.add(new_faq)
-        await db.flush()
+        if _should_cache_faq_answer(answer):
+            new_faq = FAQEntry(question=question, answer=answer, frequency=1)
+            db.add(new_faq)
+            await db.flush()
+        else:
+            logger.info("ai_answer_not_cached", user_id=user_id, session_id=session.id)
 
     # Save user message
     user_msg = ChatMessage(

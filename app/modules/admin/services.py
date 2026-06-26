@@ -105,22 +105,40 @@ async def create_distributor_user(
     full_name: str,
     password: str,
     region: str,
-    referral_code: str,
+    referral_code: Optional[str],
     discount_percentage: float,
     created_by: int,
     phone: Optional[str] = None,
     city: Optional[str] = None,
+    bank_account_holder_name: Optional[str] = None,
+    bank_name: Optional[str] = None,
+    bank_account_number: Optional[str] = None,
+    bank_ifsc_code: Optional[str] = None,
+    bank_upi_id: Optional[str] = None,
 ) -> tuple:
     """Admin creates a distributor: user + distributor profile."""
-    # Check referral code uniqueness
-    existing_code = await db.execute(
-        select(Distributor).where(Distributor.referral_code == referral_code)
-    )
-    if existing_code.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Referral code already exists",
+    if not referral_code:
+        import string
+        import random
+        while True:
+            code_suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            generated_code = f"IB-{code_suffix}"
+            existing_code = await db.execute(
+                select(Distributor).where(Distributor.referral_code == generated_code)
+            )
+            if not existing_code.scalar_one_or_none():
+                referral_code = generated_code
+                break
+    else:
+        # Check referral code uniqueness
+        existing_code = await db.execute(
+            select(Distributor).where(Distributor.referral_code == referral_code)
         )
+        if existing_code.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Referral code already exists",
+            )
 
     user = await create_user_with_role(
         db, email, full_name, password, "distributor", created_by, phone, city
@@ -131,6 +149,12 @@ async def create_distributor_user(
         region=region,
         referral_code=referral_code,
         discount_percentage=discount_percentage,
+        bank_account_holder_name=bank_account_holder_name,
+        bank_name=bank_name,
+        bank_account_number=bank_account_number,
+        bank_ifsc_code=bank_ifsc_code,
+        bank_upi_id=bank_upi_id,
+        verification_status="approved",
     )
     db.add(distributor)
     await db.flush()
@@ -200,7 +224,17 @@ async def update_user(db: AsyncSession, user_id: int, data: dict) -> User:
                         detail="Referral code already exists",
                     )
             
-            for field in ["region", "referral_code", "discount_percentage"]:
+            for field in [
+                "region",
+                "referral_code",
+                "discount_percentage",
+                "bank_account_holder_name",
+                "bank_name",
+                "bank_account_number",
+                "bank_ifsc_code",
+                "bank_upi_id",
+                "verification_status",
+            ]:
                 if field in data and data[field] is not None:
                     setattr(distributor, field, data[field])
                     
@@ -217,13 +251,20 @@ async def update_user(db: AsyncSession, user_id: int, data: dict) -> User:
 
 async def delete_user(db: AsyncSession, user_id: int) -> None:
     """Delete a user account."""
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.distributor_profile))
+        .where(User.id == user_id)
+    )
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
+    if user.distributor_profile is not None:
+        await db.delete(user.distributor_profile)
+        await db.flush()
     await db.delete(user)
     await db.flush()
     logger.info("admin_deleted_user", user_id=user_id)
@@ -261,8 +302,11 @@ async def get_distributor_stats(db: AsyncSession, distributor_id: int) -> dict:
 
     courses_count = (
         await db.execute(
-            select(func.count(StudentReferral.id))
-            .where(StudentReferral.distributor_id == distributor_id)
+            select(func.count(CourseEnrollment.id))
+            .where(
+                CourseEnrollment.distributor_id == distributor_id,
+                CourseEnrollment.is_active == True,  # noqa: E712
+            )
         )
     ).scalar() or 0
 

@@ -26,6 +26,7 @@ async def register(
         password=body.password,
         phone=body.phone,
         city=body.city,
+        referral_code=body.referral_code,
     )   
     
     channel = "both" if user.phone else "email"
@@ -59,7 +60,9 @@ async def google_auth(
     user = await services.authenticate_or_register_google_user(
         db,
         token=body.token,
+        access_token=body.access_token,
         phone=body.phone,
+        city=body.city,
     )
     tokens = await services.create_session(
         db,
@@ -74,6 +77,23 @@ async def google_auth(
     )
 
 
+@router.post("/google/complete-profile", response_model=schemas.UserResponse)
+async def complete_google_profile(
+    body: schemas.GoogleProfileCompletionRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Complete mobile and password setup after Google sign-in."""
+    user = await services.complete_google_profile(
+        db,
+        current_user,
+        phone=body.phone,
+        city=body.city,
+        password=body.password,
+    )
+    return schemas.UserResponse.model_validate(user)
+
+
 @router.post("/login", response_model=Union[schemas.TokenResponse, schemas.OTPPendingResponse])
 async def login(
     body: schemas.LoginRequest,
@@ -83,14 +103,15 @@ async def login(
     """Step 1 - Validate credentials and send OTP via email. (Admins bypass OTP)"""
     user = await services.authenticate_user(db, body.email, body.password)
     
-    # Check if user has admin or super_admin role
-    is_admin = False
+    # Admin and Super Admin bypass OTP. IB/distributor accounts must verify by email OTP.
+    user_role_names = {role.name for role in user.roles}
+    is_otp_bypassed = False
     for role in user.roles:
         if role.name in ["admin", "super_admin"]:
-            is_admin = True
+            is_otp_bypassed = True
             break
             
-    if is_admin:
+    if is_otp_bypassed:
         # Bypass OTP, generate session immediately
         tokens = await services.create_session(
             db,
@@ -110,7 +131,7 @@ async def login(
     if len(digits) >= 8:
         is_phone = True
 
-    channel = "sms" if is_phone else "email"
+    channel = "email" if "distributor" in user_role_names else ("sms" if is_phone else "email")
     otp_result = await services.generate_and_send_otp(db, user, channel=channel)
     
     message_text = "Verification code sent to your email."

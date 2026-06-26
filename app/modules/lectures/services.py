@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.orm import selectinload
 
+from app.modules.auth.models import User
+from app.modules.courses.models import Course, CourseEnrollment
 from app.modules.lectures.models import Lecture, LectureRecording, RegistrationOTP
 from app.utils.logger import get_logger
 
@@ -97,12 +99,68 @@ async def end_lecture(db: AsyncSession, lecture_id: int) -> Lecture:
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
     
+    was_completed = bool(lecture.is_completed)
     lecture.is_live = False
     lecture.is_completed = True
     await db.commit()
     await db.refresh(lecture)
     logger.info("lecture_ended", lecture_id=lecture.id)
+    if not was_completed:
+        await notify_enrolled_students_lecture_finished(db, lecture)
     return lecture
+
+
+async def notify_enrolled_students_lecture_finished(db: AsyncSession, lecture: Lecture) -> dict:
+    """Send WhatsApp completion notification to active enrolled students for this lecture course."""
+    if not lecture.course_id:
+        logger.info("lecture_finished_whatsapp_skipped_no_course", lecture_id=lecture.id)
+        return {"sent": 0, "failed": 0, "skipped": 0}
+
+    from app.integrations.whatsapp_service import send_lecture_finished_message
+
+    course = await db.get(Course, lecture.course_id)
+    rows = await db.execute(
+        select(User)
+        .join(CourseEnrollment, CourseEnrollment.user_id == User.id)
+        .where(
+            CourseEnrollment.course_id == lecture.course_id,
+            CourseEnrollment.is_active == True,  # noqa: E712
+            User.is_active == True,  # noqa: E712
+            User.phone.isnot(None),
+        )
+        .distinct()
+    )
+    students = list(rows.scalars().all())
+    sent = 0
+    failed = 0
+    skipped = 0
+    finished_at = datetime.now(timezone.utc).strftime("%d %b %Y, %I:%M %p UTC")
+
+    for student in students:
+        if not student.phone:
+            skipped += 1
+            continue
+        ok = await send_lecture_finished_message(
+            student_phone=student.phone,
+            student_name=student.full_name or "Student",
+            lecture_title=lecture.title,
+            course_title=course.title if course else "your course",
+            finished_at=finished_at,
+        )
+        if ok:
+            sent += 1
+        else:
+            failed += 1
+
+    logger.info(
+        "lecture_finished_whatsapp_notifications",
+        lecture_id=lecture.id,
+        course_id=lecture.course_id,
+        sent=sent,
+        failed=failed,
+        skipped=skipped,
+    )
+    return {"sent": sent, "failed": failed, "skipped": skipped}
 
 
 async def add_recording(db: AsyncSession, lecture_id: int, recording_url: str) -> LectureRecording:
@@ -325,29 +383,14 @@ async def register_for_lecture_with_otp(db: AsyncSession, data: dict, user_id: i
           <td style="padding:8px 0;color:#111;font-size:14px;font-weight:700;">{class_time}</td>
         </tr>"""
 
-    # Meeting link block
-    if lecture_link:
-        meeting_block = f"""
-        <div style="text-align:center;margin:30px 0;">
-          <a href="{lecture_link}"
-             style="background-color:#D50032;color:#fff;padding:14px 32px;
-                    text-decoration:none;font-weight:700;font-size:16px;
-                    border-radius:8px;display:inline-block;letter-spacing:0.5px;">
-            🎥 Join Live Class
-          </a>
-        </div>
-        <p style="text-align:center;font-size:12px;color:#888;word-break:break-all;">
-          If the button doesn't work, copy this link:<br/>
-          <a href="{lecture_link}" style="color:#D50032;">{lecture_link}</a>
-        </p>"""
-    else:
-        meeting_block = """
-        <div style="background:#fff8f8;border:1px dashed #D50032;border-radius:8px;
-                    padding:16px;margin:20px 0;text-align:center;">
-          <p style="color:#D50032;font-size:14px;font-weight:600;margin:0;">
-            📩 The meeting link will be sent to your email shortly before the class starts.
-          </p>
-        </div>"""
+    # Meeting link block (No direct link / join button in registration confirmation email)
+    meeting_block = """
+    <div style="background:#fff8f8;border:1px dashed #D50032;border-radius:8px;
+                padding:16px;margin:20px 0;text-align:center;">
+      <p style="color:#D50032;font-size:14px;font-weight:600;margin:0;">
+        📩 The join link will be sent to your email exactly 1 hour before the class starts.
+      </p>
+    </div>"""
 
     confirm_body = f"""
     <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:560px;margin:0 auto;

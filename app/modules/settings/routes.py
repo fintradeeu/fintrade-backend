@@ -119,46 +119,70 @@ async def update_landing_page(
     return result
 
 
-@router.put("/admin/settings/advisors", response_model=schemas.SettingResponse)
-async def update_advisors_setting(
-    body: Any = Body(...),
+@router.get("/settings/about-us", response_model=schemas.AboutUsConfig)
+async def get_about_us(db: AsyncSession = Depends(get_db)):
+    """Get specifically the About Us page content from CMS (public)."""
+    config = await services.get_landing_page_config(db)
+    return schemas.AboutUsConfig(
+        slides=config.get("about_us_slides"),
+        stats=config.get("about_us_stats"),
+        text=config.get("about_us_text"),
+        vision=config.get("about_us_vision"),
+        mission=config.get("about_us_mission"),
+        leadership=config.get("leadership")
+    )
+
+
+@router.put("/admin/settings/about-us", response_model=schemas.AboutUsConfig)
+async def update_about_us(
+    body: schemas.AboutUsConfig,
     admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update advisors settings (admin only)."""
-    if isinstance(body, dict) and "value" in body and len(body) == 1:
-        val = body["value"]
-    else:
-        val = body
+    """Update specifically the About Us page content in CMS (admin only)."""
+    config_update = {}
+    if body.slides is not None:
+        config_update["about_us_slides"] = body.slides
+    if body.stats is not None:
+        config_update["about_us_stats"] = body.stats
+    if body.text is not None:
+        config_update["about_us_text"] = body.text
+    if body.vision is not None:
+        config_update["about_us_vision"] = body.vision
+    if body.mission is not None:
+        config_update["about_us_mission"] = body.mission
+    if body.leadership is not None:
+        config_update["leadership"] = body.leadership
+        
+    updated_config = await services.update_landing_page_config(db, config_update, admin.id)
+    
+    return schemas.AboutUsConfig(
+        slides=updated_config.get("about_us_slides"),
+        stats=updated_config.get("about_us_stats"),
+        text=updated_config.get("about_us_text"),
+        vision=updated_config.get("about_us_vision"),
+        mission=updated_config.get("about_us_mission"),
+        leadership=updated_config.get("leadership")
+    )
 
-    if isinstance(val, (dict, list)):
-        serialized_val = json.dumps(val)
-    else:
-        serialized_val = str(val)
 
-    setting = await services.update_setting(db, "advisors", serialized_val, admin.id)
-    return schemas.SettingResponse.model_validate(setting)
+@router.get("/settings/advisors", response_model=schemas.AdvisorsConfig)
+async def get_advisors(db: AsyncSession = Depends(get_db)):
+    """Get the advisors/leadership list for the public website (public)."""
+    config = await services.get_landing_page_config(db)
+    return schemas.AdvisorsConfig(advisors=config.get("advisors", []))
 
 
-@router.put("/admin/settings/about-us", response_model=schemas.SettingResponse)
-async def update_about_us_setting(
-    body: Any = Body(...),
+@router.put("/admin/settings/advisors", response_model=schemas.AdvisorsConfig)
+async def update_advisors(
+    body: schemas.AdvisorsConfig,
     admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update about-us settings (admin only)."""
-    if isinstance(body, dict) and "value" in body and len(body) == 1:
-        val = body["value"]
-    else:
-        val = body
-
-    if isinstance(val, (dict, list)):
-        serialized_val = json.dumps(val)
-    else:
-        serialized_val = str(val)
-
-    setting = await services.update_setting(db, "about-us", serialized_val, admin.id)
-    return schemas.SettingResponse.model_validate(setting)
+    """Update the advisors/leadership list (admin only)."""
+    config_update = {"advisors": body.advisors if body.advisors is not None else []}
+    updated_config = await services.update_landing_page_config(db, config_update, admin.id)
+    return schemas.AdvisorsConfig(advisors=updated_config.get("advisors", []))
 
 
 @router.put("/admin/settings/{key}", response_model=schemas.SettingResponse)

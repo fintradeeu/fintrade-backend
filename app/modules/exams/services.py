@@ -25,7 +25,7 @@ REATTEMPT_DAYS = 30
 
 # ── Helpers ──────────────────────────────────────────────────────────
 async def _check_reattempt_allowed(db: AsyncSession, user_id: int, exam: EntranceExam) -> None:
-    """Raise 403 if the student failed and must wait cooldown_days, or 402 if fee is unpaid."""
+    """Raise 403 if the student failed and must wait 24-hour cooldown after every block of 3 attempts."""
     submitted_count_result = await db.execute(
         select(func.count(ExamAttempt.id)).where(
             ExamAttempt.user_id == user_id,
@@ -34,11 +34,6 @@ async def _check_reattempt_allowed(db: AsyncSession, user_id: int, exam: Entranc
         )
     )
     submitted_count = submitted_count_result.scalar() or 0
-    if exam.max_attempts and exam.max_attempts > 0 and submitted_count >= exam.max_attempts:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"You have used all {exam.max_attempts} attempt(s) for this exam.",
-        )
 
     # Find the most recent completed attempt
     result = await db.execute(
@@ -66,9 +61,10 @@ async def _check_reattempt_allowed(db: AsyncSession, user_id: int, exam: Entranc
                 detail="You have already passed this exam.",
             )
     
-        # Entrance Exam: First 3 attempts are free and immediate.
-        # Starting from attempt 4 (submitted_count >= 3), enforce a 24-hour (1 day) cooldown.
-        if submitted_count >= 3:
+        # Student gets attempts in blocks of 3.
+        # If they fail 3 attempts (submitted_count % 3 == 0), they must wait 24 hours.
+        max_att = exam.max_attempts if (exam.max_attempts and exam.max_attempts > 0) else 3
+        if submitted_count > 0 and submitted_count % max_att == 0:
             if last_attempt.submitted_at:
                 next_allowed = last_attempt.submitted_at + timedelta(hours=24)
                 if datetime.now(timezone.utc) < next_allowed:
@@ -76,7 +72,7 @@ async def _check_reattempt_allowed(db: AsyncSession, user_id: int, exam: Entranc
                     hours_left = max(1, int(diff.total_seconds() / 3600))
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
-                        detail=f"You must wait {hours_left} more hour(s) before your next attempt. Allowed after {next_allowed.strftime('%Y-%m-%d %H:%M UTC')}.",
+                        detail=f"You have failed {max_att} attempts in this block. Please wait {hours_left} more hour(s) before attempting again. Allowed after {next_allowed.strftime('%Y-%m-%d %H:%M UTC')}.",
                     )
 
     # Check fee payment if fee > 0

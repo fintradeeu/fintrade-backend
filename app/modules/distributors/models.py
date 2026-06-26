@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
 )
 from sqlalchemy.orm import relationship, backref
 
@@ -23,6 +24,16 @@ class Distributor(Base):
     region = Column(String(255), nullable=False)
     referral_code = Column(String(50), unique=True, nullable=False, index=True)
     discount_percentage = Column(Float, default=0.0)
+    profile_photo_url = Column(Text, nullable=True)
+    aadhaar_card_url = Column(Text, nullable=True)
+    pan_card_url = Column(Text, nullable=True)
+    bank_account_holder_name = Column(String(255), nullable=True)
+    bank_name = Column(String(255), nullable=True)
+    bank_account_number = Column(String(100), nullable=True)
+    bank_ifsc_code = Column(String(50), nullable=True)
+    bank_upi_id = Column(String(255), nullable=True)
+    self_registered = Column(String(10), nullable=False, default="no")
+    verification_status = Column(String(30), nullable=False, default="pending")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # relationships
@@ -39,7 +50,7 @@ class StudentReferral(Base):
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     distributor_id = Column(Integer, ForeignKey("distributors.id", ondelete="CASCADE"), nullable=False)
-    course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # relationships
@@ -49,3 +60,25 @@ class StudentReferral(Base):
 
     def __repr__(self):
         return f"<StudentReferral student={self.student_id} dist={self.distributor_id}>"
+
+
+class ReferralLead(Base):
+    __tablename__ = "referral_leads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    distributor_id = Column(Integer, ForeignKey("distributors.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    referral_code = Column(String(50), nullable=False, index=True)
+    full_name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False, index=True)
+    mobile_no = Column(String(50), nullable=False, index=True)
+    city = Column(String(100), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    distributor = relationship("Distributor")
+    user = relationship("User", foreign_keys=[user_id])
+
+    def __repr__(self):
+        return f"<ReferralLead email={self.email} dist={self.distributor_id}>"

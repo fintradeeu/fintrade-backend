@@ -5,13 +5,16 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+# pyrefly: ignore [missing-import]
 from fastapi import HTTPException, UploadFile
+# pyrefly: ignore [missing-import]
 from sqlalchemy import select
+# pyrefly: ignore [missing-import]
 from sqlalchemy.ext.asyncio import AsyncSession
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import selectinload
 
 from app.modules.kyc.models import KYCSubmission, Contract
-
 
 # ── Student services ────────────────────────────────────────────────
 
@@ -29,6 +32,13 @@ async def submit_kyc(db: AsyncSession, user_id: int, data: dict) -> KYCSubmissio
     kyc = result.scalar_one_or_none()
 
     if kyc:
+        # A rejected submission becomes a fresh pending review as soon as the
+        # student starts filling it again.
+        if kyc.status == "rejected":
+            kyc.status = "pending"
+            kyc.rejection_reason = None
+            kyc.reviewed_by = None
+            kyc.reviewed_at = None
         for key, value in data.items():
             if value is not None:
                 setattr(kyc, key, value)
@@ -52,7 +62,7 @@ async def get_kyc_status(db: AsyncSession, user_id: int) -> Optional[KYCSubmissi
 from datetime import timedelta
 
 async def send_mobile_otp(db: AsyncSession, user_id: int) -> bool:
-    """Send an SMS OTP using Twilio Verify to the user's KYC mobile number."""
+    """Send an SMS OTP using Twilio Verify or Fast2SMS to the user's KYC mobile number."""
     from app.modules.auth.models import User
     user_result = await db.execute(select(User).where(User.id == user_id))
     user = user_result.scalar_one_or_none()
@@ -62,7 +72,6 @@ async def send_mobile_otp(db: AsyncSession, user_id: int) -> bool:
             detail="User or phone number not found. Please update your profile first."
         )
 
-    # Sync to KYCSubmission.mobile if it exists
     result = await db.execute(
         select(KYCSubmission).where(KYCSubmission.user_id == user_id)
     )
@@ -71,12 +80,49 @@ async def send_mobile_otp(db: AsyncSession, user_id: int) -> bool:
         kyc.mobile = user.phone
         await db.commit()
     
+    from app.modules.auth.services import _generate_otp_code, _generate_otp_token
+    from app.modules.auth.models import OTPCode
+    from app.config import settings
+
+    otp_token = _generate_otp_token()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
+    
+    from app.core.twilio_otp import is_local_sms_otp_enabled, send_sms_otp
+
+    if is_local_sms_otp_enabled():
+        code = _generate_otp_code()
+    else:
+        code = "000000"  # Placeholder code in DB for Twilio Verify (code is managed by Twilio)
+
+    # Store code in database
+    otp = OTPCode(
+        user_id=user_id,
+        code=code,
+        otp_token=otp_token,
+        channel="sms",
+        expires_at=expires_at,
+    )
+    db.add(otp)
+    await db.commit()
+
+    sent = False
     try:
-        from app.core.twilio_otp import send_twilio_otp
-        await send_twilio_otp(user.phone)
-    except Exception:
-        # Gracefully handle Twilio exceptions during development/deployments without Twilio creds
-        pass
+        sent = await send_sms_otp(kyc.mobile, code)
+    except Exception as e:
+        from app.utils.logger import get_logger
+        logger = get_logger(__name__)
+        logger.error("kyc_mobile_otp_sending_failed", error=str(e))
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to send SMS OTP: {str(e)}"
+        )
+
+    if not sent:
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to send SMS OTP. Please check the Nimbus SMS gateway response in backend logs."
+        )
+
     return True
 
 
@@ -101,6 +147,8 @@ async def send_email_otp(db: AsyncSession, user) -> bool:
     )
     db.add(otp)
     await db.commit()
+
+    print(f"\n🔑 [KYC OTP SERVICE] Generated Email OTP code: {code} for user: {user.email}\n", flush=True)
 
     email_html = build_otp_email_html(code, user.full_name)
     email_sent = await send_email(
@@ -131,12 +179,47 @@ async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) ->
         
         if kyc.mobile != user.phone:
             kyc.mobile = user.phone
+            await db.commit()
         
-        try:
-            from app.core.twilio_otp import check_twilio_otp
-            is_valid = await check_twilio_otp(user.phone, otp)
-        except Exception:
-            is_valid = False
+        is_valid = False
+        from app.core.twilio_otp import is_local_sms_otp_enabled
+
+        if is_local_sms_otp_enabled():
+            # Look up the latest unused SMS OTP code
+            from app.modules.auth.models import OTPCode
+            # pyrefly: ignore [missing-import]
+            from sqlalchemy import desc
+
+            result = await db.execute(
+                select(OTPCode)
+                .where(
+                    OTPCode.user_id == user_id,
+                    OTPCode.channel == "sms",
+                    OTPCode.is_used == False
+                )
+                .order_by(desc(OTPCode.created_at))
+            )
+            otp_record = result.scalars().first()
+            if not otp_record:
+                raise HTTPException(status_code=400, detail="No active mobile OTP verification found.")
+
+            if otp_record.expires_at < datetime.now(timezone.utc):
+                raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
+
+            if otp_record.code != otp.strip():
+                otp_record.attempts += 1
+                await db.commit()
+                raise HTTPException(status_code=400, detail="Incorrect verification code.")
+
+            otp_record.is_used = True
+            is_valid = True
+        else:
+            try:
+                from app.core.twilio_otp import check_twilio_otp
+                is_valid = await check_twilio_otp(kyc.mobile, otp)
+            except Exception:
+                is_valid = False
+
 
         if not is_valid:
             raise HTTPException(status_code=400, detail="Invalid or expired mobile OTP.")
@@ -144,6 +227,7 @@ async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) ->
         kyc.mobile_verified = True
     elif otp_type == "email":
         from app.modules.auth.models import OTPCode
+        # pyrefly: ignore [missing-import]
         from sqlalchemy import desc
 
         # Look up the latest unused email OTP code
@@ -221,14 +305,13 @@ async def upload_document(
 async def generate_contract(
     db: AsyncSession, user_id: int, course_id: Optional[int], terms_accepted: bool
 ) -> Contract:
-    """Generate a contract after KYC is verified. Returns existing contract if already generated."""
+    """Complete KYC and create the contract dossier for optional admin review."""
     result = await db.execute(
         select(KYCSubmission).where(KYCSubmission.user_id == user_id)
     )
     kyc = result.scalar_one_or_none()
     if not kyc:
         raise HTTPException(status_code=404, detail="KYC submission not found")
-
     from app.modules.auth.models import User
     user_result = await db.execute(select(User).where(User.id == user_id))
     user = user_result.scalar_one_or_none()
@@ -236,9 +319,24 @@ async def generate_contract(
         kyc.mobile = user.phone
         await db.commit()
 
+    required_documents = (
+        kyc.aadhaar_doc_url,
+        kyc.pan_doc_url,
+        kyc.photo_url,
+        kyc.signature_url,
+        kyc.biometric_selfie_url,
+    )
+    if not all(required_documents):
+        raise HTTPException(status_code=400, detail="Upload all KYC documents before submitting for review")
+    if kyc.status == "rejected":
+        raise HTTPException(status_code=400, detail="Please fill and upload all documents again")
+
     if kyc.status != "verified":
         kyc.status = "verified"
-        await db.commit()
+        kyc.rejection_reason = None
+        kyc.reviewed_by = None
+        kyc.reviewed_at = None
+        await db.flush()
 
     # Check if a contract already exists for this user (one-time contract)
     existing_result = await db.execute(
@@ -246,6 +344,13 @@ async def generate_contract(
     )
     existing_contract = existing_result.scalar_one_or_none()
     if existing_contract:
+        if course_id is not None:
+            existing_contract.course_id = course_id
+        if terms_accepted:
+            existing_contract.terms_accepted = True
+            existing_contract.signed_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(existing_contract)
         return existing_contract
 
     # Generate contract number
@@ -262,7 +367,7 @@ Mobile         : {kyc.mobile or 'N/A'}
 Aadhaar        : {kyc.aadhaar_number or 'N/A'}
 PAN            : {kyc.pan_number or 'N/A'}
 
-KYC Status     : VERIFIED
+KYC Status     : COMPLETED
 Contract Date  : {datetime.now().strftime('%d %B %Y')}
 
 TERMS & CONDITIONS
@@ -287,7 +392,7 @@ Date: {datetime.now().strftime('%d/%m/%Y')}
         contract_number=contract_number,
         course_id=course_id,
         terms_accepted=terms_accepted,
-        signed_at=datetime.now(timezone.utc),
+        signed_at=datetime.now(timezone.utc) if terms_accepted else None,
         contract_text=contract_text,
     )
     db.add(contract)
@@ -331,6 +436,8 @@ async def get_kyc_detail(db: AsyncSession, kyc_id: int) -> KYCSubmission:
 async def approve_kyc(db: AsyncSession, kyc_id: int, admin_id: int) -> KYCSubmission:
     """Approve a KYC submission."""
     kyc = await get_kyc_detail(db, kyc_id)
+    if not all((kyc.aadhaar_doc_url, kyc.pan_doc_url, kyc.photo_url, kyc.signature_url, kyc.biometric_selfie_url)):
+        raise HTTPException(status_code=400, detail="Cannot approve an incomplete KYC submission")
     kyc.status = "verified"
     kyc.reviewed_by = admin_id
     kyc.reviewed_at = datetime.now(timezone.utc)
@@ -343,10 +450,20 @@ async def approve_kyc(db: AsyncSession, kyc_id: int, admin_id: int) -> KYCSubmis
 async def reject_kyc(db: AsyncSession, kyc_id: int, admin_id: int, reason: str) -> KYCSubmission:
     """Reject a KYC submission with reason."""
     kyc = await get_kyc_detail(db, kyc_id)
+    reason = reason.strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Rejection reason is required")
     kyc.status = "rejected"
     kyc.reviewed_by = admin_id
     kyc.reviewed_at = datetime.now(timezone.utc)
     kyc.rejection_reason = reason
+    # Force a complete fresh upload. Old files remain on disk for audit/cleanup,
+    # but are no longer attached to the active submission.
+    kyc.aadhaar_doc_url = None
+    kyc.pan_doc_url = None
+    kyc.photo_url = None
+    kyc.signature_url = None
+    kyc.biometric_selfie_url = None
     await db.commit()
     await db.refresh(kyc)
     return kyc

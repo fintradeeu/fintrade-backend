@@ -93,6 +93,7 @@ class CourseCreate(BaseModel):
     duration_hours: Optional[int] = None
     is_published: bool = False
     is_featured: bool = False
+    is_popular: bool = False
     marketing_highlights: Optional[List[str]] = None
     instructor_id: Optional[int] = None
 
@@ -107,6 +108,7 @@ class CourseUpdate(BaseModel):
     duration_hours: Optional[int] = None
     is_published: Optional[bool] = None
     is_featured: Optional[bool] = None
+    is_popular: Optional[bool] = None
     marketing_highlights: Optional[List[str]] = None
 
 
@@ -122,6 +124,7 @@ class CourseListResponse(BaseModel):
     duration_hours: Optional[int] = None
     is_published: bool
     is_featured: Optional[bool] = False
+    is_popular: Optional[bool] = False
     marketing_highlights: Optional[List[str]] = None
     created_at: datetime
 
@@ -141,6 +144,7 @@ class CourseDetailResponse(BaseModel):
     duration_hours: Optional[int] = None
     is_published: bool
     is_featured: Optional[bool] = False
+    is_popular: Optional[bool] = False
     marketing_highlights: Optional[List[str]] = None
     modules: List[ModuleResponse] = []
     created_at: datetime
