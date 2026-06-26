@@ -25,6 +25,7 @@ class Lecture(Base):
     course_id = Column(Integer, ForeignKey("courses.id", ondelete="SET NULL"), nullable=True)
     instructor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     meeting_link = Column(Text, nullable=True)
+    google_event_id = Column(String(255), nullable=True)
     scheduled_at = Column(DateTime(timezone=True), nullable=False)
     duration_minutes = Column(Integer, default=60)
     is_live = Column(Boolean, default=False)

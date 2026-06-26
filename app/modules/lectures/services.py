@@ -21,12 +21,29 @@ logger = get_logger(__name__)
 
 async def create_lecture(db: AsyncSession, data: dict) -> Lecture:
     """Admin/faculty creates a scheduled lecture."""
+    meeting_link = data.get("meeting_link")
+    google_event_id = None
+    
+    # Auto-generate Google Meet link if not provided manually
+    if not meeting_link:
+        from app.integrations.google_calendar_service import GoogleCalendarService
+        event_id, g_meet_link = await GoogleCalendarService.create_event(
+            title=data["title"],
+            scheduled_at=data["scheduled_at"],
+            duration_minutes=data.get("duration_minutes", 60),
+            description=data.get("description")
+        )
+        if g_meet_link:
+            meeting_link = g_meet_link
+            google_event_id = event_id
+
     lecture = Lecture(
         title=data["title"],
         description=data.get("description"),
         course_id=data["course_id"],
         instructor_id=data.get("instructor_id"),
-        meeting_link=data.get("meeting_link"),
+        meeting_link=meeting_link,
+        google_event_id=google_event_id,
         scheduled_at=data["scheduled_at"],
         duration_minutes=data.get("duration_minutes", 60),
         max_participants=data.get("max_participants", 0),
@@ -41,6 +58,77 @@ async def create_lecture(db: AsyncSession, data: dict) -> Lecture:
     
     logger.info("lecture_created", lecture_id=lecture.id, title=lecture.title)
     return lecture
+
+
+async def update_lecture(db: AsyncSession, lecture_id: int, data: dict) -> Lecture:
+    """Update a scheduled lecture."""
+    query = select(Lecture).options(selectinload(Lecture.recordings)).filter(Lecture.id == lecture_id)
+    result = await db.execute(query)
+    lecture = result.scalar_one_or_none()
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+
+    old_title = lecture.title
+    old_scheduled_at = lecture.scheduled_at
+    old_duration = lecture.duration_minutes
+    old_desc = lecture.description
+    
+    # Apply modifications
+    for key, val in data.items():
+        if hasattr(lecture, key):
+            setattr(lecture, key, val)
+            
+    # Sync with Google Calendar if event_id is present
+    if lecture.google_event_id and (
+        old_title != lecture.title or
+        old_scheduled_at != lecture.scheduled_at or
+        old_duration != lecture.duration_minutes or
+        old_desc != lecture.description
+    ):
+        from app.integrations.google_calendar_service import GoogleCalendarService
+        success, updated_link = await GoogleCalendarService.update_event(
+            event_id=lecture.google_event_id,
+            title=lecture.title,
+            scheduled_at=lecture.scheduled_at,
+            duration_minutes=lecture.duration_minutes,
+            description=lecture.description
+        )
+        if success and updated_link:
+            lecture.meeting_link = updated_link
+            
+    # Auto-generate if meeting link is cleared or missing
+    elif not lecture.meeting_link:
+        from app.integrations.google_calendar_service import GoogleCalendarService
+        event_id, g_meet_link = await GoogleCalendarService.create_event(
+            title=lecture.title,
+            scheduled_at=lecture.scheduled_at,
+            duration_minutes=lecture.duration_minutes,
+            description=lecture.description
+        )
+        if g_meet_link:
+            lecture.meeting_link = g_meet_link
+            lecture.google_event_id = event_id
+
+    await db.commit()
+    await db.refresh(lecture)
+    logger.info("lecture_updated", lecture_id=lecture.id, title=lecture.title)
+    return lecture
+
+
+async def delete_lecture(db: AsyncSession, lecture_id: int) -> None:
+    """Delete a scheduled lecture."""
+    lecture = await db.get(Lecture, lecture_id)
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+
+    # Clean up Google Calendar event if it exists
+    if lecture.google_event_id:
+        from app.integrations.google_calendar_service import GoogleCalendarService
+        await GoogleCalendarService.delete_event(lecture.google_event_id)
+
+    await db.delete(lecture)
+    await db.commit()
+    logger.info("lecture_deleted", lecture_id=lecture_id)
 
 
 async def list_lectures(
