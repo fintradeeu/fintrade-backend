@@ -19,5 +19,5 @@ RUN mkdir -p /app/uploads
 
 EXPOSE 8000
 
-# Production: gunicorn with uvicorn workers (no --reload)
-CMD ["gunicorn", "app.main:app", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120"]
+# Production: run uvicorn with dynamic port binding
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
