@@ -72,14 +72,6 @@ async def payment_failure_redirect(request: Request, db: AsyncSession = Depends(
     return RedirectResponse(url=f"{frontend_url}/payment/failure?txnid={txnid}", status_code=303)
 
 
-@router.post("/verify-razorpay")
-async def verify_razorpay(
-    body: schemas.RazorpayVerifyRequest,
-    db: AsyncSession = Depends(get_db)
-):
-    """Verify Razorpay payment signature from frontend SDK checkout."""
-    return await services.verify_razorpay_payment(db, params=body.model_dump())
-
 
 @router.post("/razorpay-webhook")
 async def razorpay_webhook(

@@ -3,6 +3,7 @@
 import os
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -10,14 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.modules.certificates.models import Certificate
-from app.modules.courses.models import CourseEnrollment, Course
+from app.modules.courses.models import CourseEnrollment, Course, CourseModule, Lesson
 from app.modules.auth.models import User
 
 
-async def generate_certificate(db: AsyncSession, user_id: int, course_id: int) -> Certificate:
-    """Generate a certificate after course completion."""
+async def generate_certificate(db: AsyncSession, user_id: int, course_id: int, module_id: Optional[int] = None) -> Certificate:
+    """Generate a certificate after course completion or module completion."""
 
-    # 1. Check enrollment exists and is completed
+    # 1. Check enrollment exists
     enroll_result = await db.execute(
         select(CourseEnrollment).where(
             CourseEnrollment.user_id == user_id,
@@ -29,68 +30,144 @@ async def generate_certificate(db: AsyncSession, user_id: int, course_id: int) -
     if enrollment is None:
         raise HTTPException(status_code=404, detail="No active enrollment found for this course")
 
-    if enrollment.progress_percent < 100.0:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Course not completed. Progress: {enrollment.progress_percent}%",
-        )
-
-    # 1.5 Check if course has a final exam, and if so, check if passed
-    from app.modules.exams.models import CourseExam, CourseExamResult
-    final_exam_res = await db.execute(
-        select(CourseExam).where(
-            CourseExam.course_id == course_id,
-            CourseExam.exam_type == "course_final",
-            CourseExam.is_active == True
-        )
-    )
-    final_exam = final_exam_res.scalar_one_or_none()
-    if final_exam:
-        passed_res = await db.execute(
-            select(CourseExamResult).where(
-                CourseExamResult.user_id == user_id,
-                CourseExamResult.exam_id == final_exam.id,
-                CourseExamResult.passed == True
-            )
-        )
-        if not passed_res.scalars().first():
+    # Course Certificate logic
+    if module_id is None:
+        if enrollment.progress_percent < 100.0:
             raise HTTPException(
-                status_code=403,
-                detail="You must pass the course's final exam to generate the certificate."
+                status_code=400,
+                detail=f"Course not completed. Progress: {enrollment.progress_percent}%",
             )
 
-    # 2. Check duplicate
-    existing = await db.execute(
-        select(Certificate).where(
-            Certificate.user_id == user_id,
-            Certificate.course_id == course_id,
+        # Check course final exam
+        from app.modules.exams.models import CourseExam, CourseExamResult
+        final_exam_res = await db.execute(
+            select(CourseExam).where(
+                CourseExam.course_id == course_id,
+                CourseExam.exam_type == "course_final",
+                CourseExam.is_active == True
+            )
         )
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Certificate already issued for this course")
+        final_exam = final_exam_res.scalar_one_or_none()
+        if final_exam:
+            passed_res = await db.execute(
+                select(CourseExamResult).where(
+                    CourseExamResult.user_id == user_id,
+                    CourseExamResult.exam_id == final_exam.id,
+                    CourseExamResult.passed == True
+                )
+            )
+            if not passed_res.scalars().first():
+                raise HTTPException(
+                    status_code=403,
+                    detail="You must pass the course's final exam to generate the certificate."
+                )
 
-    # 3. Fetch user and course names for PDF
+        # Check duplicate
+        existing = await db.execute(
+            select(Certificate).where(
+                Certificate.user_id == user_id,
+                Certificate.course_id == course_id,
+                Certificate.module_id == None,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Certificate already issued for this course")
+
+        module_title = None
+
+    else:
+        # Module Certificate logic
+        module_res = await db.execute(
+            select(CourseModule).where(
+                CourseModule.id == module_id,
+                CourseModule.course_id == course_id,
+                CourseModule.is_published == True
+            )
+        )
+        module = module_res.scalar_one_or_none()
+        if module is None:
+            raise HTTPException(status_code=404, detail="Module not found in this course")
+
+        # Check completed module lessons
+        lessons_stmt = select(Lesson).where(
+            Lesson.module_id == module_id,
+            Lesson.is_published == True
+        )
+        lessons = (await db.execute(lessons_stmt)).scalars().all()
+        if lessons:
+            from app.modules.learning.models import LessonCompletion
+            completed_stmt = select(LessonCompletion.lesson_id).where(
+                LessonCompletion.user_id == user_id,
+                LessonCompletion.course_id == course_id
+            )
+            completed_ids = set((await db.execute(completed_stmt)).scalars().all())
+            if not all(l.id in completed_ids for l in lessons):
+                raise HTTPException(
+                    status_code=400,
+                    detail="You must complete all lessons in this module to generate the certificate."
+                )
+
+        # Check module exam
+        from app.modules.exams.models import CourseExam, CourseExamResult
+        module_exam_res = await db.execute(
+            select(CourseExam).where(
+                CourseExam.course_id == course_id,
+                CourseExam.module_id == module_id,
+                CourseExam.exam_type == "module_final",
+                CourseExam.is_active == True
+            )
+        )
+        module_exam = module_exam_res.scalar_one_or_none()
+        if module_exam:
+            passed_res = await db.execute(
+                select(CourseExamResult).where(
+                    CourseExamResult.user_id == user_id,
+                    CourseExamResult.exam_id == module_exam.id,
+                    CourseExamResult.passed == True
+                )
+            )
+            if not passed_res.scalars().first():
+                raise HTTPException(
+                    status_code=403,
+                    detail="You must pass the module's final exam to generate the certificate."
+                )
+
+        # Check duplicate
+        existing = await db.execute(
+            select(Certificate).where(
+                Certificate.user_id == user_id,
+                Certificate.course_id == course_id,
+                Certificate.module_id == module_id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Certificate already issued for this module")
+
+        module_title = module.title
+
+    # Fetch names for PDF
     user_result = await db.execute(select(User).where(User.id == user_id))
     user = user_result.scalar_one()
 
     course_result = await db.execute(select(Course).where(Course.id == course_id))
     course = course_result.scalar_one()
 
-    # 4. Generate unique code and PDF
+    # Generate unique code and PDF
     unique_code = uuid.uuid4().hex[:12].upper()
     pdf_filename = f"cert_{unique_code}.pdf"
     pdf_dir = os.path.join("uploads", "certificates")
     os.makedirs(pdf_dir, exist_ok=True)
     pdf_path = os.path.join(pdf_dir, pdf_filename)
 
-    _generate_pdf(pdf_path, user.full_name, course.title, unique_code)
+    _generate_pdf(pdf_path, user.full_name, course.title, unique_code, module_title=module_title)
 
     certificate_url = f"/uploads/certificates/{pdf_filename}"
 
-    # 5. Save to DB
+    # Save to DB
     cert = Certificate(
         user_id=user_id,
         course_id=course_id,
+        module_id=module_id,
         unique_code=unique_code,
         certificate_url=certificate_url,
     )
@@ -98,7 +175,7 @@ async def generate_certificate(db: AsyncSession, user_id: int, course_id: int) -
     await db.flush()
     result = await db.execute(
         select(Certificate)
-        .options(selectinload(Certificate.course))
+        .options(selectinload(Certificate.course), selectinload(Certificate.module))
         .where(Certificate.id == cert.id)
     )
     cert = result.scalar_one()
@@ -106,10 +183,10 @@ async def generate_certificate(db: AsyncSession, user_id: int, course_id: int) -
 
 
 async def list_certificates_for_user(db: AsyncSession, user_id: int) -> list[Certificate]:
-    """List certificates for the current student with course info."""
+    """List certificates for the current student with course and module info."""
     result = await db.execute(
         select(Certificate)
-        .options(selectinload(Certificate.course))
+        .options(selectinload(Certificate.course), selectinload(Certificate.module))
         .where(Certificate.user_id == user_id)
         .order_by(Certificate.issued_at.desc())
     )
@@ -120,7 +197,7 @@ async def get_certificate(db: AsyncSession, cert_id: int, user_id: int) -> Certi
     """Get a certificate by ID (user can only view their own)."""
     result = await db.execute(
         select(Certificate)
-        .options(selectinload(Certificate.course))
+        .options(selectinload(Certificate.course), selectinload(Certificate.module))
         .where(Certificate.id == cert_id, Certificate.user_id == user_id)
     )
     cert = result.scalar_one_or_none()
@@ -141,7 +218,7 @@ async def get_certificate_for_download(db: AsyncSession, cert_id: int, user_id: 
     return file_path
 
 
-def _generate_pdf(filepath: str, student_name: str, course_title: str, unique_code: str):
+def _generate_pdf(filepath: str, student_name: str, course_title: str, unique_code: str, module_title: Optional[str] = None):
     """Generate a certificate PDF using reportlab."""
     try:
         from reportlab.lib.pagesizes import landscape, A4
@@ -151,9 +228,15 @@ def _generate_pdf(filepath: str, student_name: str, course_title: str, unique_co
     except ImportError:
         # Fallback: write a simple text file if reportlab is not installed
         with open(filepath, "w") as f:
-            f.write(f"CERTIFICATE OF COMPLETION\n\n")
-            f.write(f"This certifies that {student_name}\n")
-            f.write(f"has successfully completed the course: {course_title}\n")
+            if module_title:
+                f.write(f"CERTIFICATE OF MODULE COMPLETION\n\n")
+                f.write(f"This certifies that {student_name}\n")
+                f.write(f"has successfully completed the module: {module_title}\n")
+                f.write(f"of the course: {course_title}\n")
+            else:
+                f.write(f"CERTIFICATE OF COMPLETION\n\n")
+                f.write(f"This certifies that {student_name}\n")
+                f.write(f"has successfully completed the course: {course_title}\n")
             f.write(f"Certificate Code: {unique_code}\n")
             f.write(f"Issued: {datetime.now(timezone.utc).strftime('%B %d, %Y')}\n")
         return
@@ -237,8 +320,12 @@ def _generate_pdf(filepath: str, student_name: str, course_title: str, unique_co
 
     c.setFillColor(dark)
     c.setFont("Helvetica", 10)
-    c.drawCentredString(center_x, top_y - 203, "For successfully completing the course and gaining practical knowledge in global")
-    c.drawCentredString(center_x, top_y - 224, "trade operations, financial instruments, and risk mitigation strategies.")
+    if module_title:
+        c.drawCentredString(center_x, top_y - 203, f"For successfully completing the module '{module_title}'")
+        c.drawCentredString(center_x, top_y - 224, f"of the course '{course_title}' and demonstrating mastery in its topics.")
+    else:
+        c.drawCentredString(center_x, top_y - 203, "For successfully completing the course and gaining practical knowledge in global")
+        c.drawCentredString(center_x, top_y - 224, "trade operations, financial instruments, and risk mitigation strategies.")
 
     signature_y = 138 if is_research else 126
     left_sig_x = center_x - 230

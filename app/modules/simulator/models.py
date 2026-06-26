@@ -27,7 +27,17 @@ class SimulatorProfile(Base):
     description = Column(Text, nullable=True)
     initial_balance = Column(Float, default=100000.0)
     daily_loss_limit = Column(Float, default=5000.0)
+    max_drawdown = Column(Float, default=10000.0)
+    profit_target = Column(Float, default=10000.0)
+    risk_per_trade = Column(Float, default=1.0)
+    max_open_trades = Column(Integer, default=5)
     max_position_size = Column(Float, default=50000.0)
+    commission = Column(Float, default=0.0)
+    spread = Column(Float, default=0.0)
+    slippage = Column(Float, default=0.0)
+    trading_hours_start = Column(String(5), default="09:15")
+    trading_hours_end = Column(String(5), default="15:30")
+    allowed_markets = Column(JSON, nullable=True)
     stop_loss_required = Column(Boolean, default=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -45,6 +55,11 @@ class SimulatorAccount(Base):
     profile_id = Column(Integer, ForeignKey("simulator_profiles.id"), nullable=True)
     balance = Column(Float, default=100000.0)
     initial_balance = Column(Float, default=100000.0)
+    equity = Column(Float, default=100000.0)
+    buying_power = Column(Float, default=100000.0)
+    peak_equity = Column(Float, default=100000.0)
+    daily_realized_pnl = Column(Float, default=0.0)
+    challenge_status = Column(String(30), default="active")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -52,6 +67,7 @@ class SimulatorAccount(Base):
     trades = relationship("Trade", back_populates="account", cascade="all, delete-orphan")
     positions = relationship("Position", back_populates="account", cascade="all, delete-orphan")
     orders = relationship("Order", back_populates="account", cascade="all, delete-orphan")
+    wallet = relationship("Wallet", back_populates="account", uselist=False, cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<SimulatorAccount user={self.user_id} balance={self.balance}>"
@@ -68,6 +84,9 @@ class Trade(Base):
     quantity = Column(Float, nullable=False)
     entry_price = Column(Float, nullable=False)
     exit_price = Column(Float, nullable=True)
+    stop_loss = Column(Float, nullable=True)
+    take_profit = Column(Float, nullable=True)
+    commission = Column(Float, default=0.0)
     pnl = Column(Float, nullable=True)
     status = Column(String(20), default="open")  # open, closed
     opened_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -114,6 +133,9 @@ class Order(Base):
     order_type = Column(String(20), default="market")  # market, limit
     quantity = Column(Float, nullable=False)
     price = Column(Float, nullable=True)
+    stop_loss = Column(Float, nullable=True)
+    take_profit = Column(Float, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
     status = Column(String(20), default="filled")  # pending, filled, cancelled
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -136,6 +158,80 @@ class RiskRule(Base):
 
     def __repr__(self):
         return f"<RiskRule {self.rule_type}={self.value}>"
+
+
+class Wallet(Base):
+    """Virtual wallet snapshot for a simulator account."""
+    __tablename__ = "wallets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("simulator_accounts.id", ondelete="CASCADE"), nullable=False, unique=True)
+    cash_balance = Column(Float, default=100000.0)
+    equity = Column(Float, default=100000.0)
+    buying_power = Column(Float, default=100000.0)
+    realized_pnl = Column(Float, default=0.0)
+    unrealized_pnl = Column(Float, default=0.0)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    account = relationship("SimulatorAccount", back_populates="wallet")
+
+
+class TradeLog(Base):
+    """Immutable audit trail for every simulator action."""
+    __tablename__ = "trade_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("simulator_accounts.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    action = Column(String(50), nullable=False)
+    symbol = Column(String(20), nullable=True)
+    message = Column(Text, nullable=False)
+    payload = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class ChallengeResult(Base):
+    """Current challenge evaluation result for a simulator account."""
+    __tablename__ = "challenge_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("simulator_accounts.id", ondelete="CASCADE"), nullable=False, unique=True)
+    status = Column(String(30), default="active")
+    profit_target_hit = Column(Boolean, default=False)
+    daily_loss_breached = Column(Boolean, default=False)
+    max_drawdown_breached = Column(Boolean, default=False)
+    violations = Column(JSON, nullable=True)
+    evaluated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class SimulatorNotification(Base):
+    """Simulator-specific student/admin notification."""
+    __tablename__ = "simulator_notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(Integer, ForeignKey("simulator_accounts.id", ondelete="CASCADE"), nullable=True)
+    level = Column(String(20), default="info")
+    message = Column(Text, nullable=False)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class StudentPerformance(Base):
+    """Daily student performance snapshots for reporting."""
+    __tablename__ = "student_performance"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("simulator_accounts.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    period = Column(String(20), default="daily")
+    starting_equity = Column(Float, default=0.0)
+    ending_equity = Column(Float, default=0.0)
+    realized_pnl = Column(Float, default=0.0)
+    unrealized_pnl = Column(Float, default=0.0)
+    total_trades = Column(Integer, default=0)
+    violations = Column(JSON, nullable=True)
+    computed_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class PerformanceMetric(Base):

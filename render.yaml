@@ -66,3 +66,5 @@ services:
         sync: false
       - key: GOOGLE_REFRESH_TOKEN
         sync: false
+      - key: TWELVE_DATA_API_KEY
+        sync: false

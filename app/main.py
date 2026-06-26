@@ -95,6 +95,7 @@ async def lifespan(app: FastAPI):
                 await _repair_feedback_schema_async(session)
                 await _repair_news_schema_async(session)
                 await _repair_lectures_schema_async(session)
+                await _repair_certificates_schema_async(session)
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Schema auto-repair skipped or failed: {e}")
@@ -544,6 +545,26 @@ async def _repair_lectures_schema_async(db):
             logging.getLogger(__name__).warning(
                 f"Lectures schema repair statement failed: {statement.strip()[:60]}... error: {e}"
             )
+
+async def _repair_certificates_schema_async(db):
+    """Repair certificates table to add module_id column if not exists."""
+    import sqlalchemy as sa
+    statements = [
+        "ALTER TABLE certificates ADD COLUMN module_id INTEGER REFERENCES course_modules(id) ON DELETE CASCADE",
+    ]
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            # If the column already exists, this is expected and fine to skip.
+            err_msg = str(e)
+            if "duplicate column" not in err_msg.lower() and "already exists" not in err_msg.lower():
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Certificates schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+                )
 
 # Mount static uploads
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

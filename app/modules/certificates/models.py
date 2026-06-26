@@ -21,11 +21,13 @@ class Certificate(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    module_id = Column(Integer, ForeignKey("course_modules.id", ondelete="CASCADE"), nullable=True)
     unique_code = Column(String(64), unique=True, nullable=False, index=True)
     certificate_url = Column(Text, nullable=True)
     issued_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     course = relationship("Course")
+    module = relationship("CourseModule")
     user = relationship("User")
 
     def __repr__(self):

@@ -103,6 +103,10 @@ class Settings(BaseSettings):
     # ── TradingView API ──────────────────────────────────────────────
     TRADINGVIEW_WEBHOOK_SECRET: str = ""
     TRADINGVIEW_API_KEY: str = ""
+    TWELVE_DATA_API_KEY: str = ""
+    TWELVE_DATA_BASE_URL: str = "https://api.twelvedata.com"
+    TWELVE_DATA_TIMEOUT_SECONDS: float = 8.0
+    TWELVE_DATA_RATE_LIMIT_PER_MINUTE: int = 8
 
     # ── WhatsApp / SMS Reminders ─────────────────────────────────────
     WHATSAPP_API_TOKEN: str = ""

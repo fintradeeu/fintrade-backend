@@ -1,7 +1,7 @@
 """Dashboard module — Pydantic schemas."""
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -80,3 +80,19 @@ class AdvertisementResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+# ── Leaderboard ──────────────────────────────────────────────────────
+
+class LeaderboardEntry(BaseModel):
+    id: int
+    name: str
+    score: int
+    rank: int
+    badge: str
+
+
+class LeaderboardResponse(BaseModel):
+    leaderboard: List[LeaderboardEntry]
+    my_rank: int
+    my_score: int

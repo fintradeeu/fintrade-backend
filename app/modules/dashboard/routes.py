@@ -43,6 +43,20 @@ async def list_advertisements(
 
 
 # ═════════════════════════════════════════════════════════════════════
+# LEADERBOARD — Student-facing
+# ═════════════════════════════════════════════════════════════════════
+
+@router.get("/leaderboard", response_model=schemas.LeaderboardResponse)
+async def get_leaderboard(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve the global leaderboard rankings, score, and current user rank."""
+    data = await services.get_leaderboard(db, current_user.id)
+    return schemas.LeaderboardResponse(**data)
+
+
+# ═════════════════════════════════════════════════════════════════════
 # ANNOUNCEMENTS — Admin CRUD
 # ═════════════════════════════════════════════════════════════════════
 

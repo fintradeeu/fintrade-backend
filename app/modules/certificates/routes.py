@@ -17,7 +17,9 @@ def certificate_response(cert) -> schemas.CertificateResponse:
         id=cert.id,
         user_id=cert.user_id,
         course_id=cert.course_id,
+        module_id=cert.module_id,
         course_title=cert.course.title if getattr(cert, "course", None) else None,
+        module_title=cert.module.title if getattr(cert, "module", None) else None,
         certificate_number=f"FT-{cert.unique_code}",
         unique_code=cert.unique_code,
         certificate_url=cert.certificate_url,
@@ -32,7 +34,7 @@ async def generate_certificate(
     db: AsyncSession = Depends(get_db),
 ):
     """Generate a certificate after completing a course."""
-    cert = await services.generate_certificate(db, current_user.id, req.course_id)
+    cert = await services.generate_certificate(db, current_user.id, req.course_id, req.module_id)
     return certificate_response(cert)
 
 @router.get("", response_model=list[schemas.CertificateResponse])
