@@ -14,9 +14,7 @@ def get_engine_args():
     connect_args = {}
 
     # Hosted Postgres providers commonly require SSL.
-    if "render.com" in url:
-        connect_args["ssl"] = True
-    elif "neon.tech" in url or "vercel-storage" in url:
+    if "render.com" in url or "neon.tech" in url or "vercel-storage" in url:
         ssl_ctx = ssl.create_default_context()
         ssl_ctx.check_hostname = False
         ssl_ctx.verify_mode = ssl.CERT_NONE
