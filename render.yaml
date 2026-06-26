@@ -56,3 +56,11 @@ services:
         value: rggy danx ialr bata
       - key: EMAIL_FROM
         value: thefintrade1993@gmail.com
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_WORKSPACE_EMAIL
+        sync: false
+      - key: GOOGLE_REFRESH_TOKEN
+        sync: false
