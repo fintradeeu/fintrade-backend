@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     CASHFREE_SECRET_KEY: str = ""
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
-    ACTIVE_PAYMENT_GATEWAY: str = "easebuzz"  # Or cashfree, razorpay
+    ACTIVE_PAYMENT_GATEWAY: str = "razorpay"  # Or cashfree, easebuzz
 
     # ── Easebuzz ─────────────────────────────────────────────────────
     EASEBUZZ_KEY: str = ""
