@@ -474,10 +474,9 @@ mobile_v1_router = APIRouter(prefix="/v1", tags=["Mobile Profile V1"])
 @mobile_v1_router.post("/user", response_model=schemas.MobileUserProfileResponse, status_code=201)
 async def create_mobile_user_profile(
     body: schemas.MobileUserProfileCreateRequest,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a student profile linked to the authenticated user and update their details."""
+    """Create or update a user and student profile without requiring authentication."""
     name = body.name.strip()
     email = body.email.strip().lower()
     mobile_number = body.mobileNumber.strip()
@@ -489,54 +488,65 @@ async def create_mobile_user_profile(
     if not mobile_number:
         raise HTTPException(status_code=400, detail="Mobile number is required")
 
-    # Prevent duplicate profile creation (check if Student record already exists for current user)
-    existing_student = await db.scalar(
-        select(Student).where(Student.user_id == current_user.id)
+    # Find if user already exists by email
+    user = await db.scalar(
+        select(User).where(User.email == email)
     )
-    if existing_student:
-        raise HTTPException(status_code=400, detail="Profile already exists for this user")
 
-    # Check email uniqueness (must not be in use by a DIFFERENT user)
-    email_user = await db.scalar(
-        select(User).where(User.email == email, User.id != current_user.id)
-    )
-    if email_user:
-        raise HTTPException(status_code=400, detail="User with this email already exists")
-
-    # Update User model details
-    current_user.full_name = name
-    current_user.email = email
-    current_user.phone = mobile_number
+    if not user:
+        # Create a new user with default 'student' role
+        from app.modules.auth.services import get_or_create_role
+        role = await get_or_create_role(db, "student")
+        
+        user = User(
+            email=email,
+            full_name=name,
+            phone=mobile_number,
+            is_active=True,
+            is_verified=True
+        )
+        user.roles.append(role)
+        db.add(user)
+        await db.flush()
+    else:
+        # Update existing user details
+        user.full_name = name
+        user.phone = mobile_number
 
     # Sync KYCSubmission mobile if it exists
     from app.modules.kyc.models import KYCSubmission
     kyc = await db.scalar(
-        select(KYCSubmission).where(KYCSubmission.user_id == current_user.id)
+        select(KYCSubmission).where(KYCSubmission.user_id == user.id)
     )
     if kyc:
         kyc.mobile = mobile_number
 
-    # Create Student profile
-    new_student = Student(
-        user_id=current_user.id,
-        course_id=None,
-        address=None,
-        qualification=None,
-        gender=None,
-        dob=None
+    # Ensure Student profile exists
+    student = await db.scalar(
+        select(Student).where(Student.user_id == user.id)
     )
-    db.add(new_student)
-    await db.commit()
-    await db.refresh(current_user)
+    if not student:
+        student = Student(
+            user_id=user.id,
+            course_id=None,
+            address=None,
+            qualification=None,
+            gender=None,
+            dob=None
+        )
+        db.add(student)
 
-    role_names = [r.name for r in current_user.roles]
+    await db.commit()
+    await db.refresh(user)
+
+    role_names = [r.name for r in user.roles]
     primary_role = role_names[0] if role_names else "user"
 
     data = schemas.MobileUserProfileResponseData(
-        id=str(current_user.id),
-        name=current_user.full_name,
-        email=current_user.email,
-        mobileNumber=current_user.phone or "",
+        id=str(user.id),
+        name=user.full_name,
+        email=user.email,
+        mobileNumber=user.phone or "",
         role=primary_role
     )
 
