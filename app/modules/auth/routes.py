@@ -182,6 +182,17 @@ async def resend_otp(
     )
 
 
+
+@router.post("/cancel-registration", response_model=schemas.MessageResponse)
+async def cancel_registration(
+    body: schemas.OTPCancelRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Cancel an unverified registration and delete the associated user."""
+    await services.cancel_registration(db, body.otp_token)
+    return schemas.MessageResponse(message="Registration cancelled successfully")
+
+
 @router.get("/me", response_model=schemas.UserResponse)
 async def me(current_user: User = Depends(get_current_user)):
     """Return the currently authenticated user's profile."""

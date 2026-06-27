@@ -159,3 +159,61 @@ async def get_faqs(db: AsyncSession) -> List["FAQEntry"]:
         select(FAQEntry).where(FAQEntry.is_active == True).order_by(FAQEntry.frequency.desc()).limit(20)
     )
     return list(result.scalars().all())
+
+
+async def ask_question_public(
+    db: AsyncSession,
+    question: str,
+) -> dict:
+    """Process a public visitor question through guardrails and the RAG pipeline."""
+    # Server-side guardrails validation
+    if not is_question_allowed_locally(question):
+        return {
+            "answer": (
+                "I am only trained to assist with topics covered in our courses and trading education. "
+                "For out-of-the-box questions or general support, please contact our team at "
+                "support@fintrade.com or call us at +91 92746 75947."
+            ),
+            "sources": ["contact-support"],
+        }
+
+    # Match FAQ dynamically
+    faq_res = await db.execute(select(FAQEntry).where(FAQEntry.is_active == True))
+    all_faqs = faq_res.scalars().all()
+    
+    matched_faq = None
+    q_lower = question.lower().strip()
+    for f in all_faqs:
+        if q_lower == f.question.lower().strip() or f.question.lower().strip() in q_lower:
+            matched_faq = f
+            break
+            
+    if matched_faq:
+        matched_faq.frequency += 1
+        await db.flush()
+        return {
+            "answer": matched_faq.answer,
+            "sources": [f"FAQ - freq: {matched_faq.frequency}"],
+        }
+
+    # Run RAG pipeline
+    rag_result = await query_rag(question)
+    answer = rag_result["answer"]
+    sources = rag_result.get("sources", [])
+
+    # Out of the box detection: check for low confidence markers
+    if any(marker in answer for marker in LOW_CONFIDENCE_ANSWER_MARKERS):
+        return {
+            "answer": (
+                "I don't have enough context to answer your question right now. "
+                "For further assistance regarding our website or courses, please contact our team at "
+                "support@fintrade.com or call us at +91 92746 75947."
+            ),
+            "sources": ["contact-support"],
+        }
+
+    return {
+        "answer": answer,
+        "sources": sources[:3],
+    }
+

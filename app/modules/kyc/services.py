@@ -157,6 +157,10 @@ async def send_email_otp(db: AsyncSession, user) -> bool:
         body_html=email_html,
     )
     if not email_sent:
+        # Development bypass if SMTP is not configured
+        if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+            print(f"\n⚠️ [KYC OTP SERVICE - DEVELOPMENT ONLY] SMTP is not configured. Verification code is {code} (Token: {otp_token})\n", flush=True)
+            return True
         raise HTTPException(status_code=500, detail="Failed to send verification email.")
     return True
 

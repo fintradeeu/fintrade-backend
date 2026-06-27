@@ -28,6 +28,20 @@ async def ask(
     return schemas.AskResponse(**result)
 
 
+@router.post("/public/ask")
+async def ask_public(
+    body: schemas.AskRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Ask the public AI chatbot a question (RAG-powered, no authentication)."""
+    result = await services.ask_question_public(
+        db,
+        question=body.question,
+    )
+    return result
+
+
+
 @router.get("/chat-history", response_model=schemas.ChatHistoryResponse)
 async def chat_history(
     current_user: User = Depends(get_current_user),

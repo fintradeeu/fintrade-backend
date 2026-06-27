@@ -65,6 +65,11 @@ class OTPResendRequest(BaseModel):
     otp_token: str = Field(..., description="Token returned from login step 1")
 
 
+class OTPCancelRequest(BaseModel):
+    """Request to cancel registration/verify-otp session."""
+    otp_token: str = Field(..., description="Token returned from registration")
+
+
 # ── Response schemas ─────────────────────────────────────────────────
 class RoleResponse(BaseModel):
     id: int

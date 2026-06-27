@@ -98,9 +98,12 @@ async def initiate_payment(
     # At payment time we simply use the pre-validated discounted_price sent by the frontend.
     # We still sanity-check: it must be positive and less than the full course price.
     if discounted_price is not None and 0 < discounted_price < course.price:
-        charge_amount = discounted_price
+        base_amount = discounted_price
     else:
-        charge_amount = course.price
+        base_amount = course.price
+
+    # Add 18% GST to the payment amount
+    charge_amount = round(base_amount * 1.18, 2)
 
     logger.info("payment_charge_amount", course_id=course_id, course_price=course.price,
                 coupon_code=coupon_code, discounted_price=discounted_price, charge_amount=charge_amount)
@@ -479,30 +482,92 @@ async def process_webhook(db: AsyncSession, form_data: dict) -> dict:
 
 async def send_invoice_email(user: User, course: Course, transaction: PaymentTransaction):
     """Send an invoice email for the successful purchase."""
+    original_price = course.price or 0.0
+    total_paid = transaction.amount or 0.0
+    subtotal = round(total_paid / 1.18, 2)
+    gst_amount = round(total_paid - subtotal, 2)
+    
+    # Calculate discount if coupon was applied
+    discount_amount = 0.0
+    if transaction.coupon_code:
+        discount_amount = max(round(original_price - subtotal, 2), 0.0)
+
     subject = f"Invoice for {course.title} - FinTrade LMS"
+    
+    discount_row = ""
+    if transaction.coupon_code and discount_amount > 0:
+        discount_row = f"""
+        <tr>
+            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Discount (Coupon: {transaction.coupon_code})</strong></td>
+            <td style="padding: 10px; border: 1px solid #ddd; color: #2e7d32;">-₹{discount_amount:.2f}</td>
+        </tr>
+        """
+
     body_html = f"""
     <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; color: #333;">
-        <h2>Payment Successful!</h2>
-        <p>Hi {user.full_name},</p>
-        <p>Thank you for purchasing <strong>{course.title}</strong>.</p>
-        <table style="width: 100%; max-width: 500px; border-collapse: collapse; margin-top: 20px;">
-            <tr style="background: #f8f8f8;">
-                <td style="padding: 10px; border: 1px solid #ddd;"><strong>Transaction ID</strong></td>
-                <td style="padding: 10px; border: 1px solid #ddd;">{transaction.txnid}</td>
+    <head>
+        <meta charset="utf-8">
+    </head>
+    <body style="font-family: Arial, sans-serif; color: #333; margin: 0; padding: 20px; background-color: #f4f4f4;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #eee;">
+            <tr>
+                <td style="background: #0B2A5B; padding: 30px 24px; text-align: left; color: #ffffff;">
+                    <h1 style="margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 0.5px;">FinTrade</h1>
+                    <p style="margin: 5px 0 0; font-size: 12px; opacity: 0.85;">104-106, Capital Trade Center, BKC, Mumbai, MH - 400051</p>
+                    <p style="margin: 2px 0 0; font-size: 12px; opacity: 0.85;">GSTIN: 27AABCF4923K1ZM</p>
+                </td>
             </tr>
             <tr>
-                <td style="padding: 10px; border: 1px solid #ddd;"><strong>Amount Paid</strong></td>
-                <td style="padding: 10px; border: 1px solid #ddd;">₹{transaction.amount}</td>
+                <td style="padding: 30px 24px;">
+                    <h2 style="margin-top: 0; color: #0B2A5B; font-size: 20px;">Payment Successful!</h2>
+                    <p>Hi {user.full_name},</p>
+                    <p>Thank you for purchasing <strong>{course.title}</strong>. Your payment has been received and processed successfully.</p>
+                    
+                    <h3 style="color: #0B2A5B; font-size: 16px; margin: 24px 0 10px; border-bottom: 1px solid #eee; padding-bottom: 5px;">Invoice Summary</h3>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 14px;">
+                        <tr style="background: #f9f9f9;">
+                            <td style="padding: 10px; border: 1px solid #ddd; width: 50%;"><strong>Invoice Number</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">FT-2026-TXN{transaction.id}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Transaction ID</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{transaction.txnid}</td>
+                        </tr>
+                        <tr style="background: #f9f9f9;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Date</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{transaction.updated_at.strftime("%Y-%m-%d %H:%M:%S UTC")}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Course Price</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">₹{original_price:.2f}</td>
+                        </tr>
+                        {discount_row}
+                        <tr style="background: #f9f9f9;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Taxable Subtotal</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">₹{subtotal:.2f}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>GST (18%)</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">₹{gst_amount:.2f}</td>
+                        </tr>
+                        <tr style="background: #0B2A5B; color: #ffffff;">
+                            <td style="padding: 12px 10px; border: 1px solid #0B2A5B;"><strong>Total Paid Amount</strong></td>
+                            <td style="padding: 12px 10px; border: 1px solid #0B2A5B; font-size: 16px; font-weight: bold;">₹{total_paid:.2f}</td>
+                        </tr>
+                    </table>
+                    
+                    <p style="margin-top: 20px;">You can now log in to your dashboard to access the course.</p>
+                    <p style="margin-bottom: 0;">Happy Learning!<br><strong>FinTrade Team</strong></p>
+                </td>
             </tr>
-            <tr style="background: #f8f8f8;">
-                <td style="padding: 10px; border: 1px solid #ddd;"><strong>Date</strong></td>
-                <td style="padding: 10px; border: 1px solid #ddd;">{transaction.updated_at.strftime("%Y-%m-%d %H:%M:%S UTC")}</td>
+            <tr>
+                <td style="background: #f9f9f9; padding: 16px 24px; text-align: center; border-top: 1px solid #eee; font-size: 11px; color: #999;">
+                    <p style="margin: 0 0 4px;">This is a computer-generated tax invoice and requires no signature.</p>
+                    <p style="margin: 0;">For billing queries or support, please email us at billing@thefintrade.com</p>
+                </td>
             </tr>
         </table>
-        <p style="margin-top: 20px;">You can now log in to your dashboard to access the course.</p>
-        <p>Happy Learning!<br>FinTrade Team</p>
     </body>
     </html>
     """

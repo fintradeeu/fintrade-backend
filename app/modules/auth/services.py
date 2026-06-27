@@ -110,12 +110,19 @@ async def register_user(
 ) -> User:
     """Create a new user with the given role."""
     # Check uniqueness
-    existing = await db.execute(select(User).where(User.email == email))
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A user with this email already exists",
-        )
+    existing_result = await db.execute(select(User).where(User.email == email))
+    existing_user = existing_result.scalar_one_or_none()
+    if existing_user:
+        if not existing_user.is_verified:
+            # Delete unverified user to allow re-registration
+            logger.info("deleting_unverified_existing_user_for_reregistration", user_id=existing_user.id, email=email)
+            await db.delete(existing_user)
+            await db.flush()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A user with this email already exists",
+            )
 
     role = await get_or_create_role(db, role_name)
 
@@ -826,3 +833,31 @@ async def complete_reset_password(db: AsyncSession, otp_token: str, code: str, n
     logger.info("password_reset_success", user_id=user.id)
     
     return {"message": "Password reset successful. You can now login with your new password."}
+
+
+async def cancel_registration(db: AsyncSession, otp_token: str) -> None:
+    """Find the OTPCode session, check if the associated user is unverified, and delete the user."""
+    result = await db.execute(
+        select(OTPCode).where(OTPCode.otp_token == otp_token)
+    )
+    otp = result.scalar_one_or_none()
+    if not otp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification session",
+        )
+
+    user_result = await db.execute(
+        select(User).where(User.id == otp.user_id)
+    )
+    user = user_result.scalar_one_or_none()
+    if user:
+        if not user.is_verified:
+            logger.info("cancelling_registration_deleting_unverified_user", user_id=user.id, email=user.email)
+            await db.delete(user)
+            await db.commit()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot cancel registration for a verified user",
+            )

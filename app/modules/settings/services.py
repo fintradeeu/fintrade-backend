@@ -22,6 +22,20 @@ DEFAULT_SETTINGS = [
     {"key": "max_attempts", "value": "3", "category": "exam", "label": "Max Attempts Per Exam"},
 ]
 
+DEFAULT_GLOBAL_OFFICES = [
+    {"code": "in", "logo_url": "", "country": "India", "address": "10th Floor, Shivalik Complex, Panchvati Circle, Ahmedabad, Gujarat 380006", "email": "india@thefintrade.com", "phone": "+91 92746 75947", "contact": "Mansi Patel"},
+    {"code": "ae", "logo_url": "", "country": "UAE", "address": "Business Bay, Dubai, United Arab Emirates", "email": "uae@thefintrade.com", "phone": "+971 52 418 9042", "contact": "Ahmed Khan"},
+    {"code": "gb", "logo_url": "", "country": "United Kingdom", "address": "Canary Wharf, London E14, United Kingdom", "email": "uk@thefintrade.com", "phone": "+44 20 4571 8840", "contact": "Oliver Bennett"},
+    {"code": "us", "logo_url": "", "country": "United States", "address": "Wall Street, New York, NY 10005, United States", "email": "usa@thefintrade.com", "phone": "+1 212 555 0186", "contact": "Sophia Carter"},
+    {"code": "ca", "logo_url": "", "country": "Canada", "address": "Bay Street, Toronto, ON M5J, Canada", "email": "canada@thefintrade.com", "phone": "+1 416 555 0148", "contact": "Liam Martin"},
+    {"code": "au", "logo_url": "", "country": "Australia", "address": "George Street, Sydney NSW 2000, Australia", "email": "australia@thefintrade.com", "phone": "+61 2 8015 6820", "contact": "Emily Wilson"},
+    {"code": "sg", "logo_url": "", "country": "Singapore", "address": "Marina Bay Financial Centre, Singapore 018981", "email": "singapore@thefintrade.com", "phone": "+65 3159 2147", "contact": "Wei Tan"},
+    {"code": "de", "logo_url": "", "country": "Germany", "address": "Taunusanlage, Frankfurt am Main 60329, Germany", "email": "germany@thefintrade.com", "phone": "+49 69 2475 0190", "contact": "Lukas Weber"},
+    {"code": "fr", "logo_url": "", "country": "France", "address": "La Defense, Paris 92800, France", "email": "france@thefintrade.com", "phone": "+33 1 89 71 2044", "contact": "Camille Laurent"},
+    {"code": "jp", "logo_url": "", "country": "Japan", "address": "Marunouchi, Chiyoda-ku, Tokyo 100-0005, Japan", "email": "japan@thefintrade.com", "phone": "+81 3 4578 9120", "contact": "Kenji Sato"},
+    {"code": "za", "logo_url": "", "country": "South Africa", "address": "Sandton Financial District, Johannesburg 2196, South Africa", "email": "africa@thefintrade.com", "phone": "+27 10 500 7812", "contact": "Aisha Naidoo"},
+]
+
 DEFAULT_LANDING_PAGE_CONFIG = {
     "hero": {
         "title": "India's Trading",
@@ -44,6 +58,7 @@ DEFAULT_LANDING_PAGE_CONFIG = {
         "youtube": "https://www.youtube.com/@The_FinTrade",
         "linkedin": "https://www.linkedin.com/in/the-fintrade-7230b040a/",
     },
+    "global_offices": DEFAULT_GLOBAL_OFFICES,
     "showcase_videos": [
         {
             "title": "FinTrade Student Story",
@@ -541,6 +556,8 @@ async def get_landing_page_config(db: AsyncSession) -> Dict[str, Any]:
             data["about_us_vision"] = DEFAULT_LANDING_PAGE_CONFIG["about_us_vision"]
         if "about_us_mission" not in data:
             data["about_us_mission"] = DEFAULT_LANDING_PAGE_CONFIG["about_us_mission"]
+        if "global_offices" not in data:
+            data["global_offices"] = DEFAULT_LANDING_PAGE_CONFIG["global_offices"]
         return data
     except (json.JSONDecodeError, TypeError):
         return DEFAULT_LANDING_PAGE_CONFIG
