@@ -28,6 +28,31 @@ async def list_published_news(
     limit: int = 20,
 ) -> List[NewsArticle]:
     """Return published articles, optionally filtered by type."""
+    if not article_type and skip == 0:
+        latest_update_result = await db.execute(
+            select(NewsArticle)
+            .where(
+                NewsArticle.status == "published",
+                NewsArticle.type == "Market Update",
+            )
+            .order_by(NewsArticle.created_at.desc(), NewsArticle.id.desc())
+            .limit(1)
+        )
+        latest_update = latest_update_result.scalar_one_or_none()
+        blogs_limit = max(limit - 1, 0) if latest_update else limit
+
+        blogs_result = await db.execute(
+            select(NewsArticle)
+            .where(
+                NewsArticle.status == "published",
+                NewsArticle.type == "Blog Story",
+            )
+            .order_by(NewsArticle.created_at.desc(), NewsArticle.id.desc())
+            .limit(blogs_limit)
+        )
+        blogs = list(blogs_result.scalars().all())
+        return ([latest_update] if latest_update else []) + blogs
+
     q = select(NewsArticle).where(NewsArticle.status == "published")
     if article_type:
         q = q.where(NewsArticle.type == article_type)
