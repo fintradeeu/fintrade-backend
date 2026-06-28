@@ -31,7 +31,7 @@ async def list_published_news(
     q = select(NewsArticle).where(NewsArticle.status == "published")
     if article_type:
         q = q.where(NewsArticle.type == article_type)
-    q = q.order_by(NewsArticle.created_at.desc()).offset(skip).limit(limit)
+    q = q.order_by(NewsArticle.created_at.desc(), NewsArticle.id.desc()).offset(skip).limit(limit)
     result = await db.execute(q)
     return list(result.scalars().all())
 
@@ -60,7 +60,7 @@ async def list_all_news(
         q = q.where(NewsArticle.type == article_type)
     if status:
         q = q.where(NewsArticle.status == status)
-    q = q.order_by(NewsArticle.created_at.desc()).offset(skip).limit(limit)
+    q = q.order_by(NewsArticle.created_at.desc(), NewsArticle.id.desc()).offset(skip).limit(limit)
     result = await db.execute(q)
     return list(result.scalars().all())
 

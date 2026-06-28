@@ -37,7 +37,7 @@ router = APIRouter(tags=["News & Content"])
 async def list_published_news(
     type: Optional[str] = Query(None, description="Filter by type: 'Market Update' or 'Blog Story'"),
     skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(6, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     """List published news articles (public — used on homepage / blog page)."""
