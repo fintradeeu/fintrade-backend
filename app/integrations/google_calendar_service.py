@@ -16,6 +16,15 @@ class GoogleCalendarService:
     _access_token: Optional[str] = None
     _token_expiry: Optional[datetime] = None
 
+    @staticmethod
+    def _credential_status() -> Dict[str, Any]:
+        return {
+            "has_client_id": bool(settings.GOOGLE_CLIENT_ID),
+            "has_client_secret": bool(settings.GOOGLE_CLIENT_SECRET),
+            "has_refresh_token": bool(settings.GOOGLE_REFRESH_TOKEN),
+            "calendar_id": settings.GOOGLE_WORKSPACE_EMAIL or "primary",
+        }
+
     @classmethod
     async def _get_access_token(cls) -> Optional[str]:
         """Fetch a fresh access token using the refresh token."""
@@ -47,8 +56,34 @@ class GoogleCalendarService:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 res = await client.post("https://oauth2.googleapis.com/token", data=payload)
                 if res.status_code != 200:
-                    logger.error("google_calendar_token_refresh_failed", status_code=res.status_code, body=res.text)
-                    raise GoogleCalendarError("Google OAuth token refresh failed. Please reconnect the Google account.")
+                    error_code = None
+                    error_description = None
+                    try:
+                        error_data = res.json()
+                        error_code = error_data.get("error")
+                        error_description = error_data.get("error_description")
+                    except ValueError:
+                        pass
+
+                    logger.error(
+                        "google_calendar_token_refresh_failed",
+                        status_code=res.status_code,
+                        google_error=error_code,
+                        google_error_description=error_description,
+                        body=res.text,
+                    )
+
+                    if error_code == "unauthorized_client":
+                        raise GoogleCalendarError(
+                            "Google OAuth rejected the configured client. "
+                            "Regenerate GOOGLE_REFRESH_TOKEN using the same GOOGLE_CLIENT_ID "
+                            "and GOOGLE_CLIENT_SECRET configured on this server."
+                        )
+
+                    detail = error_code or f"HTTP {res.status_code}"
+                    raise GoogleCalendarError(
+                        f"Google OAuth token refresh failed ({detail}). Please reconnect the Google account."
+                    )
                 
                 data = res.json()
                 cls._access_token = data["access_token"]
@@ -60,6 +95,40 @@ class GoogleCalendarService:
                 raise
             logger.exception("google_calendar_token_refresh_exception", error=str(e))
             raise GoogleCalendarError("Could not connect to Google OAuth while refreshing the access token.")
+
+    @classmethod
+    async def health_check(cls) -> Dict[str, Any]:
+        """Return non-secret Google Calendar integration status for admin diagnostics."""
+        status = cls._credential_status()
+        status["configured"] = all(
+            [
+                status["has_client_id"],
+                status["has_client_secret"],
+                status["has_refresh_token"],
+            ]
+        )
+        status["token_refresh_ok"] = False
+        status["error"] = None
+
+        if not status["configured"]:
+            status["error"] = "Google Calendar OAuth credentials are incomplete."
+            return status
+
+        previous_token = cls._access_token
+        previous_expiry = cls._token_expiry
+        cls._access_token = None
+        cls._token_expiry = None
+        try:
+            token = await cls._get_access_token()
+            status["token_refresh_ok"] = bool(token)
+        except GoogleCalendarError as exc:
+            status["error"] = str(exc)
+        finally:
+            if not status["token_refresh_ok"]:
+                cls._access_token = previous_token
+                cls._token_expiry = previous_expiry
+
+        return status
 
     @staticmethod
     def _extract_meeting_link(event_data: Dict[str, Any]) -> Optional[str]:

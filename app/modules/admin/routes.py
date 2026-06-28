@@ -2,7 +2,7 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, UploadFile, File, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import require_roles, get_current_user
@@ -947,6 +947,15 @@ async def create_lecture(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=traceback.format_exc())
 
+@router.get("/lectures/google-calendar/status", response_model=dict)
+async def google_calendar_status(
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+):
+    """Check Google Calendar integration status without exposing secrets."""
+    from app.integrations.google_calendar_service import GoogleCalendarService
+
+    return await GoogleCalendarService.health_check()
+
 @router.put("/lectures/{lecture_id}", response_model=lecture_schemas.LectureResponse)
 async def update_lecture(
     lecture_id: int,
@@ -1026,13 +1035,17 @@ async def get_presigned_upload_url(
     import os
     from app.config import settings
     from fastapi import HTTPException
+    from app.services.video_optimizer import is_video_content, public_s3_url
     
     if not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
         raise HTTPException(status_code=500, detail="AWS credentials not configured on the server")
         
     bucket_name = settings.AWS_S3_BUCKET or "thefintrade-prd"
     ext = os.path.splitext(filename)[1]
-    unique_key = f"uploads/{uuid.uuid4()}{ext}"
+    upload_id = uuid.uuid4()
+    optimize_video = settings.VIDEO_OPTIMIZATION_ENABLED and is_video_content(content_type, filename)
+    unique_key = f"raw-uploads/{upload_id}{ext or '.mp4'}" if optimize_video else f"uploads/{upload_id}{ext}"
+    final_key = f"videos/{upload_id}.mp4" if optimize_video else unique_key
     
     try:
         s3_client = boto3.client(
@@ -1053,14 +1066,70 @@ async def get_presigned_upload_url(
             ExpiresIn=3600  # URL expires in 1 hour
         )
         
-        file_url = f"https://{bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com/{unique_key}"
+        source_file_url = public_s3_url(bucket_name, unique_key)
+        file_url = public_s3_url(bucket_name, final_key)
         
         return {
             "upload_url": presigned_url,
-            "file_url": file_url
+            "file_url": file_url,
+            "source_file_url": source_file_url,
+            "optimization_required": optimize_video,
+            "optimization_status": "pending" if optimize_video else "not_required",
+            "optimization_endpoint": "/admin/upload/optimize" if optimize_video else None,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not generate presigned URL: {str(e)}")
+
+
+def _run_video_optimization(source_file_url: str, final_file_url: str) -> None:
+    from app.services.video_optimizer import optimize_s3_video
+
+    try:
+        optimize_s3_video(source_file_url, final_file_url)
+    except Exception as exc:
+        from app.utils.logger import get_logger
+
+        get_logger(__name__).exception(
+            "video_optimization_failed",
+            source_file_url=source_file_url,
+            final_file_url=final_file_url,
+            error=str(exc),
+        )
+
+
+@router.post("/upload/optimize", response_model=dict)
+async def optimize_uploaded_video(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+):
+    """Start background optimization for a raw S3 video upload."""
+    from app.config import settings
+    from app.services.video_optimizer import ffmpeg_available, parse_s3_url
+
+    source_file_url = body.get("source_file_url")
+    final_file_url = body.get("final_file_url") or body.get("file_url")
+    if not source_file_url or not final_file_url:
+        raise HTTPException(status_code=400, detail="source_file_url and final_file_url are required")
+
+    try:
+        parse_s3_url(source_file_url)
+        parse_s3_url(final_file_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not settings.VIDEO_OPTIMIZATION_ENABLED:
+        return {"status": "skipped", "reason": "Video optimization is disabled", "file_url": final_file_url}
+
+    if not ffmpeg_available():
+        return {
+            "status": "skipped",
+            "reason": "FFmpeg is not installed on the server",
+            "file_url": source_file_url,
+        }
+
+    background_tasks.add_task(_run_video_optimization, source_file_url, final_file_url)
+    return {"status": "processing", "file_url": final_file_url}
 
 
 @router.post("/upload", response_model=dict, status_code=201)

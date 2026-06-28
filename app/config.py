@@ -135,6 +135,15 @@ class Settings(BaseSettings):
     AWS_S3_BUCKET: str = "thefintrade-prd"
     SES_SENDER_EMAIL: str = "noreply@thefintrade.com"
 
+    # Video optimization for S3 uploads
+    VIDEO_OPTIMIZATION_ENABLED: bool = True
+    VIDEO_DELETE_RAW_AFTER_OPTIMIZE: bool = True
+    VIDEO_FFMPEG_PATH: str = "ffmpeg"
+    VIDEO_CRF: int = 23
+    VIDEO_FFMPEG_PRESET: str = "medium"
+    VIDEO_MAX_WIDTH: int = 1920
+    VIDEO_AUDIO_BITRATE: str = "128k"
+
     # ── Google OAuth ─────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
