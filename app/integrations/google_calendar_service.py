@@ -1,11 +1,16 @@
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Tuple, Optional, Dict, Any
+from urllib.parse import quote
 import httpx
 from app.config import settings
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class GoogleCalendarError(RuntimeError):
+    """Raised when Google Calendar cannot create or update a Meet event."""
 
 class GoogleCalendarService:
     _access_token: Optional[str] = None
@@ -43,7 +48,7 @@ class GoogleCalendarService:
                 res = await client.post("https://oauth2.googleapis.com/token", data=payload)
                 if res.status_code != 200:
                     logger.error("google_calendar_token_refresh_failed", status_code=res.status_code, body=res.text)
-                    return None
+                    raise GoogleCalendarError("Google OAuth token refresh failed. Please reconnect the Google account.")
                 
                 data = res.json()
                 cls._access_token = data["access_token"]
@@ -51,8 +56,27 @@ class GoogleCalendarService:
                 cls._token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
                 return cls._access_token
         except Exception as e:
+            if isinstance(e, GoogleCalendarError):
+                raise
             logger.exception("google_calendar_token_refresh_exception", error=str(e))
-            return None
+            raise GoogleCalendarError("Could not connect to Google OAuth while refreshing the access token.")
+
+    @staticmethod
+    def _extract_meeting_link(event_data: Dict[str, Any]) -> Optional[str]:
+        meeting_link = event_data.get("hangoutLink")
+        if meeting_link:
+            return meeting_link
+
+        conf_data = event_data.get("conferenceData", {})
+        for entry_point in conf_data.get("entryPoints", []):
+            if entry_point.get("entryPointType") == "video" and entry_point.get("uri"):
+                return entry_point["uri"]
+
+        return None
+
+    @staticmethod
+    def _calendar_id() -> str:
+        return quote(settings.GOOGLE_WORKSPACE_EMAIL or "primary", safe="")
 
     @classmethod
     async def create_event(
@@ -68,7 +92,7 @@ class GoogleCalendarService:
         """
         token = await cls._get_access_token()
         if not token:
-            return None, None
+            raise GoogleCalendarError("Google Calendar credentials are not configured.")
 
         # Format start and end times in ISO 8601 UTC
         # If scheduled_at is naive, assume UTC
@@ -108,32 +132,29 @@ class GoogleCalendarService:
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(
-                    "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1",
+                    f"https://www.googleapis.com/calendar/v3/calendars/{cls._calendar_id()}/events?conferenceDataVersion=1",
                     json=event_body,
                     headers=headers
                 )
                 if res.status_code not in (200, 201):
                     logger.error("google_calendar_event_creation_failed", status_code=res.status_code, body=res.text)
-                    return None, None
+                    raise GoogleCalendarError("Google Calendar rejected the event creation request.")
 
                 event_data = res.json()
                 event_id = event_data.get("id")
-                
-                # Extract Google Meet link
-                meeting_link = None
-                conf_data = event_data.get("conferenceData", {})
-                entry_points = conf_data.get("entryPoints", [])
-                for ep in entry_points:
-                    if ep.get("entryPointType") == "video":
-                        meeting_link = ep.get("uri")
-                        break
+                meeting_link = cls._extract_meeting_link(event_data)
+                if not meeting_link:
+                    logger.error("google_calendar_meet_link_missing", event_id=event_id, body=event_data)
+                    raise GoogleCalendarError("Google created the event but did not return a Meet link.")
 
                 logger.info("google_calendar_event_created", event_id=event_id, meeting_link=meeting_link)
                 return event_id, meeting_link
 
         except Exception as e:
+            if isinstance(e, GoogleCalendarError):
+                raise
             logger.exception("google_calendar_event_creation_exception", error=str(e))
-            return None, None
+            raise GoogleCalendarError("Could not connect to Google Calendar while creating the event.")
 
     @classmethod
     async def update_event(
@@ -150,7 +171,7 @@ class GoogleCalendarService:
         """
         token = await cls._get_access_token()
         if not token or not event_id:
-            return False, None
+            raise GoogleCalendarError("Google Calendar credentials are not configured.")
 
         if scheduled_at.tzinfo is None:
             start_dt = scheduled_at.replace(tzinfo=timezone.utc)
@@ -169,12 +190,12 @@ class GoogleCalendarService:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 # 1. Fetch current event
                 get_res = await client.get(
-                    f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{event_id}",
+                    f"https://www.googleapis.com/calendar/v3/calendars/{cls._calendar_id()}/events/{event_id}",
                     headers=headers
                 )
                 if get_res.status_code != 200:
                     logger.error("google_calendar_fetch_event_failed", event_id=event_id, status_code=get_res.status_code)
-                    return False, None
+                    raise GoogleCalendarError("Google Calendar could not find the existing lecture event.")
                 
                 event_data = get_res.json()
                 
@@ -192,29 +213,25 @@ class GoogleCalendarService:
 
                 # 3. Save updates
                 put_res = await client.put(
-                    f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{event_id}?conferenceDataVersion=1",
+                    f"https://www.googleapis.com/calendar/v3/calendars/{cls._calendar_id()}/events/{event_id}?conferenceDataVersion=1",
                     json=event_data,
                     headers=headers
                 )
                 if put_res.status_code not in (200, 201):
                     logger.error("google_calendar_event_update_failed", event_id=event_id, status_code=put_res.status_code, body=put_res.text)
-                    return False, None
+                    raise GoogleCalendarError("Google Calendar rejected the event update request.")
 
                 updated_data = put_res.json()
-                meeting_link = None
-                conf_data = updated_data.get("conferenceData", {})
-                entry_points = conf_data.get("entryPoints", [])
-                for ep in entry_points:
-                    if ep.get("entryPointType") == "video":
-                        meeting_link = ep.get("uri")
-                        break
+                meeting_link = cls._extract_meeting_link(updated_data)
 
                 logger.info("google_calendar_event_updated", event_id=event_id, meeting_link=meeting_link)
                 return True, meeting_link
 
         except Exception as e:
+            if isinstance(e, GoogleCalendarError):
+                raise
             logger.exception("google_calendar_event_update_exception", event_id=event_id, error=str(e))
-            return False, None
+            raise GoogleCalendarError("Could not connect to Google Calendar while updating the event.")
 
     @classmethod
     async def delete_event(cls, event_id: str) -> bool:
@@ -233,7 +250,7 @@ class GoogleCalendarService:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 res = await client.delete(
-                    f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{event_id}",
+                    f"https://www.googleapis.com/calendar/v3/calendars/{cls._calendar_id()}/events/{event_id}",
                     headers=headers
                 )
                 if res.status_code not in (200, 204):

@@ -62,23 +62,10 @@ async def create_faculty_lecture(db: AsyncSession, data: dict, faculty_id: int) 
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    lecture = Lecture(
-        title=data["title"],
-        description=data.get("description"),
-        course_id=data["course_id"],
-        instructor_id=faculty_id,
-        meeting_link=data.get("meeting_link"),
-        scheduled_at=data["scheduled_at"],
-        duration_minutes=data.get("duration_minutes", 60),
-        max_participants=data.get("max_participants", 0),
-    )
-    db.add(lecture)
-    await db.commit()
-    
-    # Reload with relationships
-    query = select(Lecture).options(selectinload(Lecture.recordings)).filter(Lecture.id == lecture.id)
-    result = await db.execute(query)
-    lecture = result.scalar_one()
+    from app.modules.lectures.services import create_lecture
+
+    data["instructor_id"] = faculty_id
+    lecture = await create_lecture(db, data)
 
     logger.info("faculty_lecture_created", lecture_id=lecture.id, faculty_id=faculty_id)
     return lecture

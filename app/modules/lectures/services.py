@@ -19,23 +19,47 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _clean_meeting_link(meeting_link: Any) -> str | None:
+    if not isinstance(meeting_link, str):
+        return None
+    cleaned = meeting_link.strip()
+    return cleaned or None
+
+
+async def _create_google_meet_link(data: dict) -> tuple[str | None, str]:
+    """Create a Google Calendar event and return (event_id, meet_link)."""
+    from app.integrations.google_calendar_service import GoogleCalendarError, GoogleCalendarService
+
+    try:
+        event_id, meeting_link = await GoogleCalendarService.create_event(
+            title=data["title"],
+            scheduled_at=data["scheduled_at"],
+            duration_minutes=data.get("duration_minutes") or 60,
+            description=data.get("description"),
+        )
+    except GoogleCalendarError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not generate Google Meet link: {exc}",
+        ) from exc
+
+    if not meeting_link:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not generate Google Meet link: Google did not return a meeting URL.",
+        )
+
+    return event_id, meeting_link
+
+
 async def create_lecture(db: AsyncSession, data: dict) -> Lecture:
     """Admin/faculty creates a scheduled lecture."""
-    meeting_link = data.get("meeting_link")
+    meeting_link = _clean_meeting_link(data.get("meeting_link"))
     google_event_id = None
     
     # Auto-generate Google Meet link if not provided manually
     if not meeting_link:
-        from app.integrations.google_calendar_service import GoogleCalendarService
-        event_id, g_meet_link = await GoogleCalendarService.create_event(
-            title=data["title"],
-            scheduled_at=data["scheduled_at"],
-            duration_minutes=data.get("duration_minutes", 60),
-            description=data.get("description")
-        )
-        if g_meet_link:
-            meeting_link = g_meet_link
-            google_event_id = event_id
+        google_event_id, meeting_link = await _create_google_meet_link(data)
 
     lecture = Lecture(
         title=data["title"],
@@ -72,10 +96,11 @@ async def update_lecture(db: AsyncSession, lecture_id: int, data: dict) -> Lectu
     old_scheduled_at = lecture.scheduled_at
     old_duration = lecture.duration_minutes
     old_desc = lecture.description
-    
     # Apply modifications
     for key, val in data.items():
         if hasattr(lecture, key):
+            if key == "meeting_link":
+                val = _clean_meeting_link(val)
             setattr(lecture, key, val)
             
     # Sync with Google Calendar if event_id is present
@@ -85,29 +110,35 @@ async def update_lecture(db: AsyncSession, lecture_id: int, data: dict) -> Lectu
         old_duration != lecture.duration_minutes or
         old_desc != lecture.description
     ):
-        from app.integrations.google_calendar_service import GoogleCalendarService
-        success, updated_link = await GoogleCalendarService.update_event(
-            event_id=lecture.google_event_id,
-            title=lecture.title,
-            scheduled_at=lecture.scheduled_at,
-            duration_minutes=lecture.duration_minutes,
-            description=lecture.description
-        )
+        from app.integrations.google_calendar_service import GoogleCalendarError, GoogleCalendarService
+        try:
+            success, updated_link = await GoogleCalendarService.update_event(
+                event_id=lecture.google_event_id,
+                title=lecture.title,
+                scheduled_at=lecture.scheduled_at,
+                duration_minutes=lecture.duration_minutes,
+                description=lecture.description
+            )
+        except GoogleCalendarError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Could not update Google Meet event: {exc}",
+            ) from exc
         if success and updated_link:
             lecture.meeting_link = updated_link
             
     # Auto-generate if meeting link is cleared or missing
     elif not lecture.meeting_link:
-        from app.integrations.google_calendar_service import GoogleCalendarService
-        event_id, g_meet_link = await GoogleCalendarService.create_event(
-            title=lecture.title,
-            scheduled_at=lecture.scheduled_at,
-            duration_minutes=lecture.duration_minutes,
-            description=lecture.description
+        event_id, g_meet_link = await _create_google_meet_link(
+            {
+                "title": lecture.title,
+                "scheduled_at": lecture.scheduled_at,
+                "duration_minutes": lecture.duration_minutes,
+                "description": lecture.description,
+            }
         )
-        if g_meet_link:
-            lecture.meeting_link = g_meet_link
-            lecture.google_event_id = event_id
+        lecture.meeting_link = g_meet_link
+        lecture.google_event_id = event_id
 
     await db.commit()
     await db.refresh(lecture)

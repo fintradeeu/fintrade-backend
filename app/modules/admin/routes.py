@@ -941,8 +941,9 @@ async def create_lecture(
     try:
         lecture = await lecture_services.create_lecture(db, body.model_dump())
         return lecture_schemas.LectureResponse.model_validate(lecture)
+    except HTTPException:
+        raise
     except Exception as e:
-        from fastapi import HTTPException
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=traceback.format_exc())
 

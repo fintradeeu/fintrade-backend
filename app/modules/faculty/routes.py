@@ -2,7 +2,7 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import require_roles
@@ -47,8 +47,9 @@ async def create_lecture(
     try:
         lecture = await services.create_faculty_lecture(db, body.model_dump(), current_user.id)
         return LectureResponse.model_validate(lecture)
+    except HTTPException:
+        raise
     except Exception as e:
-        from fastapi import HTTPException
         raise HTTPException(status_code=500, detail=traceback.format_exc())
 
 @router.post("/lectures/{lecture_id}/complete", response_model=LectureResponse)
