@@ -495,9 +495,9 @@ async def create_mobile_user_profile(
     )
 
     if not user:
-        # Create a new user with default 'student' role
+        # Create a new user with default 'user' role
         from app.modules.auth.services import get_or_create_role
-        role = await get_or_create_role(db, "student")
+        role = await get_or_create_role(db, "user")
         
         user = User(
             email=email,
@@ -540,15 +540,12 @@ async def create_mobile_user_profile(
     await db.commit()
     await db.refresh(user)
 
-    role_names = [r.name for r in user.roles]
-    primary_role = role_names[0] if role_names else "user"
-
     data = schemas.MobileUserProfileResponseData(
         id=str(user.id),
         name=user.full_name,
         email=user.email,
         mobileNumber=user.phone or "",
-        role=primary_role
+        role="user"
     )
 
     return schemas.MobileUserProfileResponse(
@@ -611,15 +608,12 @@ async def update_mobile_user_profile(
     await db.commit()
     await db.refresh(current_user)
 
-    role_names = [r.name for r in current_user.roles]
-    primary_role = role_names[0] if role_names else "user"
-
     data = schemas.MobileUserProfileResponseData(
         id=str(current_user.id),
         name=current_user.full_name,
         email=current_user.email,
         mobileNumber=current_user.phone or "",
-        role=primary_role
+        role="user"
     )
 
     return schemas.MobileUserProfileResponse(
