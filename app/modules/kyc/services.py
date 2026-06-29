@@ -357,10 +357,19 @@ async def generate_contract(
         await db.refresh(existing_contract)
         return existing_contract
 
-    # Generate contract number
+    # Generate contract number (with collision avoidance)
     count_result = await db.execute(select(Contract))
     total = len(count_result.scalars().all())
-    contract_number = f"FT-{datetime.now().year}-{str(total + 1).zfill(3)}"
+    year = datetime.now().year
+    counter = total + 1
+    while True:
+        contract_number = f"FT-{year}-{str(counter).zfill(3)}"
+        existing = await db.execute(
+            select(Contract).where(Contract.contract_number == contract_number)
+        )
+        if existing.scalar_one_or_none() is None:
+            break
+        counter += 1
 
     contract_text = f"""
 FINTRADE TRADING EDUCATION AGREEMENT
