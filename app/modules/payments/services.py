@@ -513,9 +513,9 @@ async def send_invoice_email(user: User, course: Course, transaction: PaymentTra
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #eee;">
             <tr>
                 <td style="background: #0B2A5B; padding: 30px 24px; text-align: left; color: #ffffff;">
-                    <h1 style="margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 0.5px;">FinTrade</h1>
-                    <p style="margin: 5px 0 0; font-size: 12px; opacity: 0.85;">104-106, Capital Trade Center, BKC, Mumbai, MH - 400051</p>
-                    <p style="margin: 2px 0 0; font-size: 12px; opacity: 0.85;">GSTIN: 27AABCF4923K1ZM</p>
+                    <h1 style="margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 0.5px;">FT EDUTECH</h1>
+                    <p style="margin: 5px 0 0; font-size: 12px; opacity: 0.85;">10th Floor, Shivalik Complex, Nr. Panchvati Circle, Opp. Bank of Baroda, Ambawadi, Ahmedabad, Gujarat - 380006</p>
+                    <p style="margin: 2px 0 0; font-size: 12px; opacity: 0.85;">GSTIN: 24AALFF2921N1Z9</p>
                 </td>
             </tr>
             <tr>
@@ -558,13 +558,13 @@ async def send_invoice_email(user: User, course: Course, transaction: PaymentTra
                     </table>
                     
                     <p style="margin-top: 20px;">You can now log in to your dashboard to access the course.</p>
-                    <p style="margin-bottom: 0;">Happy Learning!<br><strong>FinTrade Team</strong></p>
+                    <p style="margin-bottom: 0;">Happy Learning!<br><strong>FT EDUTECH Team</strong></p>
                 </td>
             </tr>
             <tr>
                 <td style="background: #f9f9f9; padding: 16px 24px; text-align: center; border-top: 1px solid #eee; font-size: 11px; color: #999;">
                     <p style="margin: 0 0 4px;">This is a computer-generated tax invoice and requires no signature.</p>
-                    <p style="margin: 0;">For billing queries or support, please email us at billing@thefintrade.com</p>
+                    <p style="margin: 0;">For billing queries or support, please email us at accounts@thefintrade.com</p>
                 </td>
             </tr>
         </table>

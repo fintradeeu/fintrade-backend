@@ -155,3 +155,38 @@ class OTPPendingResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class CookieConsentCreate(BaseModel):
+    consent_type: Optional[str] = "accepted"
+
+
+class CookieConsentResponse(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    consent_type: str
+    created_at: datetime
+    user_email: Optional[str] = None
+    user_name: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_user_details(cls, data: Any) -> Any:
+        if hasattr(data, "user") and data.user:
+            # For ORM objects
+            data.user_email = data.user.email
+            data.user_name = data.user.full_name
+        elif isinstance(data, dict) and "user" in data and data["user"]:
+            # For dictionaries
+            user_obj = data["user"]
+            if hasattr(user_obj, "email"):
+                data["user_email"] = user_obj.email
+                data["user_name"] = user_obj.full_name
+            elif isinstance(user_obj, dict):
+                data["user_email"] = user_obj.get("email")
+                data["user_name"] = user_obj.get("full_name")
+        return data
+
+    model_config = {"from_attributes": True}

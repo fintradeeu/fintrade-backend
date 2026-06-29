@@ -155,3 +155,19 @@ class MobileOTPCode(Base):
     def __repr__(self):
         return f"<MobileOTPCode {self.mobile}>"
 
+
+class CookieConsent(Base):
+    __tablename__ = "cookie_consents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    ip_address = Column(String(50), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    consent_type = Column(String(50), default="accepted")  # accepted, declined, viewed
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<CookieConsent user={self.user_id} ip={self.ip_address}>"
+

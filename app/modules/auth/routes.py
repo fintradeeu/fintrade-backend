@@ -319,3 +319,56 @@ async def reset_password(
         code=body.code,
         new_password=body.new_password,
     )
+
+
+@router.post("/cookie-consent", response_model=schemas.CookieConsentResponse, status_code=201)
+async def create_cookie_consent(
+    body: schemas.CookieConsentCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Log a cookie policy view/consent from a user or visitor."""
+    user = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1]
+        try:
+            from app.core.security import decode_access_token
+            payload = decode_access_token(token)
+            user_id = int(payload.get("sub"))
+            user = await db.get(User, user_id)
+        except Exception:
+            pass
+
+    from app.modules.auth.models import CookieConsent
+    consent = CookieConsent(
+        user_id=user.id if user else None,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        consent_type=body.consent_type,
+    )
+    db.add(consent)
+    await db.commit()
+    await db.refresh(consent)
+    if user:
+        consent.user = user
+    return consent
+
+
+from typing import List
+
+@router.get("/cookie-consents", response_model=List[schemas.CookieConsentResponse])
+async def list_cookie_consents(
+    current_user: User = Depends(require_roles(["superadmin", "admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all logged cookie policy consents for the admin panel."""
+    from app.modules.auth.models import CookieConsent
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(CookieConsent)
+        .options(selectinload(CookieConsent.user))
+        .order_by(CookieConsent.created_at.desc())
+    )
+    return result.scalars().all()
