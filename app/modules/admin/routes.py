@@ -1016,6 +1016,18 @@ async def list_lecture_registrations(
     registrations = await lecture_services.get_all_lecture_registrations(db)
     return [lecture_schemas.LectureRegistrationResponse.model_validate(r) for r in registrations]
 
+
+@router.delete("/lectures/registrations/{reg_id}", response_model=MessageResponse)
+async def delete_lecture_registration(
+    reg_id: int,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a live class registration (admin/faculty only)."""
+    await lecture_services.delete_lecture_registration(db, reg_id)
+    return MessageResponse(message="Registration deleted successfully")
+
+
 # ── Media Upload ────────────────────────────────────────────────────
 import os
 import uuid

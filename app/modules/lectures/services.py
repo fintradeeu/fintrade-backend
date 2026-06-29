@@ -331,6 +331,16 @@ async def get_all_lecture_registrations(db: AsyncSession) -> List[dict]:
     return list(result.scalars().all())
 
 
+async def delete_lecture_registration(db: AsyncSession, reg_id: int) -> None:
+    from app.modules.lectures.models import LectureRegistration
+    registration = await db.get(LectureRegistration, reg_id)
+    if not registration:
+        raise HTTPException(status_code=404, detail="Registration not found")
+    await db.delete(registration)
+    await db.commit()
+    logger.info("lecture_registration_deleted", reg_id=reg_id)
+
+
 async def send_registration_otp(db: AsyncSession, email: str, lecture_title: str | None) -> None:
     from app.modules.lectures.models import LectureRegistration, RegistrationOTP
     from app.utils.smtp_notifications import send_email
