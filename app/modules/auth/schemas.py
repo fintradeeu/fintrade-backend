@@ -108,7 +108,15 @@ class UserResponse(BaseModel):
     def check_relationships(cls, data: Any) -> Any:
         if hasattr(data, "_sa_instance_state"):
             enrolled = []
-            if "enrollments" in data.__dict__ or hasattr(data, "enrollments"):
+            is_enrollments_loaded = False
+            try:
+                from sqlalchemy import inspect
+                insp = inspect(data)
+                is_enrollments_loaded = "enrollments" not in insp.unloaded
+            except Exception:
+                is_enrollments_loaded = "enrollments" in data.__dict__
+
+            if is_enrollments_loaded:
                 try:
                     for e in (data.enrollments or []):
                         enrolled.append({
@@ -124,7 +132,15 @@ class UserResponse(BaseModel):
                     pass
 
             history = []
-            if "sessions" in data.__dict__ or hasattr(data, "sessions"):
+            is_sessions_loaded = False
+            try:
+                from sqlalchemy import inspect
+                insp = inspect(data)
+                is_sessions_loaded = "sessions" not in insp.unloaded
+            except Exception:
+                is_sessions_loaded = "sessions" in data.__dict__
+
+            if is_sessions_loaded:
                 try:
                     sorted_sessions = sorted(data.sessions or [], key=lambda s: s.created_at, reverse=True)
                     for s in sorted_sessions:
