@@ -30,14 +30,17 @@ from app.modules.simulator.models import (
 from app.services.twelve_data_service import twelve_data_service
 
 
-DEFAULT_SYMBOLS = ["AAPL", "MSFT", "TSLA", "NVDA", "BTC/USD", "EUR/USD"]
+DEFAULT_SYMBOLS = ["SENSEX", "NIFTY", "RELIANCE", "TATAMOTORS", "ICICIBANK", "WIPRO", "ITC", "AAPL", "BTC/USD"]
 TRADINGVIEW_SYMBOLS = {
-    "AAPL": "NASDAQ:AAPL",
-    "MSFT": "NASDAQ:MSFT",
-    "TSLA": "NASDAQ:TSLA",
-    "NVDA": "NASDAQ:NVDA",
+    "SENSEX": "BSE:SENSEX",
+    "NIFTY": "NSE:NIFTY50",
+    "RELIANCE": "NSE:RELIANCE",
+    "TATAMOTORS": "NSE:TATAMOTORS",
+    "ICICIBANK": "NSE:ICICIBANK",
+    "WIPRO": "NSE:WIPRO",
+    "ITC": "NSE:ITC",
     "BTC/USD": "BINANCE:BTCUSDT",
-    "EUR/USD": "FX:EURUSD",
+    "AAPL": "NASDAQ:AAPL",
 }
 
 

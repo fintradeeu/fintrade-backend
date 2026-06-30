@@ -73,6 +73,26 @@ async def self_register_distributor(
         pan_card_url=pan_card_url,
     )
     await db.commit()
+
+    # Send credentials (email & password) to the IB registered mail
+    try:
+        from app.utils.smtp_notifications import build_ib_registration_email_html, send_email
+        email_html = build_ib_registration_email_html(
+            email=email.strip().lower(),
+            password=password,
+            user_name=full_name.strip(),
+            referral_code=distributor.referral_code
+        )
+        await send_email(
+            to_email=email.strip().lower(),
+            subject="Welcome to FinTrade - Your IB Account Details",
+            body_html=email_html
+        )
+    except Exception as e:
+        from app.utils.logger import get_logger
+        logger = get_logger(__name__)
+        logger.error("failed_to_send_ib_credentials_email", email=email, error=str(e))
+
     return schemas.DistributorSelfRegisterResponse(
         message="IB account created successfully. SuperAdmin can review the submitted details.",
         referral_code=distributor.referral_code,

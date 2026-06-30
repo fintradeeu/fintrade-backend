@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Union
 
-from app.core.security import get_current_user, oauth2_scheme
+from app.core.security import get_current_user, oauth2_scheme, require_roles
 from app.db.database import get_db
 from app.modules.auth import schemas, services
 from app.modules.auth.models import User
@@ -359,7 +359,7 @@ from typing import List
 
 @router.get("/cookie-consents", response_model=List[schemas.CookieConsentResponse])
 async def list_cookie_consents(
-    current_user: User = Depends(require_roles(["superadmin", "admin"])),
+    current_user: User = Depends(require_roles(["super_admin", "admin"])),
     db: AsyncSession = Depends(get_db),
 ):
     """List all logged cookie policy consents for the admin panel."""

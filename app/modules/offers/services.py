@@ -87,9 +87,8 @@ async def validate_offer_price(db: AsyncSession, code: str, course_id: int) -> f
     now = datetime.now(timezone.utc)
     if offer.valid_until and now > offer.valid_until:
         return None
-    # Note: we do NOT re-check max_redemptions here because the user already
-    # redeemed this offer at /offers/apply time, which incremented current_redemptions.
-    # Blocking here would wrongly charge the full price after a valid apply.
+    if offer.max_redemptions > 0 and offer.current_redemptions >= offer.max_redemptions:
+        return None
     if offer.course_id and offer.course_id != course_id:
         return None
 
@@ -181,18 +180,9 @@ async def apply_offer(db: AsyncSession, user_id: int, code: Optional[str], cours
 
     discounted_price = max(original_price - discount, 0.0)
 
-    # Record redemption if it's an offer
+    # Note: OfferRedemption is not created here. It is created upon payment completion in enroll_user.
     if offer:
-        redemption = OfferRedemption(
-            offer_id=offer.id,
-            user_id=user_id,
-            original_price=original_price,
-            discounted_price=discounted_price,
-        )
-        db.add(redemption)
-        offer.current_redemptions += 1
-        await db.flush()
-        logger.info("offer_applied", user_id=user_id, offer_id=offer.id, discount=discount)
+        logger.info("offer_applied_simulation", user_id=user_id, offer_id=offer.id, discount=discount)
         return {
             "offer_id": offer.id,
             "original_price": original_price,

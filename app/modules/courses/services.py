@@ -301,7 +301,7 @@ async def enroll_user(
 
     # Apply offer coupon discount if present
     if offer_code:
-        from app.modules.offers.models import Offer
+        from app.modules.offers.models import Offer, OfferRedemption
         offer_result = await db.execute(select(Offer).where(Offer.code == offer_code))
         offer = offer_result.scalar_one_or_none()
         if offer:
@@ -311,6 +311,23 @@ async def enroll_user(
                 else:
                     discount_amount = offer.discount_value
                 price_paid = max(original_price - discount_amount, 0.0)
+
+                # Check if this user has already redeemed this offer (idempotency check)
+                redeemed_res = await db.execute(
+                    select(OfferRedemption).where(
+                        OfferRedemption.offer_id == offer.id,
+                        OfferRedemption.user_id == user_id,
+                    )
+                )
+                if not redeemed_res.scalar_one_or_none():
+                    redemption = OfferRedemption(
+                        offer_id=offer.id,
+                        user_id=user_id,
+                        original_price=original_price,
+                        discounted_price=price_paid,
+                    )
+                    db.add(redemption)
+                    offer.current_redemptions += 1
 
     # Process distributor referral code if present
     if actual_distributor_code:

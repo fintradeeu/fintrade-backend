@@ -63,6 +63,13 @@ class TwelveDataService:
             "SILVER": {"price": 28.50, "change": 0.35, "change_pct": 1.24},
             "CRUDEOIL": {"price": 78.50, "change": -0.65, "change_pct": -0.82},
             "CRUDE OIL": {"price": 78.50, "change": -0.65, "change_pct": -0.82},
+            "SENSEX": {"price": 77300.00, "change": 150.00, "change_pct": 0.19},
+            "NIFTY": {"price": 23500.00, "change": 45.00, "change_pct": 0.19},
+            "RELIANCE": {"price": 2950.00, "change": 15.50, "change_pct": 0.53},
+            "TATAMOTORS": {"price": 960.00, "change": -5.20, "change_pct": -0.54},
+            "ICICIBANK": {"price": 1120.00, "change": 8.40, "change_pct": 0.75},
+            "WIPRO": {"price": 485.00, "change": -2.10, "change_pct": -0.43},
+            "ITC": {"price": 430.00, "change": 1.80, "change_pct": 0.42},
         }
         
         base = fallbacks.get(sym_clean) or fallbacks.get(sym_clean.replace("/", "")) or {"price": 100.0, "change": 0.0, "change_pct": 0.0}
