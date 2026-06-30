@@ -52,6 +52,12 @@ class User(Base):
     roles = relationship("Role", secondary=user_roles, back_populates="users", lazy="selectin")
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     devices = relationship("Device", back_populates="user", cascade="all, delete-orphan")
+    enrollments = relationship(
+        "CourseEnrollment",
+        primaryjoin="User.id == CourseEnrollment.user_id",
+        foreign_keys="[CourseEnrollment.user_id]",
+        lazy="selectin"
+    )
 
     def __repr__(self):
         return f"<User {self.email}>"

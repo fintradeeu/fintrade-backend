@@ -252,30 +252,30 @@ async def enroll_user(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Already enrolled in this course")
 
-    # Entrance Exam Prerequisite Check
-    from app.modules.exams.models import EntranceExam, ExamResult
-    entrance_res = await db.execute(
-        select(EntranceExam).where(
-            EntranceExam.course_id == course_id,
-            EntranceExam.is_active == True
-        )
-    )
-    exams = entrance_res.scalars().all()
-    if exams:
-        exam_ids = [e.id for e in exams]
-        # Check if user has passed any of these entrance exams
-        passed_res = await db.execute(
-            select(ExamResult).where(
-                ExamResult.user_id == user_id,
-                ExamResult.exam_id.in_(exam_ids),
-                ExamResult.passed == True
-            )
-        )
-        if not passed_res.scalars().first():
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You must pass the entrance exam before enrolling in this course."
-            )
+    # Entrance Exam Prerequisite Check (Removed from flow)
+    # from app.modules.exams.models import EntranceExam, ExamResult
+    # entrance_res = await db.execute(
+    #     select(EntranceExam).where(
+    #         EntranceExam.course_id == course_id,
+    #         EntranceExam.is_active == True
+    #     )
+    # )
+    # exams = entrance_res.scalars().all()
+    # if exams:
+    #     exam_ids = [e.id for e in exams]
+    #     # Check if user has passed any of these entrance exams
+    #     passed_res = await db.execute(
+    #         select(ExamResult).where(
+    #             ExamResult.user_id == user_id,
+    #             ExamResult.exam_id.in_(exam_ids),
+    #             ExamResult.passed == True
+    #         )
+    #     )
+    #     if not passed_res.scalars().first():
+    #         raise HTTPException(
+    #             status_code=status.HTTP_403_FORBIDDEN,
+    #             detail="You must pass the entrance exam before enrolling in this course."
+    #         )
 
     # Distributor referral logic
     discount_amount = 0.0

@@ -55,6 +55,63 @@ async def list_users(db: AsyncSession, skip: int = 0, limit: int = 50) -> dict:
     return {"users": users, "total": total}
 
 
+async def list_non_purchased_users(db: AsyncSession, skip: int = 0, limit: int = 50) -> dict:
+    """List users who have registered but have not purchased any course."""
+    from sqlalchemy import not_
+    
+    # Subquery for user_ids who have enrolled in any course
+    enrolled_user_ids = select(CourseEnrollment.user_id)
+    
+    result = await db.execute(
+        select(User)
+        .options(
+            selectinload(User.roles),
+            selectinload(User.distributor_profile),
+            selectinload(User.enrollments),
+            selectinload(User.sessions)
+        )
+        .where(not_(User.id.in_(enrolled_user_ids)))
+        .offset(skip)
+        .limit(limit)
+        .order_by(User.created_at.desc())
+    )
+    users = list(result.scalars().all())
+    
+    total = (await db.execute(
+        select(func.count(User.id))
+        .where(not_(User.id.in_(enrolled_user_ids)))
+    )).scalar() or 0
+    
+    return {"users": users, "total": total}
+
+
+async def list_purchased_students(db: AsyncSession, skip: int = 0, limit: int = 50) -> dict:
+    """List users who have purchased at least one course."""
+    enrolled_user_ids = select(CourseEnrollment.user_id)
+    
+    result = await db.execute(
+        select(User)
+        .options(
+            selectinload(User.roles),
+            selectinload(User.distributor_profile),
+            selectinload(User.enrollments),
+            selectinload(User.sessions)
+        )
+        .where(User.id.in_(enrolled_user_ids))
+        .offset(skip)
+        .limit(limit)
+        .order_by(User.created_at.desc())
+    )
+    users = list(result.scalars().all())
+    
+    total = (await db.execute(
+        select(func.count(User.id))
+        .where(User.id.in_(enrolled_user_ids))
+    )).scalar() or 0
+    
+    return {"users": users, "total": total}
+
+
 # ── User creation ────────────────────────────────────────────────────
 async def create_user_with_role(
     db: AsyncSession,

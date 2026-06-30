@@ -107,7 +107,7 @@ class CourseEnrollment(Base):
     distributor_id = Column(Integer, ForeignKey("distributors.id", ondelete="SET NULL"), nullable=True)
 
     # relationships
-    course = relationship("Course", back_populates="enrollments")
+    course = relationship("Course", back_populates="enrollments", lazy="selectin")
 
     def __repr__(self):
         return f"<Enrollment user={self.user_id} course={self.course_id}>"

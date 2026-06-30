@@ -762,6 +762,21 @@ async def create_session(
         + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
     db.add(session)
+    
+    # Associate any prior anonymous cookie consents matching the IP
+    if ip_address:
+        from app.modules.auth.models import CookieConsent
+        from sqlalchemy import update
+        try:
+            await db.execute(
+                update(CookieConsent)
+                .where(CookieConsent.ip_address == ip_address)
+                .where(CookieConsent.user_id.is_(None))
+                .values(user_id=user.id)
+            )
+        except Exception as e:
+            logger.warning("failed_to_associate_cookie_consent", error=str(e))
+
     await db.flush()
     logger.info("session_created", user_id=user.id)
     return {

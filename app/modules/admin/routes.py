@@ -45,8 +45,29 @@ async def list_users(
     admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all users (admin only)."""
-    data = await services.list_users(db, skip=skip, limit=limit)
+    """List all users who have not purchased a course (admin only)."""
+    data = await services.list_non_purchased_users(db, skip=skip, limit=limit)
+    users = data["users"]
+    users = [
+        user
+        for user in users
+        if not any(role.name == "distributor" for role in user.roles)
+    ]
+    return schemas.UserListResponse(
+        users=[UserResponse.model_validate(u) for u in users],
+        total=len(users) if users != data["users"] else data["total"],
+    )
+
+
+@router.get("/purchased-students", response_model=schemas.UserListResponse)
+async def list_purchased_students(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all students who have purchased at least one course (admin only)."""
+    data = await services.list_purchased_students(db, skip=skip, limit=limit)
     users = data["users"]
     users = [
         user
@@ -1277,30 +1298,30 @@ async def get_admin_roles(
     from sqlalchemy.orm import selectinload
     from app.modules.auth.models import Role
 
-    # Fetch all users that have the 'admin' role
+    # Fetch all users that have the 'admin' role, except default super-admin
     result = await db.execute(
         select(User)
-        .options(selectinload(User.roles))
+        .options(selectinload(User.roles), selectinload(User.sessions))
         .join(User.roles)
         .where(Role.name == "admin")
+        .where(User.email != "admin@platform.com")
     )
     admins = result.scalars().all()
 
     res = []
     for a in admins:
         perms = a.permissions if isinstance(a.permissions, dict) else {}
-        role_name = perms.get("roleName", "Super Admin" if a.email == "admin@platform.com" else "Admin")
-        is_default_super = a.email == "admin@platform.com"
+        role_name = perms.get("roleName", "Admin")
         
         permissions_dict = {
-            "manageCourses": perms.get("manageCourses", True if is_default_super else False),
-            "manageStudents": perms.get("manageStudents", True if is_default_super else False),
-            "managePayments": perms.get("managePayments", True if is_default_super else False),
-            "manageContent": perms.get("manageContent", True if is_default_super else False),
-            "directPublish": perms.get("directPublish", True if is_default_super else False),
-            "manageExams": perms.get("manageExams", True if is_default_super else False),
-            "manageAdmins": perms.get("manageAdmins", True if is_default_super else False),
-            "canViewRevenue": perms.get("canViewRevenue", True if is_default_super else False),
+            "manageCourses": perms.get("manageCourses", False),
+            "manageStudents": perms.get("manageStudents", False),
+            "managePayments": perms.get("managePayments", False),
+            "manageContent": perms.get("manageContent", False),
+            "directPublish": perms.get("directPublish", False),
+            "manageExams": perms.get("manageExams", False),
+            "manageAdmins": perms.get("manageAdmins", False),
+            "canViewRevenue": perms.get("canViewRevenue", False),
             "viewDashboard": perms.get("viewDashboard", True),
             "viewModuleStudents": perms.get("viewModuleStudents", True),
             "viewLectures": perms.get("viewLectures", True),
@@ -1312,6 +1333,21 @@ async def get_admin_roles(
             "viewSettings": perms.get("viewSettings", True),
         }
         
+        last_session = None
+        if a.sessions:
+            try:
+                sorted_sessions = sorted(a.sessions, key=lambda s: s.created_at, reverse=True)
+                last_session = sorted_sessions[0]
+            except Exception:
+                pass
+                
+        login_details = {
+            "login_time": last_session.created_at.isoformat() if last_session else None,
+            "ip_address": last_session.ip_address if last_session else None,
+            "user_agent": last_session.user_agent if last_session else None,
+            "status": "Active" if (last_session and last_session.is_active) else "Logged Out"
+        }
+        
         res.append({
             "id": a.id,
             "name": a.full_name,
@@ -1320,7 +1356,8 @@ async def get_admin_roles(
             "role": role_name,
             "status": "Active" if a.is_active else "Inactive",
             "permissions": permissions_dict,
-            "lastActive": a.updated_at.isoformat() if a.updated_at else a.created_at.isoformat()
+            "lastActive": a.updated_at.isoformat() if a.updated_at else a.created_at.isoformat(),
+            "login_details": login_details
         })
     return res
 

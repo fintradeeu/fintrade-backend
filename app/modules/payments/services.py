@@ -108,29 +108,29 @@ async def initiate_payment(
     logger.info("payment_charge_amount", course_id=course_id, course_price=course.price,
                 coupon_code=coupon_code, discounted_price=discounted_price, charge_amount=charge_amount)
 
-    # Entrance Exam Prerequisite Check
-    from app.modules.exams.models import EntranceExam, ExamResult
-    entrance_res = await db.execute(
-        select(EntranceExam).where(
-            EntranceExam.course_id == course_id,
-            EntranceExam.is_active == True
-        )
-    )
-    exams = entrance_res.scalars().all()
-    if exams:
-        exam_ids = [e.id for e in exams]
-        passed_res = await db.execute(
-            select(ExamResult).where(
-                ExamResult.user_id == user.id,
-                ExamResult.exam_id.in_(exam_ids),
-                ExamResult.passed == True
-            )
-        )
-        if not passed_res.scalars().first():
-            raise HTTPException(
-                status_code=403,
-                detail="You must pass the entrance exam before you can purchase this course."
-            )
+    # Entrance Exam Prerequisite Check (Removed from flow)
+    # from app.modules.exams.models import EntranceExam, ExamResult
+    # entrance_res = await db.execute(
+    #     select(EntranceExam).where(
+    #         EntranceExam.course_id == course_id,
+    #         EntranceExam.is_active == True
+    #     )
+    # )
+    # exams = entrance_res.scalars().all()
+    # if exams:
+    #     exam_ids = [e.id for e in exams]
+    #     passed_res = await db.execute(
+    #         select(ExamResult).where(
+    #             ExamResult.user_id == user.id,
+    #             ExamResult.exam_id.in_(exam_ids),
+    #             ExamResult.passed == True
+    #         )
+    #     )
+    #     if not passed_res.scalars().first():
+    #         raise HTTPException(
+    #             status_code=403,
+    #             detail="You must pass the entrance exam before you can purchase this course."
+    #         )
 
     if _active_gateway() == "razorpay":
         txnid = f"TXN{uuid.uuid4().hex[:12].upper()}"

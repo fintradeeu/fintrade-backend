@@ -100,11 +100,44 @@ class UserResponse(BaseModel):
     roles: List[RoleResponse] = []
     distributor_profile: Optional[DistributorProfileResponse] = None
     created_at: datetime
+    enrolled_courses: List[dict] = []
+    login_history: List[dict] = []
 
     @model_validator(mode="before")
     @classmethod
     def check_relationships(cls, data: Any) -> Any:
         if hasattr(data, "_sa_instance_state"):
+            enrolled = []
+            if "enrollments" in data.__dict__ or hasattr(data, "enrollments"):
+                try:
+                    for e in (data.enrollments or []):
+                        enrolled.append({
+                            "id": e.id,
+                            "course_id": e.course_id,
+                            "course_title": e.course.title if (hasattr(e, "course") and e.course) else f"Course ID {e.course_id}",
+                            "price_paid": e.price_paid,
+                            "discount_applied": e.discount_applied,
+                            "enrolled_at": e.enrolled_at.isoformat() if e.enrolled_at else None,
+                            "is_active": e.is_active
+                        })
+                except Exception:
+                    pass
+
+            history = []
+            if "sessions" in data.__dict__ or hasattr(data, "sessions"):
+                try:
+                    sorted_sessions = sorted(data.sessions or [], key=lambda s: s.created_at, reverse=True)
+                    for s in sorted_sessions:
+                        history.append({
+                            "id": s.id,
+                            "login_time": s.created_at.isoformat() if s.created_at else None,
+                            "ip_address": s.ip_address,
+                            "user_agent": s.user_agent,
+                            "status": "Active" if s.is_active else "Logged Out"
+                        })
+                except Exception:
+                    pass
+
             res = {
                 "id": data.id,
                 "email": data.email,
@@ -117,6 +150,8 @@ class UserResponse(BaseModel):
                 "permissions": data.permissions,
                 "has_password": bool(data.hashed_password),
                 "created_at": data.created_at,
+                "enrolled_courses": enrolled,
+                "login_history": history
             }
             if "roles" in data.__dict__:
                 res["roles"] = data.roles
@@ -170,6 +205,9 @@ class CookieConsentResponse(BaseModel):
     created_at: datetime
     user_email: Optional[str] = None
     user_name: Optional[str] = None
+    user_phone: Optional[str] = None
+    user_city: Optional[str] = None
+    user_roles: List[str] = []
 
     @model_validator(mode="before")
     @classmethod
@@ -178,15 +216,24 @@ class CookieConsentResponse(BaseModel):
             # For ORM objects
             data.user_email = data.user.email
             data.user_name = data.user.full_name
+            data.user_phone = data.user.phone
+            data.user_city = data.user.city
+            data.user_roles = [r.name for r in data.user.roles] if data.user.roles else []
         elif isinstance(data, dict) and "user" in data and data["user"]:
             # For dictionaries
             user_obj = data["user"]
             if hasattr(user_obj, "email"):
                 data["user_email"] = user_obj.email
                 data["user_name"] = user_obj.full_name
+                data["user_phone"] = user_obj.phone
+                data["user_city"] = user_obj.city
+                data["user_roles"] = [r.name for r in user_obj.roles] if hasattr(user_obj, "roles") and user_obj.roles else []
             elif isinstance(user_obj, dict):
                 data["user_email"] = user_obj.get("email")
                 data["user_name"] = user_obj.get("full_name")
+                data["user_phone"] = user_obj.get("phone")
+                data["user_city"] = user_obj.get("city")
+                data["user_roles"] = user_obj.get("roles") or []
         return data
 
     model_config = {"from_attributes": True}

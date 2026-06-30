@@ -368,7 +368,7 @@ async def list_cookie_consents(
     from sqlalchemy.orm import selectinload
     result = await db.execute(
         select(CookieConsent)
-        .options(selectinload(CookieConsent.user))
+        .options(selectinload(CookieConsent.user).selectinload(User.roles))
         .order_by(CookieConsent.created_at.desc())
     )
     return result.scalars().all()
