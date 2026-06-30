@@ -768,12 +768,13 @@ async def create_session(
         from app.modules.auth.models import CookieConsent
         from sqlalchemy import update
         try:
-            await db.execute(
-                update(CookieConsent)
-                .where(CookieConsent.ip_address == ip_address)
-                .where(CookieConsent.user_id.is_(None))
-                .values(user_id=user.id)
-            )
+            async with db.begin_nested():
+                await db.execute(
+                    update(CookieConsent)
+                    .where(CookieConsent.ip_address == ip_address)
+                    .where(CookieConsent.user_id.is_(None))
+                    .values(user_id=user.id)
+                )
         except Exception as e:
             logger.warning("failed_to_associate_cookie_consent", error=str(e))
 
