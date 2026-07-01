@@ -119,12 +119,21 @@ class UserResponse(BaseModel):
             if is_enrollments_loaded:
                 try:
                     for e in (data.enrollments or []):
+                        coupon_code = getattr(e, "coupon_code", None)
+                        coupon_title = getattr(e, "coupon_title", None)
+                        if not coupon_code and (e.discount_applied or 0) > 0:
+                            coupon_code = "COUPON"
+                            coupon_title = "Coupon"
                         enrolled.append({
                             "id": e.id,
                             "course_id": e.course_id,
                             "course_title": e.course.title if (hasattr(e, "course") and e.course) else f"Course ID {e.course_id}",
                             "price_paid": e.price_paid,
                             "discount_applied": e.discount_applied,
+                            "coupon_code": coupon_code,
+                            "coupon_title": coupon_title,
+                            "payment_txnid": getattr(e, "payment_txnid", None),
+                            "payment_mode": getattr(e, "payment_mode", None),
                             "enrolled_at": e.enrolled_at.isoformat() if e.enrolled_at else None,
                             "is_active": e.is_active
                         })

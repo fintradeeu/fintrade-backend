@@ -164,6 +164,10 @@ class EnrollmentResponse(BaseModel):
     completed_at: Optional[datetime] = None
     discount_applied: float = 0.0
     price_paid: Optional[float] = None
+    coupon_code: Optional[str] = None
+    coupon_title: Optional[str] = None
+    payment_amount: Optional[float] = None
+    payment_txnid: Optional[str] = None
     course: CourseListResponse
 
     model_config = {"from_attributes": True}

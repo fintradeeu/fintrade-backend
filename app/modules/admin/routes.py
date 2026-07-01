@@ -47,15 +47,9 @@ async def list_users(
 ):
     """List all users who have not purchased a course (admin only)."""
     data = await services.list_non_purchased_users(db, skip=skip, limit=limit)
-    users = data["users"]
-    users = [
-        user
-        for user in users
-        if not any(role.name == "distributor" for role in user.roles)
-    ]
     return schemas.UserListResponse(
-        users=[UserResponse.model_validate(u) for u in users],
-        total=len(users) if users != data["users"] else data["total"],
+        users=[UserResponse.model_validate(u) for u in data["users"]],
+        total=data["total"],
     )
 
 
@@ -883,21 +877,55 @@ async def revenue_stats(
     if "super_admin" not in user_role_names:
         raise HTTPException(status_code=403, detail="Requires Super Admin role")
 
-    # Calculate actual revenue from database
+    # Calculate actual revenue from database, split the same way invoices do.
     from app.modules.payments.models import PaymentTransaction
+    from app.modules.courses.models import Course
     from sqlalchemy import func, select
     
-    total_stmt = select(func.sum(PaymentTransaction.amount)).where(PaymentTransaction.status == "success")
-    total_val = (await db.execute(total_stmt)).scalar() or 0.0
+    total_stmt = (
+        select(
+            func.coalesce(func.sum(Course.price), 0.0),
+            func.coalesce(func.sum(PaymentTransaction.amount), 0.0),
+        )
+        .join(Course, Course.id == PaymentTransaction.course_id)
+        .where(PaymentTransaction.status == "success")
+    )
+    total_amount_val, total_paid_val = (await db.execute(total_stmt)).one()
+    total_fees_val = round(float(total_paid_val or 0.0) / 1.18, 2)
+    total_gst_val = round(float(total_paid_val or 0.0) - total_fees_val, 2)
 
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     start_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
-    monthly_stmt = select(func.sum(PaymentTransaction.amount)).where(
-        PaymentTransaction.status == "success",
-        PaymentTransaction.updated_at >= start_of_month
+    monthly_stmt = (
+        select(
+            func.coalesce(func.sum(Course.price), 0.0),
+            func.coalesce(func.sum(PaymentTransaction.amount), 0.0),
+        )
+        .join(Course, Course.id == PaymentTransaction.course_id)
+        .where(
+            PaymentTransaction.status == "success",
+            PaymentTransaction.updated_at >= start_of_month
+        )
     )
-    monthly_val = (await db.execute(monthly_stmt)).scalar() or 0.0
+    monthly_amount_val, monthly_paid_val = (await db.execute(monthly_stmt)).one()
+    monthly_fees_val = round(float(monthly_paid_val or 0.0) / 1.18, 2)
+    monthly_gst_val = round(float(monthly_paid_val or 0.0) - monthly_fees_val, 2)
+
+    return {
+        "total_amount": f"₹{float(total_amount_val or 0.0):,.2f}",
+        "total_fees": f"₹{total_fees_val:,.2f}",
+        "total_gst": f"₹{total_gst_val:,.2f}",
+        "total_paid": f"₹{float(total_paid_val or 0.0):,.2f}",
+        "monthly_amount": f"₹{float(monthly_amount_val or 0.0):,.2f}",
+        "monthly_fees": f"₹{monthly_fees_val:,.2f}",
+        "monthly_gst": f"₹{monthly_gst_val:,.2f}",
+        "monthly_paid": f"₹{float(monthly_paid_val or 0.0):,.2f}",
+        "total_revenue": f"₹{float(total_paid_val or 0.0):,.2f}",
+        "monthly_revenue": f"₹{float(monthly_paid_val or 0.0):,.2f}",
+        "active_coupons": (await offer_services.get_offer_stats(db))["active_coupons"],
+        "total_usage": (await offer_services.get_offer_stats(db))["total_usage"],
+    }
 
     return {
         "total_revenue": f"₹{total_val:,.2f}",
@@ -925,7 +953,7 @@ async def revenue_details(
     
     # Query database for transactions joined with user and course
     stmt = (
-        select(PaymentTransaction, User.full_name, User.email, Course.title)
+        select(PaymentTransaction, User.full_name, User.email, Course.title, Course.price)
         .join(User, User.id == PaymentTransaction.user_id)
         .join(Course, Course.id == PaymentTransaction.course_id)
         .where(PaymentTransaction.status == "success")
@@ -934,20 +962,27 @@ async def revenue_details(
     result = await db.execute(stmt)
     rows = result.all()
     
-    return [
-        {
+    transactions = []
+    for tx, full_name, email, title, course_price in rows:
+        fees_amount = round(float(tx.amount or 0.0) / 1.18, 2)
+        gst_amount = round(float(tx.amount or 0.0) - fees_amount, 2)
+        paid_amount = round(float(tx.amount or 0.0), 2)
+        transactions.append({
             "id": tx.id,
             "txnid": tx.txnid,
             "amount": tx.amount,
+            "total_amount": float(course_price or 0.0),
+            "total_fees": fees_amount,
+            "total_gst": gst_amount,
+            "total_paid": paid_amount,
             "status": tx.status,
             "payment_mode": tx.payment_mode or "N/A",
             "created_at": tx.created_at.isoformat() if tx.created_at else None,
             "student_name": full_name,
             "student_email": email,
             "course_title": title,
-        }
-        for tx, full_name, email, title in rows
-    ]
+        })
+    return transactions
 
 
 
@@ -1298,30 +1333,37 @@ async def get_admin_roles(
     from sqlalchemy.orm import selectinload
     from app.modules.auth.models import Role
 
-    # Fetch all users that have the 'admin' role, except default super-admin
+    # Fetch all privileged accounts managed from Admin Roles.
     result = await db.execute(
         select(User)
         .options(selectinload(User.roles), selectinload(User.sessions))
         .join(User.roles)
-        .where(Role.name == "admin")
-        .where(User.email != "admin@platform.com")
+        .where(Role.name.in_(["admin", "faculty", "super_admin"]))
+        .order_by(User.created_at.desc())
     )
-    admins = result.scalars().all()
+    admins = result.scalars().unique().all()
 
     res = []
     for a in admins:
         perms = a.permissions if isinstance(a.permissions, dict) else {}
-        role_name = perms.get("roleName", "Admin")
+        role_names = {role.name for role in a.roles}
+        is_super_admin = "super_admin" in role_names
+        if is_super_admin:
+            role_name = perms.get("roleName") or "Super Admin"
+        elif "faculty" in role_names:
+            role_name = perms.get("roleName") or "Faculty"
+        else:
+            role_name = perms.get("roleName") or "Admin"
         
         permissions_dict = {
-            "manageCourses": perms.get("manageCourses", False),
-            "manageStudents": perms.get("manageStudents", False),
-            "managePayments": perms.get("managePayments", False),
-            "manageContent": perms.get("manageContent", False),
-            "directPublish": perms.get("directPublish", False),
-            "manageExams": perms.get("manageExams", False),
-            "manageAdmins": perms.get("manageAdmins", False),
-            "canViewRevenue": perms.get("canViewRevenue", False),
+            "manageCourses": perms.get("manageCourses", is_super_admin),
+            "manageStudents": perms.get("manageStudents", is_super_admin),
+            "managePayments": perms.get("managePayments", is_super_admin),
+            "manageContent": perms.get("manageContent", is_super_admin),
+            "directPublish": perms.get("directPublish", is_super_admin),
+            "manageExams": perms.get("manageExams", is_super_admin),
+            "manageAdmins": perms.get("manageAdmins", is_super_admin),
+            "canViewRevenue": perms.get("canViewRevenue", is_super_admin),
             "viewDashboard": perms.get("viewDashboard", True),
             "viewModuleStudents": perms.get("viewModuleStudents", True),
             "viewLectures": perms.get("viewLectures", True),

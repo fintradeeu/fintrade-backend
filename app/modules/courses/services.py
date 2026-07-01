@@ -430,7 +430,53 @@ async def get_enrolled_courses(db: AsyncSession, user_id: int) -> List[CourseEnr
         .where(CourseEnrollment.user_id == user_id, CourseEnrollment.is_active == True)  # noqa: E712
         .order_by(CourseEnrollment.enrolled_at.desc())
     )
-    return list(result.scalars().all())
+    enrollments = list(result.scalars().all())
+    if enrollments:
+        from app.modules.offers.models import OfferRedemption
+        from app.modules.payments.models import PaymentTransaction
+
+        transactions_result = await db.execute(
+            select(PaymentTransaction)
+            .where(PaymentTransaction.user_id == user_id)
+            .order_by(PaymentTransaction.updated_at.desc())
+        )
+        latest_transactions = {}
+        for transaction in transactions_result.scalars().all():
+            key = (transaction.user_id, transaction.course_id)
+            if key not in latest_transactions or transaction.status == "success":
+                latest_transactions[key] = transaction
+
+        redemptions_result = await db.execute(
+            select(OfferRedemption)
+            .options(selectinload(OfferRedemption.offer))
+            .where(OfferRedemption.user_id == user_id)
+            .order_by(OfferRedemption.redeemed_at.desc())
+        )
+        redemptions = list(redemptions_result.scalars().all())
+
+        for enrollment in enrollments:
+            transaction = latest_transactions.get((user_id, enrollment.course_id))
+            if transaction:
+                setattr(enrollment, "payment_amount", transaction.amount)
+                setattr(enrollment, "payment_txnid", transaction.txnid)
+                if transaction.coupon_code:
+                    setattr(enrollment, "coupon_code", transaction.coupon_code)
+
+            for redemption in redemptions:
+                offer = redemption.offer
+                if offer and offer.course_id and offer.course_id != enrollment.course_id:
+                    continue
+                price_paid = enrollment.price_paid or 0.0
+                original_price = enrollment.course.price if enrollment.course else 0.0
+                same_paid_price = abs((redemption.discounted_price or 0.0) - price_paid) <= 0.01
+                same_original_price = abs((redemption.original_price or 0.0) - original_price) <= 0.01
+                if same_paid_price and same_original_price and offer:
+                    if not getattr(enrollment, "coupon_code", None):
+                        setattr(enrollment, "coupon_code", offer.code)
+                    setattr(enrollment, "coupon_title", offer.title)
+                    break
+
+    return enrollments
 
 # ── Assignments ──────────────────────────────────────────────────────
 from app.modules.courses.models import Assignment, AssignmentSubmission

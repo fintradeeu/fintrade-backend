@@ -3,7 +3,7 @@
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, func
+from sqlalchemy import select, func, not_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,7 +14,8 @@ from app.modules.courses.models import Course, CourseEnrollment
 from app.modules.exams.models import EntranceExam
 from app.modules.lectures.models import Lecture
 from app.modules.distributors.models import Distributor, StudentReferral
-from app.modules.offers.models import Offer
+from app.modules.offers.models import Offer, OfferRedemption
+from app.modules.payments.models import PaymentTransaction
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -56,30 +57,83 @@ async def list_users(db: AsyncSession, skip: int = 0, limit: int = 50) -> dict:
 
 
 async def list_non_purchased_users(db: AsyncSession, skip: int = 0, limit: int = 50) -> dict:
-    """List users who have registered but have not purchased any course."""
-    from sqlalchemy import not_
+    """List registered regular users who have not purchased any course."""
     
     # Subquery for user_ids who have enrolled in any course
     enrolled_user_ids = select(CourseEnrollment.user_id)
+    privileged_roles = ("admin", "faculty", "super_admin", "distributor")
     
     result = await db.execute(
         select(User)
         .options(
             selectinload(User.roles),
             selectinload(User.distributor_profile),
-            selectinload(User.enrollments),
+            selectinload(User.enrollments).selectinload(CourseEnrollment.course),
             selectinload(User.sessions)
         )
         .where(not_(User.id.in_(enrolled_user_ids)))
+        .where(not_(User.roles.any(Role.name.in_(privileged_roles))))
         .offset(skip)
         .limit(limit)
         .order_by(User.created_at.desc())
     )
     users = list(result.scalars().all())
+
+    if users:
+        user_ids = [user.id for user in users]
+        transactions_result = await db.execute(
+            select(PaymentTransaction)
+            .where(
+                PaymentTransaction.user_id.in_(user_ids),
+                func.lower(PaymentTransaction.status) == "success",
+            )
+            .order_by(PaymentTransaction.updated_at.desc())
+        )
+        latest_transactions = {}
+        for transaction in transactions_result.scalars().all():
+            key = (transaction.user_id, transaction.course_id)
+            if key not in latest_transactions:
+                latest_transactions[key] = transaction
+
+        redemptions_result = await db.execute(
+            select(OfferRedemption)
+            .options(selectinload(OfferRedemption.offer))
+            .where(OfferRedemption.user_id.in_(user_ids))
+            .order_by(OfferRedemption.redeemed_at.desc())
+        )
+        redemptions_by_user = {}
+        for redemption in redemptions_result.scalars().all():
+            redemptions_by_user.setdefault(redemption.user_id, []).append(redemption)
+
+        for user in users:
+            for enrollment in user.enrollments or []:
+                transaction = latest_transactions.get((user.id, enrollment.course_id))
+                if transaction:
+                    setattr(enrollment, "coupon_code", transaction.coupon_code)
+                    setattr(enrollment, "payment_txnid", transaction.txnid)
+                    setattr(enrollment, "payment_mode", transaction.payment_mode)
+
+                matching_redemption = None
+                for redemption in redemptions_by_user.get(user.id, []):
+                    offer = redemption.offer
+                    if offer and offer.course_id and offer.course_id != enrollment.course_id:
+                        continue
+                    price_paid = enrollment.price_paid or 0.0
+                    original_price = enrollment.course.price if enrollment.course else 0.0
+                    same_paid_price = abs((redemption.discounted_price or 0.0) - price_paid) <= 0.01
+                    same_original_price = abs((redemption.original_price or 0.0) - original_price) <= 0.01
+                    if same_paid_price and same_original_price:
+                        matching_redemption = redemption
+                        break
+
+                if matching_redemption and matching_redemption.offer:
+                    setattr(enrollment, "coupon_code", matching_redemption.offer.code)
+                    setattr(enrollment, "coupon_title", matching_redemption.offer.title)
     
     total = (await db.execute(
         select(func.count(User.id))
         .where(not_(User.id.in_(enrolled_user_ids)))
+        .where(not_(User.roles.any(Role.name.in_(privileged_roles))))
     )).scalar() or 0
     
     return {"users": users, "total": total}
@@ -94,7 +148,7 @@ async def list_purchased_students(db: AsyncSession, skip: int = 0, limit: int = 
         .options(
             selectinload(User.roles),
             selectinload(User.distributor_profile),
-            selectinload(User.enrollments),
+            selectinload(User.enrollments).selectinload(CourseEnrollment.course),
             selectinload(User.sessions)
         )
         .where(User.id.in_(enrolled_user_ids))
@@ -103,6 +157,69 @@ async def list_purchased_students(db: AsyncSession, skip: int = 0, limit: int = 
         .order_by(User.created_at.desc())
     )
     users = list(result.scalars().all())
+
+    if users:
+        user_ids = [user.id for user in users]
+        transactions_result = await db.execute(
+            select(PaymentTransaction)
+            .where(PaymentTransaction.user_id.in_(user_ids))
+            .order_by(PaymentTransaction.updated_at.desc())
+        )
+        latest_transactions = {}
+        offer_codes = set()
+        for transaction in transactions_result.scalars().all():
+            key = (transaction.user_id, transaction.course_id)
+            if key not in latest_transactions or transaction.coupon_code:
+                latest_transactions[key] = transaction
+            if transaction.coupon_code:
+                offer_codes.update(code.strip() for code in transaction.coupon_code.split(":") if code.strip())
+
+        offers_by_code = {}
+        if offer_codes:
+            offers_result = await db.execute(select(Offer).where(Offer.code.in_(offer_codes)))
+            offers_by_code = {offer.code: offer for offer in offers_result.scalars().all()}
+
+        redemptions_result = await db.execute(
+            select(OfferRedemption)
+            .options(selectinload(OfferRedemption.offer))
+            .where(OfferRedemption.user_id.in_(user_ids))
+            .order_by(OfferRedemption.redeemed_at.desc())
+        )
+        redemptions_by_user = {}
+        for redemption in redemptions_result.scalars().all():
+            redemptions_by_user.setdefault(redemption.user_id, []).append(redemption)
+
+        for user in users:
+            for enrollment in user.enrollments or []:
+                transaction = latest_transactions.get((user.id, enrollment.course_id))
+                if transaction:
+                    setattr(enrollment, "payment_txnid", transaction.txnid)
+                    setattr(enrollment, "payment_mode", transaction.payment_mode)
+                    if transaction.coupon_code:
+                        setattr(enrollment, "coupon_code", transaction.coupon_code)
+                        first_code = next((code.strip() for code in transaction.coupon_code.split(":") if code.strip()), None)
+                        if first_code and first_code in offers_by_code:
+                            setattr(enrollment, "coupon_title", offers_by_code[first_code].title)
+
+                if getattr(enrollment, "coupon_code", None):
+                    continue
+
+                matching_redemption = None
+                for redemption in redemptions_by_user.get(user.id, []):
+                    offer = redemption.offer
+                    if offer and offer.course_id and offer.course_id != enrollment.course_id:
+                        continue
+                    price_paid = enrollment.price_paid or 0.0
+                    original_price = enrollment.course.price if enrollment.course else 0.0
+                    same_paid_price = abs((redemption.discounted_price or 0.0) - price_paid) <= 0.01
+                    same_original_price = abs((redemption.original_price or 0.0) - original_price) <= 0.01
+                    if same_paid_price and same_original_price:
+                        matching_redemption = redemption
+                        break
+
+                if matching_redemption and matching_redemption.offer:
+                    setattr(enrollment, "coupon_code", matching_redemption.offer.code)
+                    setattr(enrollment, "coupon_title", matching_redemption.offer.title)
     
     total = (await db.execute(
         select(func.count(User.id))
