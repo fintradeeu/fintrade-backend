@@ -300,34 +300,16 @@ async def enroll_user(
                 actual_distributor_code = distributor_code
 
     # Apply offer coupon discount if present
+    offer = None
     if offer_code:
-        from app.modules.offers.models import Offer, OfferRedemption
+        from app.modules.offers.models import Offer
         offer_result = await db.execute(select(Offer).where(Offer.code == offer_code))
         offer = offer_result.scalar_one_or_none()
-        if offer:
-            if offer.is_active:
-                if offer.discount_type == "percentage":
-                    discount_amount = original_price * (offer.discount_value / 100)
-                else:
-                    discount_amount = offer.discount_value
-                price_paid = max(original_price - discount_amount, 0.0)
-
-                # Check if this user has already redeemed this offer (idempotency check)
-                redeemed_res = await db.execute(
-                    select(OfferRedemption).where(
-                        OfferRedemption.offer_id == offer.id,
-                        OfferRedemption.user_id == user_id,
-                    )
-                )
-                if not redeemed_res.scalar_one_or_none():
-                    redemption = OfferRedemption(
-                        offer_id=offer.id,
-                        user_id=user_id,
-                        original_price=original_price,
-                        discounted_price=price_paid,
-                    )
-                    db.add(redemption)
-                    offer.current_redemptions += 1
+        if offer and offer.is_active:
+            if offer.discount_type == "percentage":
+                discount_amount += original_price * (offer.discount_value / 100)
+            else:
+                discount_amount += offer.discount_value
 
     # Process distributor referral code if present
     if actual_distributor_code:
@@ -338,9 +320,8 @@ async def enroll_user(
         distributor = dist_result.scalar_one_or_none()
         if distributor:
             distributor_id = distributor.id
-            if discount_amount == 0.0 and distributor.discount_percentage and distributor.discount_percentage > 0:
-                discount_amount = original_price * (distributor.discount_percentage / 100)
-                price_paid = max(original_price - discount_amount, 0.0)
+            if distributor.discount_percentage and distributor.discount_percentage > 0:
+                discount_amount += original_price * (distributor.discount_percentage / 100)
 
             # Create referral record
             dup_ref = await db.execute(
@@ -373,9 +354,8 @@ async def enroll_user(
             distributor = dist_result.scalar_one_or_none()
             if distributor:
                 distributor_id = distributor.id
-                if discount_amount == 0.0 and distributor.discount_percentage and distributor.discount_percentage > 0:
-                    discount_amount = original_price * (distributor.discount_percentage / 100)
-                    price_paid = max(original_price - discount_amount, 0.0)
+                if distributor.discount_percentage and distributor.discount_percentage > 0:
+                    discount_amount += original_price * (distributor.discount_percentage / 100)
 
                 if existing_referral.course_id is None:
                     # Update existing pending referral with the course ID
@@ -396,6 +376,28 @@ async def enroll_user(
                             course_id=course_id,
                         )
                         db.add(referral)
+
+    price_paid = max(original_price - discount_amount, 0.0)
+
+    # Save offer redemption if offer was valid and active
+    if offer and offer.is_active:
+        from app.modules.offers.models import OfferRedemption
+        # Check if this user has already redeemed this offer (idempotency check)
+        redeemed_res = await db.execute(
+            select(OfferRedemption).where(
+                OfferRedemption.offer_id == offer.id,
+                OfferRedemption.user_id == user_id,
+            )
+        )
+        if not redeemed_res.scalar_one_or_none():
+            redemption = OfferRedemption(
+                offer_id=offer.id,
+                user_id=user_id,
+                original_price=original_price,
+                discounted_price=price_paid,
+            )
+            db.add(redemption)
+            offer.current_redemptions += 1
 
     enrollment = CourseEnrollment(
         user_id=user_id,
