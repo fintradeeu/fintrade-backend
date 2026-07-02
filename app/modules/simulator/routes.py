@@ -5,7 +5,7 @@ from typing import List
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_current_user, require_roles
+from app.core.security import get_current_user, require_roles, require_student_kyc
 from app.db.database import get_db
 from app.modules.auth.models import User
 from app.modules.simulator import schemas, services
@@ -52,7 +52,7 @@ async def market_quotes(req: schemas.MarketDataRequest):
 @router.post("/start", response_model=schemas.SimulatorAccountResponse, status_code=201)
 async def start_simulator(
     req: schemas.SimulatorStartRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     account = await services.create_account(db, current_user.id, req.profile_id)
@@ -61,7 +61,7 @@ async def start_simulator(
 
 @router.get("/dashboard", response_model=schemas.DashboardResponse)
 async def trading_dashboard(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     data = await services.get_dashboard(db, current_user.id)
@@ -78,7 +78,7 @@ async def trading_dashboard(
 @router.post("/trade", response_model=schemas.TradeResponse, status_code=201)
 async def open_trade(
     req: schemas.TradeRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     trade = await services.open_trade(
@@ -97,7 +97,7 @@ async def open_trade(
 @router.post("/close", response_model=schemas.TradeResponse)
 async def close_position(
     req: schemas.ClosePositionRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     trade = await services.close_position(db, current_user.id, req.position_id, req.exit_price)
@@ -106,7 +106,7 @@ async def close_position(
 
 @router.get("/positions", response_model=List[schemas.PositionResponse])
 async def list_positions(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     positions = await services.get_positions(db, current_user.id)
@@ -115,7 +115,7 @@ async def list_positions(
 
 @router.get("/trades", response_model=List[schemas.TradeResponse])
 async def list_trades(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     trades = await services.get_trades(db, current_user.id)
@@ -124,7 +124,7 @@ async def list_trades(
 
 @router.get("/profiles", response_model=List[schemas.SimulatorProfileResponse])
 async def list_profiles(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     profiles = await services.get_profiles(db)
@@ -133,7 +133,7 @@ async def list_profiles(
 
 @router.get("/performance", response_model=schemas.PerformanceResponse)
 async def get_performance(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     metric = await services.compute_performance(db, current_user.id)
@@ -143,7 +143,7 @@ async def get_performance(
 @router.get("/reports/{period}", response_model=schemas.ReportResponse)
 async def get_report(
     period: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     return await services.generate_report(db, current_user.id, period=period)
@@ -153,7 +153,7 @@ async def get_report(
 async def export_report(
     period: str,
     format: str = Query("csv", pattern="^(csv|excel|pdf)$"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     report = await services.generate_report(db, current_user.id, period=period)

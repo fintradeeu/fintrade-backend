@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy.exc import IntegrityError
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_student_kyc
 from app.db.database import get_db
 from app.modules.auth.models import User
 from app.modules.exams import schemas, services
@@ -70,7 +70,7 @@ async def check_enrollment_eligibility(
 
 @router.get("/all")
 async def list_all_exams(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db)
 ):
     """List all exams with student's attempt history."""
@@ -200,7 +200,7 @@ async def get_questions(
 @router.get("/course/questions", response_model=List[schemas.ExamQuestionResponse])
 async def get_course_questions(
     exam_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     """Get questions for the current active course exam attempt (correct answers hidden)."""
@@ -242,7 +242,7 @@ async def submit_exam(
 @router.post("/course/submit", response_model=schemas.ExamResultResponse)
 async def submit_course_exam(
     body: schemas.ExamSubmitRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     """Submit the course exam, auto-evaluate, and return the result."""
@@ -270,7 +270,7 @@ async def get_result(
 @router.get("/course/result", response_model=schemas.ExamResultResponse)
 async def get_course_result(
     exam_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the most recent course exam result."""
@@ -281,7 +281,7 @@ async def get_course_result(
 
 @router.get("/monthly", response_model=List[schemas.MonthlyExamResponse])
 async def list_monthly_exams(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db)
 ):
     exams = await services.get_monthly_exams(db, current_user.id)
@@ -290,7 +290,7 @@ async def list_monthly_exams(
 @router.post("/pay", response_model=schemas.MessageResponse)
 async def pay_exam_fee(
     req: schemas.ExamPaymentRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db)
 ):
     try:
@@ -304,7 +304,7 @@ async def pay_exam_fee(
 async def start_course_exam(
     exam_id: int,
     req: schemas.ExamStartRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db)
 ):
     out = await services.start_course_exam(db, current_user.id, exam_id, req.device_id)
@@ -313,7 +313,7 @@ async def start_course_exam(
 @router.post("/violation", response_model=schemas.MessageResponse)
 async def log_violation(
     req: schemas.ExamViolationRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db)
 ):
     try:
@@ -326,7 +326,7 @@ async def log_violation(
 @router.post("/camera-status", response_model=schemas.MessageResponse)
 async def camera_status(
     req: schemas.CameraStatusRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db)
 ):
     try:
@@ -340,7 +340,7 @@ async def camera_status(
 @router.post("/session-close", response_model=schemas.MessageResponse)
 async def session_close(
     req: schemas.SessionCloseRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db)
 ):
     await services.close_exam_session(db, current_user.id, req.attempt_id)
@@ -351,7 +351,7 @@ async def session_close(
 
 @router.get("/results/analysis", response_model=schemas.SkillAnalysisResponse)
 async def get_skill_analysis(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     """Get skill-based result analysis with strong/weak areas."""
@@ -361,7 +361,7 @@ async def get_skill_analysis(
 @router.get("/course/attempt/{attempt_id}/review", response_model=schemas.AttemptReviewResponse)
 async def get_course_attempt_review(
     attempt_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db)
 ):
     """Get detailed review for a course exam attempt."""

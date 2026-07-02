@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 # pyrefly: ignore [missing-import]
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_student_kyc
 from app.db.database import get_db
 # pyrefly: ignore [missing-import]
 from app.modules.auth.models import User
@@ -21,6 +21,7 @@ async def list_lectures(
     course_id: Optional[int] = Query(None, description="Filter by course"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     lectures = await services.list_lectures(db, course_id=course_id, skip=skip, limit=limit)
@@ -30,7 +31,7 @@ async def list_lectures(
 @router.post("/join", response_model=schemas.LectureJoinResponse)
 async def join_lecture(
     lecture_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db),
 ):
     result = await services.join_lecture(db, current_user.id, lecture_id)

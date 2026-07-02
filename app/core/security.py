@@ -112,3 +112,47 @@ def require_roles(allowed_roles: List[str]):
         return current_user
 
     return _checker
+
+
+async def require_student_kyc(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ensure that student users have submitted their KYC before accessing learning / dashboard features.
+
+    Bypassed for admin, super_admin, faculty, and distributor roles.
+    Bypassed if the student has no active course enrollments yet.
+    Otherwise, the student must have a KYCSubmission record with status 'pending' or 'verified'.
+    """
+    user_role_names = {r.name for r in current_user.roles}
+    if user_role_names.intersection({"admin", "super_admin", "faculty", "distributor"}):
+        return current_user
+
+    # Check if the user is enrolled in any active courses
+    from app.modules.courses.models import CourseEnrollment
+    enroll_result = await db.execute(
+        select(CourseEnrollment).where(
+            CourseEnrollment.user_id == current_user.id,
+            CourseEnrollment.is_active == True
+        )
+    )
+    enrollment = enroll_result.scalar_one_or_none()
+    if not enrollment:
+        # Student not enrolled in any course, bypass KYC requirement
+        return current_user
+
+    # Check KYC status
+    from app.modules.kyc.models import KYCSubmission
+    kyc_result = await db.execute(
+        select(KYCSubmission).where(KYCSubmission.user_id == current_user.id)
+    )
+    kyc = kyc_result.scalar_one_or_none()
+
+    # If no KYC record exists, or if status is not pending/verified
+    if not kyc or kyc.status not in ("pending", "verified"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="KYC submission required. Please complete your KYC details."
+        )
+
+    return current_user

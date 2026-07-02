@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_student_kyc
 from app.modules.auth.models import User
 from sqlalchemy.exc import IntegrityError
 from app.modules.learning.schemas import LearningDashboardResponse, MarkLessonCompletedRequest
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/learning", tags=["Learning"])
 
 @router.get("/dashboard", response_model=LearningDashboardResponse)
 async def read_learning_dashboard(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db)
 ):
     """Get the learning dashboard data for the current user."""
@@ -23,7 +23,7 @@ async def read_learning_dashboard(
 @router.post("/lesson/complete", response_model=dict)
 async def complete_lesson(
     req: MarkLessonCompletedRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_student_kyc),
     db: AsyncSession = Depends(get_db)
 ):
     """Mark a lesson as completed."""
