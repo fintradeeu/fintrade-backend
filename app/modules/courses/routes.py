@@ -58,6 +58,18 @@ async def enroll(
     enrollment = await services.enroll_user(
         db, current_user.id, course_id, distributor_code=body.distributor_code
     )
+    try:
+        from app.modules.batches.services import enroll_student_in_batch_or_active
+        await enroll_student_in_batch_or_active(
+            db,
+            user_id=current_user.id,
+            course_id=course_id,
+            batch_id=body.batch_id,
+            price_paid=enrollment.price_paid or 0.0
+        )
+    except Exception as batch_err:
+        import logging
+        logging.getLogger(__name__).error(f"Free enrollment batch auto-enroll failed: {batch_err}")
     # Re-fetch with course relationship loaded
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload

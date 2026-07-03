@@ -81,6 +81,7 @@ async def initiate_payment(
     base_url: str,
     coupon_code: str | None = None,
     discounted_price: float | None = None,
+    batch_id: int | None = None,
 ) -> dict:
     """Initiate a configured gateway payment for a course."""
 
@@ -142,6 +143,7 @@ async def initiate_payment(
             status="pending",
             coupon_code=coupon_code,
             payment_mode="razorpay",
+            batch_id=batch_id,
         )
         db.add(transaction)
         await db.flush()
@@ -170,6 +172,7 @@ async def initiate_payment(
             status="pending",
             coupon_code=coupon_code,
             payment_mode="easebuzz_sandbox",
+            batch_id=batch_id,
         )
         db.add(transaction)
         await db.commit()
@@ -180,7 +183,7 @@ async def initiate_payment(
             "redirect_url": f"{base_url}/payments/success?txnid={txnid}&status=success"
         }
 
-    return await initiate_easebuzz_payment(db, user, course, base_url, charge_amount, coupon_code)
+    return await initiate_easebuzz_payment(db, user, course, base_url, charge_amount, coupon_code, batch_id)
 
 
 async def initiate_razorpay_payment(db: AsyncSession, user: User, course: Course, base_url: str) -> dict:
@@ -248,6 +251,7 @@ async def initiate_easebuzz_payment(
     base_url: str,
     charge_amount: float,
     coupon_code: str | None = None,
+    batch_id: int | None = None,
 ) -> dict:
     """Initiate an Easebuzz payment for a course."""
     txnid = f"TXN{uuid.uuid4().hex[:12].upper()}"
@@ -264,7 +268,8 @@ async def initiate_easebuzz_payment(
         txnid=txnid,
         amount=charge_amount,
         status="pending",
-        coupon_code=coupon_code
+        coupon_code=coupon_code,
+        batch_id=batch_id
     )
     db.add(transaction)
     await db.flush()
@@ -388,6 +393,17 @@ async def verify_razorpay_payment(
             distributor_code=transaction.coupon_code,
         )
         logger.info("razorpay_course_unlocked", txnid=txnid, user_id=transaction.user_id, course_id=transaction.course_id)
+        try:
+            from app.modules.batches.services import enroll_student_in_batch_or_active
+            await enroll_student_in_batch_or_active(
+                db,
+                user_id=transaction.user_id,
+                course_id=transaction.course_id,
+                batch_id=transaction.batch_id,
+                price_paid=transaction.amount
+            )
+        except Exception as batch_err:
+            logger.error("razorpay_batch_auto_enroll_failed", txnid=txnid, error=str(batch_err))
     except HTTPException as e:
         if e.status_code != 409:
             raise
@@ -464,6 +480,17 @@ async def process_webhook(db: AsyncSession, form_data: dict) -> dict:
                 distributor_code=transaction.coupon_code
             )
             logger.info("easebuzz_course_unlocked", txnid=txnid, user_id=transaction.user_id, course_id=transaction.course_id)
+            try:
+                from app.modules.batches.services import enroll_student_in_batch_or_active
+                await enroll_student_in_batch_or_active(
+                    db,
+                    user_id=transaction.user_id,
+                    course_id=transaction.course_id,
+                    batch_id=transaction.batch_id,
+                    price_paid=transaction.amount
+                )
+            except Exception as batch_err:
+                logger.error("easebuzz_batch_auto_enroll_failed", txnid=txnid, error=str(batch_err))
             
             # Send Email Invoice asynchronously
             user = await db.get(User, transaction.user_id)

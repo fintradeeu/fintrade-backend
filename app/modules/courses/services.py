@@ -67,6 +67,7 @@ async def create_course(db: AsyncSession, data: dict, created_by: int) -> Course
         is_featured=data.get("is_featured", False),
         is_popular=data.get("is_popular", False),
         marketing_highlights=data.get("marketing_highlights"),
+        is_batch_only=data.get("is_batch_only", False),
         created_by=data.get("instructor_id") or created_by,
     )
     db.add(course)
@@ -110,6 +111,16 @@ async def delete_course(db: AsyncSession, course_id: int) -> None:
     await db.delete(course)
     await db.flush()
     logger.info("course_deleted", course_id=course_id)
+
+
+async def delete_courses(db: AsyncSession, course_ids: List[int]) -> None:
+    """Delete multiple courses and all their related content."""
+    result = await db.execute(select(Course).where(Course.id.in_(course_ids)))
+    courses = result.scalars().all()
+    for course in courses:
+        await db.delete(course)
+    await db.flush()
+    logger.info("courses_deleted", course_ids=course_ids)
 
 # ── Modules ──────────────────────────────────────────────────────────
 async def create_module(db: AsyncSession, data: dict) -> CourseModule:

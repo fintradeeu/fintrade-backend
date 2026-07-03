@@ -33,6 +33,7 @@ class Course(Base):
     is_published = Column(Boolean, default=False)
     is_featured = Column(Boolean, default=False)  # Show on landing page
     is_popular = Column(Boolean, default=False)   # Show "Most Popular" badge on landing page
+    is_batch_only = Column(Boolean, default=False, nullable=False)  # Hidden from global Courses tab/catalog
     difficulty_level = Column(String(50), default="beginner")  # beginner, intermediate, advanced
     duration_hours = Column(Integer, nullable=True)
     marketing_highlights = Column(JSON, nullable=True)  # List of bullet points for landing page

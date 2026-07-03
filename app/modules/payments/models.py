@@ -30,6 +30,7 @@ class PaymentTransaction(Base):
     status = Column(String(50), default="pending", nullable=False) # pending, success, failed
     payment_mode = Column(String(50), nullable=True)
     coupon_code = Column(String(100), nullable=True)
+    batch_id = Column(Integer, ForeignKey("batches.id", ondelete="SET NULL"), nullable=True)
     gateway_response = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

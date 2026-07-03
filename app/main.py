@@ -2,7 +2,9 @@
 
 from contextlib import asynccontextmanager
 
+# pyrefly: ignore [missing-import]
 from fastapi import FastAPI
+# pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
@@ -38,6 +40,8 @@ from app.modules.mobile_api.routes import (
     mobile_v1_router,
 )
 from app.modules.commissions.routes import router as commissions_router
+from app.modules.batches.routes import router as batches_router
+from app.modules.doubts.routes import router as doubts_router
 
 
 
@@ -54,7 +58,9 @@ async def lifespan(app: FastAPI):
             import os
             import sys
             import traceback
+            # pyrefly: ignore [missing-import]
             from alembic.config import Config
+            # pyrefly: ignore [missing-import]
             from alembic import command
             
             logger.info("Running automated database migrations on startup...")
@@ -92,10 +98,13 @@ async def lifespan(app: FastAPI):
             async with AsyncSessionLocal() as session:
                 await _repair_users_schema_async(session)
                 await _repair_courses_schema_async(session)
+                await _repair_payment_transactions_schema_async(session)
                 await _repair_feedback_schema_async(session)
                 await _repair_news_schema_async(session)
                 await _repair_lectures_schema_async(session)
                 await _repair_certificates_schema_async(session)
+                await _repair_batches_schema_async(session)
+                await _repair_doubts_schema_async(session)
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Schema auto-repair skipped or failed: {e}")
@@ -138,7 +147,9 @@ app.add_middleware(
 # middleware, so the browser reports "CORS error" instead of the real error.
 # This handler catches ALL unhandled errors and returns a proper JSONResponse
 # which flows back through the CORS middleware and gets the right headers.
+# pyrefly: ignore [missing-import]
 from starlette.requests import Request
+# pyrefly: ignore [missing-import]
 from starlette.responses import JSONResponse
 import traceback as _tb
 
@@ -197,16 +208,20 @@ app.include_router(mobile_auth_router, prefix="/api")
 app.include_router(mobile_profile_router, prefix="/api")
 app.include_router(mobile_v1_router, prefix="/api")
 app.include_router(commissions_router)
+app.include_router(batches_router)
+app.include_router(doubts_router)
 
 
 
 import os
+# pyrefly: ignore [missing-import]
 from fastapi.staticfiles import StaticFiles
 
 # Ensure uploads directory exists
 os.makedirs("uploads", exist_ok=True)
 
 # ── System Routes (External API) ────────────────────────────────────
+# pyrefly: ignore [missing-import]
 from fastapi import HTTPException
 import traceback
 
@@ -219,6 +234,7 @@ def trigger_db_migration(secret_key: str):
     try:
         # pyrefly: ignore [missing-import]
         from alembic.config import Config   
+        # pyrefly: ignore [missing-import]
         from alembic import command
         import os
         
@@ -434,10 +450,13 @@ async def _repair_users_schema_async(db):
 
 async def _repair_courses_schema_async(db):
     """Repair courses table columns expected by the current course model."""
+    # pyrefly: ignore [missing-import]
     import sqlalchemy as sa
 
     statements = [
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS is_popular BOOLEAN DEFAULT false",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS is_batch_only BOOLEAN DEFAULT false",
+        "UPDATE courses SET is_batch_only = false WHERE is_batch_only IS NULL",
     ]
 
     for statement in statements:
@@ -452,8 +471,30 @@ async def _repair_courses_schema_async(db):
             )
 
 
+async def _repair_payment_transactions_schema_async(db):
+    """Repair payment_transactions table to add batch_id column if not exists."""
+    # pyrefly: ignore [missing-import]
+    import sqlalchemy as sa
+
+    statements = [
+        "ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS batch_id INTEGER REFERENCES batches(id) ON DELETE SET NULL",
+    ]
+
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(
+                f"payment_transactions schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+            )
+
+
 async def _repair_feedback_schema_async(db):
     """Repair feedback table columns expected by the current feedback model."""
+    # pyrefly: ignore [missing-import]
     import sqlalchemy as sa
 
     statements = [
@@ -477,6 +518,7 @@ async def _repair_feedback_schema_async(db):
 
 async def _repair_news_schema_async(db):
     """Repair production news schema asynchronously."""
+    # pyrefly: ignore [missing-import]
     import sqlalchemy as sa
 
     statements = [
@@ -531,6 +573,7 @@ async def _repair_news_schema_async(db):
 
 async def _repair_lectures_schema_async(db):
     """Repair lecture registrations table to add one_hour_email_sent column if not exists."""
+    # pyrefly: ignore [missing-import]
     import sqlalchemy as sa
     statements = [
         "ALTER TABLE lecture_registrations ADD COLUMN IF NOT EXISTS one_hour_email_sent BOOLEAN DEFAULT false",
@@ -548,6 +591,7 @@ async def _repair_lectures_schema_async(db):
 
 async def _repair_certificates_schema_async(db):
     """Repair certificates table to add module_id column if not exists."""
+    # pyrefly: ignore [missing-import]
     import sqlalchemy as sa
     statements = [
         "ALTER TABLE certificates ADD COLUMN module_id INTEGER REFERENCES course_modules(id) ON DELETE CASCADE",
@@ -565,6 +609,75 @@ async def _repair_certificates_schema_async(db):
                 logging.getLogger(__name__).warning(
                     f"Certificates schema repair statement failed: {statement.strip()[:60]}... error: {e}"
                 )
+
+async def _repair_batches_schema_async(db):
+    """Repair batch tables to add template_module_id and template_lesson_id columns."""
+    # pyrefly: ignore [missing-import]
+    import sqlalchemy as sa
+    statements = [
+        "ALTER TABLE batch_modules ADD COLUMN IF NOT EXISTS template_module_id INTEGER REFERENCES course_modules(id) ON DELETE SET NULL",
+        "ALTER TABLE batch_lessons ADD COLUMN IF NOT EXISTS template_lesson_id INTEGER REFERENCES lessons(id) ON DELETE SET NULL",
+        "ALTER TABLE batch_lectures ADD COLUMN IF NOT EXISTS instructor_name VARCHAR(255)",
+        "ALTER TABLE batch_lectures ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ",
+    ]
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            err_msg = str(e)
+            if "duplicate column" not in err_msg.lower() and "already exists" not in err_msg.lower():
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Batches schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+                )
+
+
+async def _repair_doubts_schema_async(db):
+    """Create doubt_forms and doubt_submissions tables if they don't exist."""
+    # pyrefly: ignore [missing-import]
+    import sqlalchemy as sa
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS doubt_forms (
+            id SERIAL PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            description TEXT,
+            batch_id INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+            end_date TIMESTAMPTZ NOT NULL,
+            is_active BOOLEAN DEFAULT true NOT NULL,
+            created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_doubt_forms_id ON doubt_forms (id)",
+        """
+        CREATE TABLE IF NOT EXISTS doubt_submissions (
+            id SERIAL PRIMARY KEY,
+            form_id INTEGER NOT NULL REFERENCES doubt_forms(id) ON DELETE CASCADE,
+            student_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            topic VARCHAR(255),
+            doubt_text TEXT NOT NULL,
+            submitted_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_doubt_submissions_id ON doubt_submissions (id)",
+    ]
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            err_msg = str(e)
+            if "already exists" not in err_msg.lower():
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Doubts schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+                )
+
 
 # Mount static uploads
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

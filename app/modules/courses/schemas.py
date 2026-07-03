@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 # ── Enrollment request ───────────────────────────────────────────────
 class EnrollRequest(BaseModel):
     distributor_code: Optional[str] = Field(None, description="Optional distributor referral code")
+    batch_id: Optional[int] = Field(None, description="Optional batch ID to enroll into")
     model_config = {"extra": "forbid"}
 
 
@@ -125,6 +126,7 @@ class CourseListResponse(BaseModel):
     is_published: bool
     is_featured: Optional[bool] = False
     is_popular: Optional[bool] = False
+    is_batch_only: bool = False
     marketing_highlights: Optional[List[str]] = None
     created_at: datetime
 
@@ -145,6 +147,7 @@ class CourseDetailResponse(BaseModel):
     is_published: bool
     is_featured: Optional[bool] = False
     is_popular: Optional[bool] = False
+    is_batch_only: bool = False
     marketing_highlights: Optional[List[str]] = None
     modules: List[ModuleResponse] = []
     created_at: datetime
@@ -214,3 +217,12 @@ class AssignmentSubmissionResponse(BaseModel):
     teacher_feedback: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class LessonImportRequest(BaseModel):
+    target_module_id: int
+    lesson_ids: List[int]
+
+
+class BulkDeleteRequest(BaseModel):
+    course_ids: List[int]

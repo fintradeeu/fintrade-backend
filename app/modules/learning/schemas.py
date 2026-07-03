@@ -46,6 +46,7 @@ class VideoPolicyItem(BaseModel):
 class LearningDashboardResponse(BaseModel):
     enrolled_courses: List[EnrolledCourseProgress]
     completed_lessons: List[CompletedLessonItem]
+    completed_batch_lessons: List[CompletedLessonItem] = []
     upcoming_lectures: List[UpcomingLectureItem]
     video_policies: List[VideoPolicyItem] = []
 

@@ -27,6 +27,7 @@ async def create_payment(
         base_url=str(request.base_url),
         coupon_code=body.coupon_code,
         discounted_price=body.discounted_price,
+        batch_id=body.batch_id,
     )
 
 @router.post("/verify-razorpay")
@@ -116,6 +117,11 @@ async def razorpay_webhook(
             
             try:
                 await enroll_user(db, user_id=transaction.user_id, course_id=transaction.course_id)
+                try:
+                    from app.modules.batches.services import auto_enroll_student_in_active_batch
+                    await auto_enroll_student_in_active_batch(db, user_id=transaction.user_id, course_id=transaction.course_id, price_paid=transaction.amount)
+                except Exception as batch_err:
+                    logger.error("webhook_batch_auto_enroll_failed", error=str(batch_err))
                 user = await db.get(User, transaction.user_id)
                 course = await db.get(Course, transaction.course_id)
                 if user and course:

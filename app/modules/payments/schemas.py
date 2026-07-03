@@ -8,6 +8,7 @@ class PaymentInitiateRequest(BaseModel):
     course_id: int
     coupon_code: Optional[str] = None
     discounted_price: Optional[float] = None
+    batch_id: Optional[int] = None
 
 class PaymentInitiateResponse(BaseModel):
     txnid: str

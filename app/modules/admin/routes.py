@@ -340,6 +340,18 @@ async def delete_course(
     return schemas.MessageResponse(message="Course deleted successfully")
 
 
+@router.post("/courses/delete-selected", response_model=schemas.MessageResponse)
+async def delete_selected_courses(
+    body: course_schemas.BulkDeleteRequest,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete selected courses (admin only)."""
+    await course_services.delete_courses(db, body.course_ids)
+    return schemas.MessageResponse(message="Selected courses deleted successfully")
+
+
+
 @router.post("/modules", response_model=course_schemas.ModuleResponse, status_code=201)
 async def create_module(
     body: course_schemas.ModuleCreate,
@@ -348,6 +360,12 @@ async def create_module(
 ):
     """Create a course module (admin/faculty only)."""
     module = await course_services.create_module(db, body.model_dump())
+    try:
+        from app.modules.batches.services import propagate_module_creation
+        await propagate_module_creation(db, module)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to propagate module creation: {e}")
     return course_schemas.ModuleResponse.model_validate(module)
 
 
@@ -360,6 +378,12 @@ async def update_module(
 ):
     """Update a course module (admin/faculty only)."""
     module = await course_services.update_module(db, module_id, body.model_dump(exclude_unset=True))
+    try:
+        from app.modules.batches.services import propagate_module_update
+        await propagate_module_update(db, module_id, body.model_dump(exclude_unset=True))
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to propagate module update: {e}")
     return course_schemas.ModuleResponse.model_validate(module)
 
 
@@ -371,7 +395,32 @@ async def create_lesson(
 ):
     """Create a lesson in a module (admin/faculty only)."""
     lesson = await course_services.create_lesson(db, body.model_dump())
+    try:
+        from app.modules.batches.services import propagate_lesson_creation
+        await propagate_lesson_creation(db, lesson)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to propagate lesson creation: {e}")
     return course_schemas.LessonResponse.model_validate(lesson)
+
+
+@router.post("/lessons/import", response_model=List[course_schemas.LessonResponse], status_code=201)
+async def import_lessons(
+    body: course_schemas.LessonImportRequest,
+    _admin: User = Depends(require_roles(["admin", "faculty"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Import/Copy selected lessons into a target module (admin/faculty only)."""
+    lessons = await course_services.import_lessons(db, body.target_module_id, body.lesson_ids)
+    try:
+        from app.modules.batches.services import propagate_lesson_creation
+        for lesson in lessons:
+            await propagate_lesson_creation(db, lesson)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to propagate imported lesson creation: {e}")
+    return [course_schemas.LessonResponse.model_validate(l) for l in lessons]
+
 
 
 @router.put("/lessons/{lesson_id}", response_model=course_schemas.LessonResponse)
@@ -383,6 +432,12 @@ async def update_lesson(
 ):
     """Update a lesson (admin/faculty only)."""
     lesson = await course_services.update_lesson(db, lesson_id, body.model_dump(exclude_unset=True))
+    try:
+        from app.modules.batches.services import propagate_lesson_update
+        await propagate_lesson_update(db, lesson_id, body.model_dump(exclude_unset=True))
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to propagate lesson update: {e}")
     return course_schemas.LessonResponse.model_validate(lesson)
 
 
@@ -540,7 +595,9 @@ async def list_all_exams(
     db: AsyncSession = Depends(get_db),
 ):
     """List all exams (both entrance and course exams) with question counts for admin."""
+    # pyrefly: ignore [missing-import]
     from sqlalchemy import select
+    # pyrefly: ignore [missing-import]
     from sqlalchemy.orm import selectinload
     from app.modules.exams.models import EntranceExam, CourseExam
     import logging
@@ -621,9 +678,13 @@ async def update_question(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a single question and its options (admin/faculty only)."""
+    # pyrefly: ignore [missing-import]
     from sqlalchemy import select
+    # pyrefly: ignore [missing-import]
     from sqlalchemy.orm import selectinload
+    # pyrefly: ignore [missing-import]
     from fastapi import HTTPException
+    # pyrefly: ignore [missing-import]
     from sqlalchemy.exc import IntegrityError
     from app.modules.exams.models import ExamQuestion, CourseExamQuestion, ExamOption, CourseExamOption
     
@@ -684,7 +745,9 @@ async def delete_question(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single question and its options (admin/faculty only)."""
+    # pyrefly: ignore [missing-import]
     from sqlalchemy import select
+    # pyrefly: ignore [missing-import]
     from fastapi import HTTPException
     from app.modules.exams.models import ExamQuestion, CourseExamQuestion
     
@@ -766,6 +829,7 @@ async def create_offer(
     """Create a new offer (admin only)."""
     user_role_names = {r.name for r in admin.roles}
     if "super_admin" not in user_role_names:
+        # pyrefly: ignore [missing-import]
         from fastapi import HTTPException
         raise HTTPException(
             status_code=403,
@@ -785,6 +849,7 @@ async def list_all_offers(
     """List all offers including inactive ones (admin only)."""
     user_role_names = {r.name for r in _admin.roles}
     if "super_admin" not in user_role_names:
+        # pyrefly: ignore [missing-import]
         from fastapi import HTTPException
         raise HTTPException(
             status_code=403,
@@ -804,6 +869,7 @@ async def update_offer(
     """Update an existing offer/coupon (admin only)."""
     user_role_names = {r.name for r in _admin.roles}
     if "super_admin" not in user_role_names:
+        # pyrefly: ignore [missing-import]
         from fastapi import HTTPException
         raise HTTPException(
             status_code=403,
@@ -822,6 +888,7 @@ async def delete_offer(
     """Delete an offer/coupon (admin only)."""
     user_role_names = {r.name for r in _admin.roles}
     if "super_admin" not in user_role_names:
+        # pyrefly: ignore [missing-import]
         from fastapi import HTTPException
         raise HTTPException(
             status_code=403,
@@ -840,6 +907,7 @@ async def toggle_offer(
     """Toggle offer active/inactive status (admin only)."""
     user_role_names = {r.name for r in _admin.roles}
     if "super_admin" not in user_role_names:
+        # pyrefly: ignore [missing-import]
         from fastapi import HTTPException
         raise HTTPException(
             status_code=403,
@@ -857,6 +925,7 @@ async def offer_stats(
     """Get coupon/offer usage statistics (admin only)."""
     user_role_names = {r.name for r in _admin.roles}
     if "super_admin" not in user_role_names:
+        # pyrefly: ignore [missing-import]
         from fastapi import HTTPException
         raise HTTPException(
             status_code=403,
@@ -871,7 +940,8 @@ async def revenue_stats(
     db: AsyncSession = Depends(get_db),
 ):
     """Get revenue statistics (Super Admin only)."""
-    from fastapi import HTTPException
+    # pyrefly: ignore [missing-import]
+    from fastapi import HTTPException   
     
     user_role_names = {r.name for r in current_user.roles}
     if "super_admin" not in user_role_names:
@@ -880,7 +950,8 @@ async def revenue_stats(
     # Calculate actual revenue from database, split the same way invoices do.
     from app.modules.payments.models import PaymentTransaction
     from app.modules.courses.models import Course
-    from sqlalchemy import func, select
+    # pyrefly: ignore [missing-import]
+    from sqlalchemy import func, select   
     
     total_stmt = (
         select(

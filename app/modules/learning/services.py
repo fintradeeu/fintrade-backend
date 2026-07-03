@@ -8,6 +8,7 @@ from sqlalchemy import func
 
 from app.modules.learning.models import LessonCompletion
 from app.modules.courses.models import CourseEnrollment, Course, CourseModule, Lesson
+from app.modules.batches.models import BatchLessonCompletion, BatchLesson
 from app.modules.lectures.models import Lecture
 from app.modules.learning.schemas import LearningDashboardResponse, EnrolledCourseProgress, CompletedLessonItem, UpcomingLectureItem, VideoPolicyItem
 
@@ -44,6 +45,21 @@ async def get_user_dashboard(db: AsyncSession, user_id: int) -> LearningDashboar
             title=row[1],
             completed_at=row[0].completed_at
         ) for row in completions
+    ]
+
+    batch_completion_stmt = select(BatchLessonCompletion, BatchLesson.title).join(
+        BatchLesson, BatchLessonCompletion.batch_lesson_id == BatchLesson.id
+    ).where(BatchLessonCompletion.user_id == user_id)
+
+    batch_completion_result = await db.execute(batch_completion_stmt)
+    batch_completions = batch_completion_result.all()
+
+    completed_batch_lessons = [
+        CompletedLessonItem(
+            lesson_id=row[0].batch_lesson_id,
+            title=row[1],
+            completed_at=row[0].completed_at
+        ) for row in batch_completions
     ]
     
     # 3. Upcoming Lectures mapping to enrolled courses
@@ -86,6 +102,7 @@ async def get_user_dashboard(db: AsyncSession, user_id: int) -> LearningDashboar
     return LearningDashboardResponse(
         enrolled_courses=enrolled_courses,
         completed_lessons=completed_lessons,
+        completed_batch_lessons=completed_batch_lessons,
         upcoming_lectures=upcoming_lectures,
         video_policies=video_policies
     )
