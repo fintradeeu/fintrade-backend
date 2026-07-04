@@ -198,3 +198,36 @@ class BatchLessonCompletion(Base):
     # Relationships
     batch_lesson = relationship("BatchLesson")
     user = relationship("User")
+
+
+class BatchDayTask(Base):
+    __tablename__ = "batch_day_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    batch_id = Column(Integer, ForeignKey("batches.id", ondelete="CASCADE"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    day_number = Column(Integer, nullable=False)  # e.g. -5, -4, 1, 2
+    title = Column(String(255), nullable=False)
+    content_type = Column(String(50), default="text")  # text, video, pdf, quiz
+    content = Column(Text, nullable=True)
+    duration_minutes = Column(Integer, nullable=True)
+    
+    # Live Lecture Fields
+    start_time = Column(DateTime(timezone=True), nullable=True)
+    end_time = Column(DateTime(timezone=True), nullable=True)
+    instructor_name = Column(String(255), nullable=True)
+    
+    # Exam Fields
+    exam_title = Column(String(255), nullable=True)
+    exam_passing_score = Column(Float, nullable=True)
+    
+    # Linked Entities
+    linked_assignment_id = Column(Integer, ForeignKey("batch_assignments.id", ondelete="SET NULL"), nullable=True)
+
+    is_published = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    batch = relationship("Batch")
+    course = relationship("Course")
+    linked_assignment = relationship("BatchAssignment")

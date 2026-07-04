@@ -94,6 +94,8 @@ class StudentResponse(BaseModel):
     email: str
     phone: Optional[str] = None
     enrolled_at: datetime
+    course_id: Optional[int] = None
+    course_title: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -279,6 +281,60 @@ class BatchAssignmentSubmissionResponse(BaseModel):
     status: str
     score: Optional[float] = None
     teacher_feedback: Optional[str] = None
+    user: Optional[StudentResponse] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BatchDayTaskCreate(BaseModel):
+    batch_id: int
+    course_id: int
+    day_number: int
+    title: str
+    content_type: Optional[str] = "text"
+    content: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    is_published: Optional[bool] = False
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    instructor_name: Optional[str] = None
+    exam_title: Optional[str] = None
+    exam_passing_score: Optional[float] = None
+    linked_assignment_id: Optional[int] = None
+
+
+class BatchDayTaskUpdate(BaseModel):
+    day_number: Optional[int] = None
+    title: Optional[str] = None
+    content_type: Optional[str] = None
+    content: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    is_published: Optional[bool] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    instructor_name: Optional[str] = None
+    exam_title: Optional[str] = None
+    exam_passing_score: Optional[float] = None
+    linked_assignment_id: Optional[int] = None
+
+
+class BatchDayTaskResponse(BaseModel):
+    id: int
+    batch_id: int
+    course_id: int
+    day_number: int
+    title: str
+    content_type: str
+    content: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    is_published: bool
+    created_at: datetime
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    instructor_name: Optional[str] = None
+    exam_title: Optional[str] = None
+    exam_passing_score: Optional[float] = None
+    linked_assignment_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

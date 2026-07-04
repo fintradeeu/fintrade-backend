@@ -348,20 +348,49 @@ async def create_batch_only_course(db: AsyncSession, batch_id: int, data: dict, 
 
 
 async def get_batch_students(db: AsyncSession, batch_id: int) -> List[dict]:
+    # Import locally to avoid circular import if needed, but it should be available
+    from app.modules.courses.models import CourseEnrollment, Course
+    from sqlalchemy.orm import selectinload
+
     stmt = select(StudentBatchEnrollment, User).join(
         User, StudentBatchEnrollment.user_id == User.id
     ).where(StudentBatchEnrollment.batch_id == batch_id, StudentBatchEnrollment.is_active == True)
     res = await db.execute(stmt)
     rows = res.all()
     
+    # Pre-fetch all course enrollments for this batch's assigned courses for these users
+    # First, get courses in this batch
+    from app.modules.batches.models import BatchCourse
+    batch_courses_stmt = select(BatchCourse.course_id).where(BatchCourse.batch_id == batch_id)
+    bc_res = await db.execute(batch_courses_stmt)
+    batch_course_ids = bc_res.scalars().all()
+
     students = []
+    if not rows:
+        return students
+
+    user_ids = [user.id for _, user in rows]
+    
+    enrollments_dict = {}
+    if batch_course_ids and user_ids:
+        enr_stmt = select(CourseEnrollment, Course).join(Course, CourseEnrollment.course_id == Course.id).where(
+            CourseEnrollment.user_id.in_(user_ids),
+            CourseEnrollment.course_id.in_(batch_course_ids)
+        )
+        enr_res = await db.execute(enr_stmt)
+        for ce, c in enr_res.all():
+            enrollments_dict[ce.user_id] = {"course_id": c.id, "course_title": c.title}
+
     for enr, user in rows:
+        course_info = enrollments_dict.get(user.id, {})
         students.append({
             "id": user.id,
             "full_name": user.full_name,
             "email": user.email,
             "phone": user.phone,
             "enrolled_at": enr.enrolled_at,
+            "course_id": course_info.get("course_id"),
+            "course_title": course_info.get("course_title"),
         })
     return students
 

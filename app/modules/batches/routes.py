@@ -435,3 +435,88 @@ async def admin_delete_batch_lesson(
     if not success:
         raise HTTPException(status_code=404, detail="Batch lesson not found")
     return {"message": "Batch lesson deleted successfully"}
+
+# ── Batch Day Tasks ──────────────────────────────────────────────────────────
+
+@router.get("/admin/{batch_id}/courses/{course_id}/day-tasks", response_model=List[schemas.BatchDayTaskResponse])
+async def list_day_tasks(
+    batch_id: int,
+    course_id: int,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import select
+    from app.modules.batches.models import BatchDayTask
+
+    result = await db.execute(
+        select(BatchDayTask)
+        .where(BatchDayTask.batch_id == batch_id, BatchDayTask.course_id == course_id)
+        .order_by(BatchDayTask.day_number)
+    )
+    return result.scalars().all()
+
+
+@router.post("/admin/{batch_id}/courses/{course_id}/day-tasks", response_model=schemas.BatchDayTaskResponse)
+async def create_day_task(
+    batch_id: int,
+    course_id: int,
+    payload: schemas.BatchDayTaskCreate,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.modules.batches.models import BatchDayTask
+
+    task = BatchDayTask(
+        batch_id=batch_id,
+        course_id=course_id,
+        day_number=payload.day_number,
+        title=payload.title,
+        content_type=payload.content_type,
+        content=payload.content,
+        duration_minutes=payload.duration_minutes,
+        is_published=payload.is_published,
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+    return task
+
+
+@router.put("/admin/day-tasks/{task_id}", response_model=schemas.BatchDayTaskResponse)
+async def update_day_task(
+    task_id: int,
+    payload: schemas.BatchDayTaskUpdate,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.modules.batches.models import BatchDayTask
+    from fastapi import HTTPException
+
+    task = await db.get(BatchDayTask, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(task, k, v)
+
+    await db.commit()
+    await db.refresh(task)
+    return task
+
+
+@router.delete("/admin/day-tasks/{task_id}")
+async def delete_day_task(
+    task_id: int,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.modules.batches.models import BatchDayTask
+    from fastapi import HTTPException
+
+    task = await db.get(BatchDayTask, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    await db.delete(task)
+    await db.commit()
+    return {"status": "ok", "message": "Day task deleted successfully"}

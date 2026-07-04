@@ -1627,7 +1627,8 @@ async def delete_admin_role(
     db: AsyncSession = Depends(get_db)
 ):
     from fastapi import HTTPException
-    from sqlalchemy import select
+    # pyrefly: ignore [missing-import]
+    from sqlalchemy import select   
 
     result = await db.execute(select(User).where(User.id == role_id))
     user = result.scalar_one_or_none()
@@ -1701,6 +1702,7 @@ async def save_module_students_policies(
     db: AsyncSession = Depends(get_db),
 ):
     from app.modules.courses.models import ModuleStudentPolicy
+    # pyrefly: ignore [missing-import]
     from sqlalchemy import delete
     
     # Delete existing policies first to simple upsert
