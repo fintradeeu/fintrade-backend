@@ -204,7 +204,7 @@ class BatchDayTask(Base):
     __tablename__ = "batch_day_tasks"
 
     id = Column(Integer, primary_key=True, index=True)
-    batch_id = Column(Integer, ForeignKey("batches.id", ondelete="CASCADE"), nullable=False)
+    batch_id = Column(Integer, ForeignKey("batches.id", ondelete="CASCADE"), nullable=True)
     course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
     day_number = Column(Integer, nullable=False)  # e.g. -5, -4, 1, 2
     title = Column(String(255), nullable=False)

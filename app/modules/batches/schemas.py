@@ -287,7 +287,7 @@ class BatchAssignmentSubmissionResponse(BaseModel):
 
 
 class BatchDayTaskCreate(BaseModel):
-    batch_id: int
+    batch_id: Optional[int] = None
     course_id: int
     day_number: int
     title: str
@@ -320,7 +320,7 @@ class BatchDayTaskUpdate(BaseModel):
 
 class BatchDayTaskResponse(BaseModel):
     id: int
-    batch_id: int
+    batch_id: Optional[int] = None
     course_id: int
     day_number: int
     title: str

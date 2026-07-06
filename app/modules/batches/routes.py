@@ -478,6 +478,12 @@ async def create_day_task(
         content=payload.content,
         duration_minutes=payload.duration_minutes,
         is_published=payload.is_published,
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+        instructor_name=payload.instructor_name,
+        exam_title=payload.exam_title,
+        exam_passing_score=payload.exam_passing_score,
+        linked_assignment_id=payload.linked_assignment_id,
     )
     db.add(task)
     await db.commit()

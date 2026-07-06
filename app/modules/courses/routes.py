@@ -188,3 +188,56 @@ async def upload_assignment_file(
         "original_name": file.filename,
         "content_type": file.content_type or "application/octet-stream"
     }
+
+
+@router.get("/admin/{course_id}/day-tasks", tags=["Admin"])
+async def admin_get_course_day_tasks(
+    course_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    from sqlalchemy import select
+    from app.modules.batches.models import BatchDayTask
+    
+    result = await db.execute(
+        select(BatchDayTask)
+        .where(BatchDayTask.course_id == course_id, BatchDayTask.batch_id.is_(None))
+        .order_by(BatchDayTask.day_number)
+    )
+    return result.scalars().all()
+
+
+@router.post("/admin/{course_id}/day-tasks", tags=["Admin"])
+async def admin_create_course_day_task(
+    course_id: int,
+    payload: dict,  
+    db: AsyncSession = Depends(get_db)
+):
+    from app.modules.batches.models import BatchDayTask
+    import dateutil.parser
+    
+    # Process datetimes
+    start_time = payload.get("start_time")
+    if start_time: start_time = dateutil.parser.isoparse(start_time)
+    end_time = payload.get("end_time")
+    if end_time: end_time = dateutil.parser.isoparse(end_time)
+
+    task = BatchDayTask(
+        course_id=course_id,
+        batch_id=None,
+        day_number=payload.get("day_number", 1),
+        title=payload.get("title", ""),
+        content_type=payload.get("content_type", "text"),
+        content=payload.get("content"),
+        duration_minutes=payload.get("duration_minutes"),
+        start_time=start_time,
+        end_time=end_time,
+        instructor_name=payload.get("instructor_name"),
+        exam_title=payload.get("exam_title"),
+        exam_passing_score=payload.get("exam_passing_score"),
+        linked_assignment_id=payload.get("linked_assignment_id"),
+        is_published=payload.get("is_published", False)
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+    return task

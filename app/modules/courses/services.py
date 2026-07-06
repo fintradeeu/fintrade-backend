@@ -24,6 +24,7 @@ async def list_courses(
     query = select(Course).offset(skip).limit(limit).order_by(Course.created_at.desc())
     if published_only:
         query = query.where(Course.is_published == True)  # noqa: E712
+        query = query.where(Course.is_batch_only == False)
     if is_featured is not None:
         query = query.where(Course.is_featured == is_featured)
     result = await db.execute(query)
