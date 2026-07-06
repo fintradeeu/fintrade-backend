@@ -17,25 +17,28 @@ router = APIRouter(prefix="/batches", tags=["Batch Management"])
 
 @router.get("/public/list", response_model=List[schemas.BatchResponse])
 async def get_active_batches_for_course(
-    course_id: int,
+    course_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Retrieve all open/upcoming registration batches for a given course."""
+    """Retrieve all open/upcoming registration batches for a given course or all if course_id is omitted."""
     now = datetime.now(timezone.utc)
     from app.modules.batches.models import Batch, BatchCourse
     from sqlalchemy.orm import joinedload
-    batch_stmt = (
+    
+    stmt = (
         select(Batch)
         .options(joinedload(Batch.courses).joinedload(BatchCourse.course))
-        .join(BatchCourse, BatchCourse.batch_id == Batch.id)
         .where(
-            BatchCourse.course_id == course_id,
             Batch.is_active == True,
             Batch.is_published == True
         )
         .order_by(Batch.start_date.asc())
     )
-    batch_res = await db.execute(batch_stmt)
+    
+    if course_id is not None:
+        stmt = stmt.join(BatchCourse, BatchCourse.batch_id == Batch.id).where(BatchCourse.course_id == course_id)
+        
+    batch_res = await db.execute(stmt)
     batches = list(batch_res.scalars().unique().all())
     
     from app.modules.batches.services import update_batch_status_based_on_dates
