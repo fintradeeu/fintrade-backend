@@ -35,4 +35,13 @@ class PaymentTransaction(Base):
     
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Offline payment specific fields
+    reference_number = Column(String(255), nullable=True) # Receipt number or Cheque number
+    payment_date = Column(DateTime(timezone=True), nullable=True)
+    bank_name = Column(String(255), nullable=True)
+    branch_name = Column(String(255), nullable=True)
+    account_holder_name = Column(String(255), nullable=True)
+    cheque_image_url = Column(String(500), nullable=True)
+    remarks = Column(String(1000), nullable=True)
 

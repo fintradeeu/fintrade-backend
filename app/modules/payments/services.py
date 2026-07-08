@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.utils.logger import get_logger
 from app.modules.payments.models import PaymentTransaction
+from app.modules.payments import schemas
 from app.modules.courses.models import Course
 from app.modules.auth.models import User
 from app.modules.courses.services import enroll_user
@@ -598,5 +599,48 @@ async def send_invoice_email(user: User, course: Course, transaction: PaymentTra
     </body>
     </html>
     """
-    await send_email(to_email=user.email, subject=subject, body_html=body_html)
+
+async def create_offline_payment(
+    db: AsyncSession,
+    user: User,
+    data: schemas.OfflinePaymentRequest,
+) -> dict:
+    """Create an offline payment transaction (Cash/Cheque)."""
+    course = await db.get(Course, data.course_id)
+    if not course or not course.is_published:
+        raise HTTPException(status_code=404, detail="Course not found or not published")
+    
+    if data.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than zero")
+
+    txnid = f"TXN{uuid.uuid4().hex[:12].upper()}"
+    status = "pending_verification" if data.payment_mode == "cash" else "pending_clearance"
+
+    payment_date_dt = None
+    if data.payment_date:
+        try:
+            payment_date_dt = datetime.fromisoformat(data.payment_date.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+
+    transaction = PaymentTransaction(
+        user_id=user.id,
+        course_id=data.course_id,
+        txnid=txnid,
+        amount=data.amount,
+        status=status,
+        payment_mode=data.payment_mode,
+        coupon_code=data.coupon_code,
+        batch_id=data.batch_id,
+        reference_number=data.reference_number,
+        payment_date=payment_date_dt,
+        bank_name=data.bank_name,
+        branch_name=data.branch_name,
+        account_holder_name=data.account_holder_name,
+        cheque_image_url=data.cheque_image_url,
+        remarks=data.remarks
+    )
+    db.add(transaction)
+    await db.commit()
+    return {"status": "ok", "txnid": txnid, "message": "Offline payment submitted successfully."}
 

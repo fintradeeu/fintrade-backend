@@ -274,6 +274,7 @@ def trigger_db_migration(secret_key: str):
             "621bf7ebb607_add_feedback_forms.py",
             "de8dc5db081f_merge_all_heads.py",
             "df05f2889739_add_ai_tables.py",
+            "021_add_offline_payment_columns.py",
             ".gitkeep",
         }
         for f in glob.glob(os.path.join(versions_dir, "*")):
@@ -478,6 +479,13 @@ async def _repair_payment_transactions_schema_async(db):
 
     statements = [
         "ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS batch_id INTEGER REFERENCES batches(id) ON DELETE SET NULL",
+        "ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS reference_number VARCHAR(255)",
+        "ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS payment_date TIMESTAMPTZ",
+        "ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS bank_name VARCHAR(255)",
+        "ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS branch_name VARCHAR(255)",
+        "ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS account_holder_name VARCHAR(255)",
+        "ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS cheque_image_url VARCHAR(500)",
+        "ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS remarks VARCHAR(1000)",
     ]
 
     for statement in statements:

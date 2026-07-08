@@ -1,12 +1,12 @@
 """Payments module — API routes."""
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, File, UploadFile
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 
 from app.db.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_roles
 from app.modules.auth.models import User
 from app.modules.payments import schemas, services
 
@@ -335,5 +335,106 @@ async def mock_checkout(txnid: str, db: AsyncSession = Depends(get_db)):
     </body>
     </html>
     """
-    return HTMLResponse(content=html_content)
+
+@router.post("/upload-cheque")
+async def upload_cheque_image(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Upload a cheque image for offline payments."""
+    import os
+    import uuid
+    import aiofiles
+    
+    upload_dir = "uploads/cheques"
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    ext = file.filename.split('.')[-1] if '.' in file.filename else 'jpg'
+    filename = f"{current_user.id}_{uuid.uuid4().hex[:8]}.{ext}"
+    file_path = f"{upload_dir}/{filename}"
+    
+    async with aiofiles.open(file_path, 'wb') as out_file:
+        content = await file.read()
+        await out_file.write(content)
+        
+    return {"status": "ok", "url": f"/{file_path}"}
+
+
+@router.post("/offline-payment")
+async def create_offline_payment_route(
+    body: schemas.OfflinePaymentRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Submit a cash or cheque payment."""
+    return await services.create_offline_payment(db, user=current_user, data=body)
+
+
+@router.put("/admin/{id}/approve")
+async def admin_approve_payment(
+    id: int,
+    admin: User = Depends(require_roles(["admin", "super_admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin endpoint to approve offline payment."""
+    from sqlalchemy import select
+    from app.modules.payments.models import PaymentTransaction
+    from app.modules.courses.services import enroll_user
+    from app.modules.courses.models import Course
+    from fastapi import HTTPException
+    
+    res = await db.execute(select(PaymentTransaction).where(PaymentTransaction.id == id))
+    transaction = res.scalar_one_or_none()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Payment not found")
+        
+    if transaction.status == "success":
+        return {"status": "ok", "message": "Already approved"}
+        
+    transaction.status = "success"
+    try:
+        await enroll_user(db, user_id=transaction.user_id, course_id=transaction.course_id, distributor_code=transaction.coupon_code)
+        try:
+            from app.modules.batches.services import enroll_student_in_batch_or_active
+            await enroll_student_in_batch_or_active(db, user_id=transaction.user_id, course_id=transaction.course_id, batch_id=transaction.batch_id, price_paid=transaction.amount)
+        except Exception as e:
+            services.logger.error("admin_approve_batch_enroll_failed", error=str(e))
+    except Exception as e:
+        services.logger.error("admin_approve_enroll_failed", error=str(e))
+        
+    # Send invoice
+    user = await db.get(User, transaction.user_id)
+    course = await db.get(Course, transaction.course_id)
+    if user and course:
+        try:
+            await services.send_invoice_email(user, course, transaction)
+        except Exception as e:
+            services.logger.error("admin_approve_invoice_failed", error=str(e))
+            
+    await db.commit()
+    return {"status": "ok", "message": "Payment approved and course unlocked."}
+
+
+@router.put("/admin/{id}/reject")
+async def admin_reject_payment(
+    id: int,
+    body: schemas.OfflinePaymentApprovalRequest,
+    admin: User = Depends(require_roles(["admin", "super_admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin endpoint to reject offline payment."""
+    from sqlalchemy import select
+    from app.modules.payments.models import PaymentTransaction
+    from fastapi import HTTPException
+    
+    res = await db.execute(select(PaymentTransaction).where(PaymentTransaction.id == id))
+    transaction = res.scalar_one_or_none()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Payment not found")
+        
+    transaction.status = "failed"
+    transaction.remarks = f"{transaction.remarks or ''} [Rejected: {body.reason or 'No reason provided'}]"
+    await db.commit()
+    return {"status": "ok", "message": "Payment rejected."}
 

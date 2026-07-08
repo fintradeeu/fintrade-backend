@@ -40,3 +40,21 @@ class PaymentTransactionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class OfflinePaymentRequest(BaseModel):
+    course_id: int
+    payment_mode: str # 'cash' or 'cheque'
+    amount: float
+    reference_number: Optional[str] = None
+    payment_date: Optional[str] = None
+    bank_name: Optional[str] = None
+    branch_name: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    cheque_image_url: Optional[str] = None
+    remarks: Optional[str] = None
+    coupon_code: Optional[str] = None
+    batch_id: Optional[int] = None
+
+class OfflinePaymentApprovalRequest(BaseModel):
+    action: str # 'approve' or 'reject'
+    reason: Optional[str] = None

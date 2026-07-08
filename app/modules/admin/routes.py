@@ -1027,7 +1027,7 @@ async def revenue_details(
         select(PaymentTransaction, User.full_name, User.email, Course.title, Course.price)
         .join(User, User.id == PaymentTransaction.user_id)
         .join(Course, Course.id == PaymentTransaction.course_id)
-        .where(PaymentTransaction.status == "success")
+        .where(PaymentTransaction.status.in_(["success", "pending_verification", "pending_clearance", "failed"]))
         .order_by(PaymentTransaction.created_at.desc())
     )
     result = await db.execute(stmt)
@@ -1052,6 +1052,13 @@ async def revenue_details(
             "student_name": full_name,
             "student_email": email,
             "course_title": title,
+            "reference_number": getattr(tx, "reference_number", None),
+            "payment_date": tx.payment_date.isoformat() if getattr(tx, "payment_date", None) else None,
+            "bank_name": getattr(tx, "bank_name", None),
+            "branch_name": getattr(tx, "branch_name", None),
+            "account_holder_name": getattr(tx, "account_holder_name", None),
+            "cheque_image_url": getattr(tx, "cheque_image_url", None),
+            "remarks": getattr(tx, "remarks", None),
         })
     return transactions
 
