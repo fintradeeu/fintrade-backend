@@ -169,7 +169,7 @@ async def _ensure_student_access(db: AsyncSession, user_id: int) -> None:
             CourseEnrollment.user_id == user_id,
             CourseEnrollment.is_active == True,  # noqa: E712
             CourseEnrollment.completed_at.is_not(None),
-        )
+        ).limit(1)
     )
     has_completed_course = enrollment_result.scalar_one_or_none() is not None
 
@@ -187,7 +187,7 @@ async def create_account(db: AsyncSession, user_id: int, profile_id: Optional[in
     await _ensure_student_access(db, user_id)
 
     existing = await db.execute(
-        select(SimulatorAccount).where(SimulatorAccount.user_id == user_id, SimulatorAccount.is_active == True)
+        select(SimulatorAccount).where(SimulatorAccount.user_id == user_id, SimulatorAccount.is_active == True).limit(1)
     )
     account = existing.scalar_one_or_none()
     if account:
@@ -216,7 +216,7 @@ async def create_account(db: AsyncSession, user_id: int, profile_id: Optional[in
 
 async def get_user_account(db: AsyncSession, user_id: int) -> SimulatorAccount:
     result = await db.execute(
-        select(SimulatorAccount).where(SimulatorAccount.user_id == user_id, SimulatorAccount.is_active == True)
+        select(SimulatorAccount).where(SimulatorAccount.user_id == user_id, SimulatorAccount.is_active == True).limit(1)
     )
     account = result.scalar_one_or_none()
     if account is None:

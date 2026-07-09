@@ -134,7 +134,7 @@ async def require_student_kyc(
         select(CourseEnrollment).where(
             CourseEnrollment.user_id == current_user.id,
             CourseEnrollment.is_active == True
-        )
+        ).limit(1)
     )
     enrollment = enroll_result.scalar_one_or_none()
     if not enrollment:
