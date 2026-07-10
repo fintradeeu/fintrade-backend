@@ -75,6 +75,47 @@ async def list_purchased_students(
 
 
 # ── User management ─────────────────────────────────────────────────
+@router.post("/users/create-student", response_model=UserResponse, status_code=201)
+async def create_student(
+    body: schemas.StudentCreateRequest,
+    admin: User = Depends(require_roles(["admin", "super_admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new student account (admin only)."""
+    user = await services.create_user_with_role(
+        db,
+        email=body.email,
+        full_name=body.full_name,
+        password=body.password,
+        role_name="student",
+        created_by=admin.id,
+        phone=body.phone,
+        city=body.city,
+    )
+    
+    # Send email with credentials
+    from app.utils.smtp_notifications import send_email
+    subject = "Welcome to FinTrade Edutech - Your Account Details"
+    html_body = f"""
+    <html>
+      <body>
+        <p>Dear {body.full_name},</p>
+        <p>Your student account has been successfully created by our administration.</p>
+        <p><strong>Login Details:</strong></p>
+        <ul>
+          <li><strong>Username:</strong> {body.email}</li>
+          <li><strong>Password:</strong> {body.password}</li>
+        </ul>
+        <p>You can now log in to the student dashboard.</p>
+        <p>Best regards,<br>FinTrade Edutech Team</p>
+      </body>
+    </html>
+    """
+    import asyncio
+    asyncio.create_task(send_email(body.email, subject, html_body))
+    
+    return UserResponse.model_validate(user)
+
 @router.post("/users/create-admin", response_model=UserResponse, status_code=201)
 async def create_admin(
     body: schemas.CreateUserRequest,

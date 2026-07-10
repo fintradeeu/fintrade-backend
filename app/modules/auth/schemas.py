@@ -97,6 +97,7 @@ class UserResponse(BaseModel):
     avatar_url: Optional[str] = None
     permissions: Optional[dict] = None
     has_password: bool = False
+    is_admin_created: bool = False
     roles: List[RoleResponse] = []
     distributor_profile: Optional[DistributorProfileResponse] = None
     created_at: datetime
@@ -174,6 +175,7 @@ class UserResponse(BaseModel):
                 "avatar_url": data.avatar_url,
                 "permissions": data.permissions,
                 "has_password": bool(data.hashed_password),
+                "is_admin_created": getattr(data, "created_by", None) is not None,
                 "created_at": data.created_at,
                 "enrolled_courses": enrolled,
                 "login_history": history
