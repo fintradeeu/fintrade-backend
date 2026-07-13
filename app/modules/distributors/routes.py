@@ -41,6 +41,7 @@ async def self_register_distributor(
     profile_photo: Optional[UploadFile] = File(None),
     aadhaar_card: Optional[UploadFile] = File(None),
     pan_card: Optional[UploadFile] = File(None),
+    ref: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Public affiliate IB self-registration form."""
@@ -71,6 +72,7 @@ async def self_register_distributor(
         profile_photo_url=profile_photo_url,
         aadhaar_card_url=aadhaar_card_url,
         pan_card_url=pan_card_url,
+        franchise_ref=ref,
     )
     await db.commit()
 
@@ -164,3 +166,14 @@ async def get_stats(
     stats["region"] = dist.region
     stats["referral_code"] = dist.referral_code
     return schemas.DistributorStatsResponse(**stats)
+
+
+@router.post("/manual-register", status_code=201)
+async def manual_register_student(
+    body: schemas.ManualStudentRegisterRequest,
+    current_user: User = Depends(require_roles(["distributor"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually register a student and optionally record offline payment."""
+    dist = await services.get_distributor_by_user_id(db, current_user.id)
+    return await services.manual_register_student(db, data=body, distributor_id=dist.id)

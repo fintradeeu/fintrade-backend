@@ -14,6 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, backref
 
 from app.db.database import Base
+from app.modules.franchise_ibs.models import FranchiseIB
 
 
 class Distributor(Base):
@@ -21,6 +22,7 @@ class Distributor(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    franchise_id = Column(Integer, ForeignKey("franchise_ibs.id", ondelete="SET NULL"), nullable=True)
     region = Column(String(255), nullable=False)
     referral_code = Column(String(50), unique=True, nullable=False, index=True)
     discount_percentage = Column(Float, default=0.0)
@@ -38,6 +40,7 @@ class Distributor(Base):
 
     # relationships
     user = relationship("User", backref=backref("distributor_profile", uselist=False), foreign_keys=[user_id])
+    franchise = relationship("FranchiseIB", back_populates="distributors")
     referrals = relationship("StudentReferral", back_populates="distributor", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -49,12 +52,14 @@ class StudentReferral(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    distributor_id = Column(Integer, ForeignKey("distributors.id", ondelete="CASCADE"), nullable=False)
+    distributor_id = Column(Integer, ForeignKey("distributors.id", ondelete="CASCADE"), nullable=True)
+    franchise_ib_id = Column(Integer, ForeignKey("franchise_ibs.id", ondelete="CASCADE"), nullable=True)
     course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # relationships
     distributor = relationship("Distributor", back_populates="referrals")
+    franchise_ib = relationship("FranchiseIB", back_populates="direct_referrals")
     student = relationship("User", foreign_keys=[student_id])
     course = relationship("Course", foreign_keys=[course_id])
 

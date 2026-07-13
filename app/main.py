@@ -21,6 +21,7 @@ from app.modules.ai.routes import router as ai_router
 from app.modules.admin.routes import router as admin_router
 from app.modules.faculty.routes import router as faculty_router
 from app.modules.distributors.routes import router as distributor_router
+from app.modules.franchise_ibs.routes import router as franchise_ibs_router
 from app.modules.learning.routes import router as learning_router
 from app.modules.certificates.routes import router as certificates_router
 from app.modules.simulator.routes import router as simulator_router
@@ -42,7 +43,7 @@ from app.modules.mobile_api.routes import (
 from app.modules.commissions.routes import router as commissions_router
 from app.modules.batches.routes import router as batches_router
 from app.modules.doubts.routes import router as doubts_router
-
+from app.modules.logs.routes import router as logs_router
 
 
 @asynccontextmanager
@@ -210,8 +211,10 @@ app.include_router(mobile_v1_router, prefix="/api")
 app.include_router(commissions_router)
 app.include_router(batches_router)
 app.include_router(doubts_router)
+app.include_router(franchise_ibs_router)
+app.include_router(logs_router)
 
-
+# Mount media directory
 
 import os
 # pyrefly: ignore [missing-import]

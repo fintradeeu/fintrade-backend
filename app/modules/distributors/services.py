@@ -86,6 +86,7 @@ async def self_register_distributor(
     profile_photo_url: Optional[str],
     aadhaar_card_url: Optional[str],
     pan_card_url: Optional[str],
+    franchise_ref: Optional[str] = None,
 ) -> Distributor:
     existing = await db.execute(select(User).where(User.email == email.strip().lower()))
     if existing.scalar_one_or_none():
@@ -107,9 +108,18 @@ async def self_register_distributor(
     user.roles.append(role)
     db.add(user)
     await db.flush()
+    
+    franchise_id = None
+    if franchise_ref:
+        from app.modules.franchise_ibs.models import FranchiseIB
+        f_res = await db.execute(select(FranchiseIB).where(FranchiseIB.referral_code == franchise_ref.strip()))
+        franchise = f_res.scalar_one_or_none()
+        if franchise:
+            franchise_id = franchise.id
 
     distributor = Distributor(
         user_id=user.id,
+        franchise_id=franchise_id,
         region=region,
         referral_code=await _generate_referral_code(db),
         discount_percentage=10,
@@ -187,27 +197,28 @@ async def link_referral_lead_to_user(db: AsyncSession, distributor_id: int, user
         await db.flush()
 
 
-async def list_referrals(db: AsyncSession, distributor_id: int) -> List[StudentReferral]:
-    """List referrals for a distributor, hiding stale pending rows after enrollment."""
-    result = await db.execute(
-        select(StudentReferral)
-        .options(
-            selectinload(StudentReferral.student),
-            selectinload(StudentReferral.course),
+async def list_referrals(db: AsyncSession, distributor_id: Optional[int] = None, franchise_ib_id: Optional[int] = None) -> List[StudentReferral]:
+    """List referrals for a distributor or franchise IB, hiding stale pending rows after enrollment."""
+    stmt = select(StudentReferral).options(
+        selectinload(StudentReferral.student),
+        selectinload(StudentReferral.course),
+    ).order_by(StudentReferral.created_at.desc())
+    
+    if distributor_id:
+        stmt = stmt.where(StudentReferral.distributor_id == distributor_id)
+    elif franchise_ib_id:
+        stmt = stmt.outerjoin(Distributor, Distributor.id == StudentReferral.distributor_id).where(
+            (StudentReferral.franchise_ib_id == franchise_ib_id) | (Distributor.franchise_id == franchise_ib_id)
         )
-        .where(StudentReferral.distributor_id == distributor_id)
-        .order_by(StudentReferral.created_at.desc())
-    )
+        
+    result = await db.execute(stmt)
     referrals = list(result.scalars().all())
 
-    enrolled_students_result = await db.execute(
-        select(CourseEnrollment.user_id)
-        .where(
-            CourseEnrollment.distributor_id == distributor_id,
-            CourseEnrollment.is_active == True,  # noqa: E712
-        )
-        .distinct()
-    )
+    enrolled_stmt = select(CourseEnrollment.user_id).where(CourseEnrollment.is_active == True) # noqa: E712
+    if distributor_id:
+        enrolled_stmt = enrolled_stmt.where(CourseEnrollment.distributor_id == distributor_id)
+    # Note: For franchise IB, we could check enrollment through their IBs, but simplified for now:
+    enrolled_students_result = await db.execute(enrolled_stmt.distinct())
     enrolled_student_ids = set(enrolled_students_result.scalars().all())
 
     return [
@@ -217,20 +228,22 @@ async def list_referrals(db: AsyncSession, distributor_id: int) -> List[StudentR
     ]
 
 
-async def list_referral_journeys(db: AsyncSession, distributor_id: int) -> list[dict]:
+async def list_referral_journeys(db: AsyncSession, distributor_id: Optional[int] = None, franchise_ib_id: Optional[int] = None) -> list[dict]:
     """Return captured leads and registered referrals with student journey status."""
     from app.modules.exams.models import EntranceExam, ExamResult
     from app.modules.kyc.models import KYCSubmission
 
-    leads_result = await db.execute(
-        select(ReferralLead)
-        .options(selectinload(ReferralLead.user))
-        .where(ReferralLead.distributor_id == distributor_id)
-        .order_by(ReferralLead.created_at.desc())
-    )
+    stmt = select(ReferralLead).options(selectinload(ReferralLead.user)).order_by(ReferralLead.created_at.desc())
+    if distributor_id:
+        stmt = stmt.where(ReferralLead.distributor_id == distributor_id)
+    elif franchise_ib_id:
+        # Leads via sub-IBs
+        stmt = stmt.join(Distributor, Distributor.id == ReferralLead.distributor_id).where(Distributor.franchise_id == franchise_ib_id)
+        
+    leads_result = await db.execute(stmt)
     leads = list(leads_result.scalars().all())
 
-    referrals = await list_referrals(db, distributor_id)
+    referrals = await list_referrals(db, distributor_id=distributor_id, franchise_ib_id=franchise_ib_id)
     rows_by_key: dict[str, dict] = {}
 
     for lead in leads:
@@ -396,3 +409,98 @@ async def list_all_distributors(db: AsyncSession) -> List[Distributor]:
         .order_by(Distributor.created_at.desc())
     )
     return list(result.scalars().all())
+
+
+async def manual_register_student(
+    db: AsyncSession,
+    data: schemas.ManualStudentRegisterRequest,
+    distributor_id: Optional[int] = None,
+    franchise_ib_id: Optional[int] = None,
+) -> dict:
+    """Manually register a student by an IB or Franchise IB."""
+    from app.modules.auth.models import User
+    from app.modules.auth.services import register_user
+    from app.modules.payments.services import create_offline_payment
+    from app.modules.payments.schemas import OfflinePaymentRequest
+    from app.utils.smtp_notifications import send_email
+    
+    # 1. Generate random password
+    password = "".join(random.choices(string.ascii_letters + string.digits, k=10))
+    
+    # 2. Check if user exists. If yes, we don't recreate them, but we still assign referral if not already assigned
+    existing = await db.execute(select(User).where(User.email == data.email.strip().lower()))
+    user = existing.scalar_one_or_none()
+    
+    is_new_user = False
+    if not user:
+        # We need to register the user
+        user = await register_user(
+            db=db,
+            email=data.email,
+            full_name=data.full_name,
+            password=password,
+            phone=data.phone,
+            city=data.city,
+            role_name="student",
+        )
+        is_new_user = True
+        
+    # 3. Add StudentReferral
+    existing_ref = await db.execute(
+        select(StudentReferral).where(StudentReferral.student_id == user.id)
+    )
+    if not existing_ref.scalar_one_or_none():
+        referral = StudentReferral(
+            student_id=user.id,
+            distributor_id=distributor_id,
+            franchise_ib_id=franchise_ib_id,
+            course_id=data.course_id,
+        )
+        db.add(referral)
+        await db.flush()
+        
+    # 4. Handle Offline Payment if course_id is provided and payment_mode is offline
+    payment_response = None
+    if data.course_id and data.payment_mode in ["cash", "cheque"]:
+        payment_req = OfflinePaymentRequest(
+            course_id=data.course_id,
+            payment_mode=data.payment_mode,
+            amount=data.amount,
+            reference_number=data.reference_number,
+            cheque_image_url=data.cheque_image_url,
+            remarks=data.remarks,
+        )
+        payment_response = await create_offline_payment(db, user, payment_req)
+        
+    await db.commit()
+    
+    # 5. Send Email to Student with credentials if new user
+    if is_new_user:
+        frontend_url = settings.CORS_ORIGINS.split(',')[0] if settings.CORS_ORIGINS else "https://fintrade.com"
+        email_html = f"""
+        <html>
+            <body>
+                <h2>Welcome to FinTrade, {user.full_name}!</h2>
+                <p>An account has been created for you by your IB.</p>
+                <p><strong>Username/Email:</strong> {user.email}</p>
+                <p><strong>Password:</strong> {password}</p>
+                <p>You can login at: <a href="{frontend_url}/login">{frontend_url}/login</a></p>
+                <p>Please change your password after logging in.</p>
+            </body>
+        </html>
+        """
+        try:
+            await send_email(
+                to_email=user.email,
+                subject="Welcome to FinTrade - Your Account Details",
+                body_html=email_html
+            )
+        except Exception as e:
+            logger.error("manual_registration_email_failed", error=str(e))
+            
+    return {
+        "status": "success",
+        "message": "Student registered successfully.",
+        "user_id": user.id,
+        "payment_info": payment_response,
+    }

@@ -98,3 +98,16 @@ class DistributorStatsResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class ManualStudentRegisterRequest(BaseModel):
+    full_name: str
+    email: EmailStr
+    phone: str
+    city: Optional[str] = None
+    course_id: Optional[int] = None
+    payment_mode: str = "razorpay" # razorpay, cash, cheque
+    amount: float = 0.0
+    reference_number: Optional[str] = None
+    cheque_image_url: Optional[str] = None
+    remarks: Optional[str] = None

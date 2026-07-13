@@ -25,6 +25,8 @@ def import_all_models():
     import app.modules.payments.models  # noqa: F401
     import app.modules.commissions.models  # noqa: F401
     import app.modules.batches.models  # noqa: F401
+    import app.modules.franchise_ibs.models  # noqa: F401
+    import app.modules.logs.models  # noqa: F401
 
 
 # Also run on import so `from app.db.base import ...` triggers discovery

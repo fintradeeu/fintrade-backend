@@ -14,7 +14,7 @@ from app.config import settings
 from sqlalchemy import select
 
 
-ROLES = ["super_admin", "admin", "faculty", "student", "distributor"]
+ROLES = ["super_admin", "admin", "faculty", "student", "distributor", "franchise_ib"]
 
 DEFAULT_ADMIN = {
     "email": settings.ADMIN_EMAIL,
