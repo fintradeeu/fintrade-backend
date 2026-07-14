@@ -308,6 +308,26 @@ async def list_referral_journeys(db: AsyncSession, distributor_id: Optional[int]
     for result, exam, course in exam_result.all():
         exam_by_user.setdefault(result.user_id, (result, exam, course))
 
+    from app.modules.payments.models import PaymentTransaction
+
+    tx_result = await db.execute(
+        select(PaymentTransaction, Course.title)
+        .join(Course, PaymentTransaction.course_id == Course.id, isouter=True)
+        .where(PaymentTransaction.user_id.in_(user_ids))
+        .order_by(PaymentTransaction.created_at.desc())
+    )
+    tx_by_user: dict[int, list[dict]] = {}
+    for tx, c_title in tx_result.all():
+        tx_by_user.setdefault(tx.user_id, []).append({
+            "txnid": tx.txnid,
+            "amount": tx.amount,
+            "date": tx.payment_date.isoformat() if tx.payment_date else tx.created_at.isoformat(),
+            "status": tx.status,
+            "payment_mode": tx.payment_mode,
+            "course_title": c_title,
+            "reference_number": tx.reference_number
+        })
+
     output = []
     for row in rows_by_key.values():
         user_id = row.get("student_id")
@@ -319,6 +339,9 @@ async def list_referral_journeys(db: AsyncSession, distributor_id: Optional[int]
             row["fees_paid"] = any((en.price_paid or 0) > 0 for en, _course in enrollments)
             row["enrolled_courses"] = [course.title for _en, course in enrollments]
             row["course_completed"] = any((en.progress_percent or 0) >= 100 for en, _course in enrollments)
+            row["course_progress"] = [{"title": course.title, "progress": en.progress_percent or 0} for en, course in enrollments]
+            row["transactions"] = tx_by_user.get(user_id, [])
+
             if enrollments and not row.get("course_title"):
                 row["course_id"] = enrollments[0][0].course_id
                 row["course_title"] = enrollments[0][1].title
@@ -352,6 +375,8 @@ def _journey_defaults(row: dict) -> dict:
     row.setdefault("fees_paid", False)
     row.setdefault("enrolled_courses", [])
     row.setdefault("course_completed", False)
+    row.setdefault("course_progress", [])
+    row.setdefault("transactions", [])
     return row
 
 
@@ -470,6 +495,7 @@ async def manual_register_student(
             reference_number=data.reference_number,
             cheque_image_url=data.cheque_image_url,
             remarks=data.remarks,
+            batch_id=data.batch_id,
         )
         payment_response = await create_offline_payment(db, user, payment_req)
         

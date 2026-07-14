@@ -106,6 +106,7 @@ class ManualStudentRegisterRequest(BaseModel):
     phone: str
     city: Optional[str] = None
     course_id: Optional[int] = None
+    batch_id: Optional[int] = None
     payment_mode: str = "razorpay" # razorpay, cash, cheque
     amount: float = 0.0
     reference_number: Optional[str] = None

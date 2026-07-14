@@ -39,15 +39,24 @@ class FranchiseIBResponse(BaseModel):
         from_attributes = True
 
 
+class ChartDataPoint(BaseModel):
+    name: str
+    value: float
+
 class FranchiseIBDashboardStats(BaseModel):
+    referral_code: Optional[str] = None
     total_students: int
     active_students: int
     total_ibs: int
     today_registrations: int
     monthly_registrations: int
     pending_payments: int
+    total_enrollments: int
     
     total_revenue: float
     razorpay_revenue: float
     cash_revenue: float
     cheque_revenue: float
+    
+    revenue_chart_data: List[ChartDataPoint] = []
+    enrollment_chart_data: List[ChartDataPoint] = []
