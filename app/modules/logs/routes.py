@@ -4,10 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import List
 
-from app.core.database import get_db
+from app.db.database import get_db
 from app.modules.logs import schemas, models
 from app.modules.auth.models import User
-from app.core.security import require_roles, decode_access_token
+from app.core.security import require_roles, decode_token
 
 router = APIRouter(prefix="/logs", tags=["Activity Logs"])
 
@@ -27,7 +27,7 @@ async def create_activity_log(
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ", 1)[1]
         try:
-            payload = decode_access_token(token)
+            payload = decode_token(token)
             user_id = int(payload.get("sub"))
         except Exception:
             pass

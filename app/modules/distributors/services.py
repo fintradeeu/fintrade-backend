@@ -16,6 +16,7 @@ from app.modules.auth.models import User
 from app.modules.auth.services import get_or_create_role
 from app.modules.distributors.models import Distributor, ReferralLead, StudentReferral
 from app.modules.courses.models import Course, CourseEnrollment
+from app.modules.distributors import schemas
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
