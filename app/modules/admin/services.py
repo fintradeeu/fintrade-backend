@@ -61,7 +61,7 @@ async def list_non_purchased_users(db: AsyncSession, skip: int = 0, limit: int =
     
     # Subquery for user_ids who have enrolled in any course
     enrolled_user_ids = select(CourseEnrollment.user_id)
-    privileged_roles = ("admin", "faculty", "super_admin", "distributor")
+    privileged_roles = ("admin", "faculty", "super_admin", "distributor", "franchise_ib")
     
     result = await db.execute(
         select(User)
