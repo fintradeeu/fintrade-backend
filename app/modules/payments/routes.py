@@ -394,10 +394,22 @@ async def admin_approve_payment(
         
     transaction.status = "success"
     try:
-        await enroll_user(db, user_id=transaction.user_id, course_id=transaction.course_id, distributor_code=transaction.coupon_code)
+        await enroll_user(
+            db, 
+            user_id=transaction.user_id, 
+            course_id=transaction.course_id, 
+            distributor_code=transaction.coupon_code,
+            paid_amount=transaction.amount
+        )
         try:
             from app.modules.batches.services import enroll_student_in_batch_or_active
-            await enroll_student_in_batch_or_active(db, user_id=transaction.user_id, course_id=transaction.course_id, batch_id=transaction.batch_id, price_paid=transaction.amount)
+            await enroll_student_in_batch_or_active(
+                db, 
+                user_id=transaction.user_id, 
+                course_id=transaction.course_id, 
+                batch_id=transaction.batch_id, 
+                price_paid=transaction.amount
+            )
         except Exception as e:
             services.logger.error("admin_approve_batch_enroll_failed", error=str(e))
     except Exception as e:

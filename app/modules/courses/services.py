@@ -247,6 +247,7 @@ async def enroll_user(
     user_id: int,
     course_id: int,
     distributor_code: Optional[str] = None,
+    paid_amount: Optional[float] = None,
 ) -> CourseEnrollment:
     """Enroll a student in a course, optionally with a distributor referral code."""
     # Verify course exists and is published
@@ -255,14 +256,21 @@ async def enroll_user(
         raise HTTPException(status_code=404, detail="Course not found or not available")
 
     # Check if already enrolled
-    existing = await db.execute(
+    existing_res = await db.execute(
         select(CourseEnrollment).where(
             CourseEnrollment.user_id == user_id,
             CourseEnrollment.course_id == course_id,
         )
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Already enrolled in this course")
+    enrollment = existing_res.scalar_one_or_none()
+    
+    if enrollment:
+        if paid_amount is not None:
+            enrollment.price_paid = (enrollment.price_paid or 0) + paid_amount
+            await db.flush()
+            return enrollment
+        else:
+            raise HTTPException(status_code=409, detail="Already enrolled in this course")
 
     # Entrance Exam Prerequisite Check (Removed from flow)
     # from app.modules.exams.models import EntranceExam, ExamResult
@@ -389,7 +397,10 @@ async def enroll_user(
                         )
                         db.add(referral)
 
-    price_paid = max(original_price - discount_amount, 0.0)
+    if paid_amount is not None:
+        price_paid = paid_amount
+    else:
+        price_paid = max(original_price - discount_amount, 0.0)
 
     # Save offer redemption if offer was valid and active
     if offer and offer.is_active:

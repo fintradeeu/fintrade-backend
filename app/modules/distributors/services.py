@@ -342,9 +342,23 @@ async def list_referral_journeys(db: AsyncSession, distributor_id: Optional[int]
             row["course_progress"] = [{"title": course.title, "progress": en.progress_percent or 0} for en, course in enrollments]
             row["transactions"] = tx_by_user.get(user_id, [])
 
-            if enrollments and not row.get("course_title"):
-                row["course_id"] = enrollments[0][0].course_id
-                row["course_title"] = enrollments[0][1].title
+            total_price = 0.0
+            total_pending = 0.0
+            
+            if enrollments:
+                if not row.get("course_title"):
+                    row["course_id"] = enrollments[0][0].course_id
+                    row["course_title"] = enrollments[0][1].title
+                
+                for en, course in enrollments:
+                    expected_price = (course.price or 0.0) - (en.discount_applied or 0.0)
+                    paid = en.price_paid or 0.0
+                    total_price += course.price or 0.0
+                    if expected_price > paid:
+                        total_pending += (expected_price - paid)
+                        
+            row["total_course_price"] = total_price
+            row["pending_amount"] = total_pending
 
             kyc = kyc_by_user.get(user_id)
             row["kyc_done"] = bool(kyc)
@@ -449,27 +463,32 @@ async def manual_register_student(
     from app.modules.payments.services import create_offline_payment
     from app.modules.payments.schemas import OfflinePaymentRequest
     from app.utils.smtp_notifications import send_email
+    from app.config import settings
     
     # 1. Generate random password
     password = "".join(random.choices(string.ascii_letters + string.digits, k=10))
     
-    # 2. Check if user exists. If yes, we don't recreate them, but we still assign referral if not already assigned
+    # 2. Check if user exists. If yes, raise an error so the IB knows it's already taken.
     existing = await db.execute(select(User).where(User.email == data.email.strip().lower()))
     user = existing.scalar_one_or_none()
     
-    is_new_user = False
-    if not user:
-        # We need to register the user
-        user = await register_user(
-            db=db,
-            email=data.email,
-            full_name=data.full_name,
-            password=password,
-            phone=data.phone,
-            city=data.city,
-            role_name="student",
+    if user:
+        raise HTTPException(
+            status_code=409, 
+            detail="A student with this email is already registered. Please use a different email or have the student log in."
         )
-        is_new_user = True
+        
+    # We need to register the user
+    user = await register_user(
+        db=db,
+        email=data.email,
+        full_name=data.full_name,
+        password=password,
+        phone=data.phone,
+        city=data.city,
+        role_name="student",
+    )
+    is_new_user = True
         
     # 3. Add StudentReferral
     existing_ref = await db.execute(

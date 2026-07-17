@@ -73,6 +73,7 @@ class BatchResponse(BatchBase):
                     assigned.append({
                         "id": bc.course.id,
                         "title": bc.course.title,
+                        "price": bc.course.price,
                         "is_batch_only": bool(getattr(bc.course, "is_batch_only", False)),
                     })
             # Inject
