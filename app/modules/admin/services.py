@@ -522,6 +522,69 @@ async def get_admin_reports(db: AsyncSession) -> dict:
         select(func.count(PlacementResult.id)).where(PlacementResult.eligible == True)
     )).scalar() or 0
 
+    from datetime import datetime, timezone
+    from app.modules.exams.models import CourseExamResult
+    
+    now = datetime.now(timezone.utc)
+    revenue_trend = []
+    exam_pass_rate = []
+    
+    for i in range(5, -1, -1):
+        month = now.month - i
+        year = now.year
+        if month <= 0:
+            month += 12
+            year -= 1
+            
+        month_start = datetime(year, month, 1, tzinfo=timezone.utc)
+        
+        next_month = month + 1
+        next_year = year
+        if next_month > 12:
+            next_month = 1
+            next_year += 1
+        month_end = datetime(next_year, next_month, 1, tzinfo=timezone.utc)
+        
+        # Monthly Revenue
+        monthly_rev = (await db.execute(
+            select(func.coalesce(func.sum(PaymentTransaction.amount), 0.0))
+            .where(
+                PaymentTransaction.status == "success",
+                PaymentTransaction.updated_at >= month_start,
+                PaymentTransaction.updated_at < month_end
+            )
+        )).scalar() or 0.0
+        
+        revenue_trend.append({
+            "month": month_start.strftime("%b"),
+            "revenue": float(monthly_rev)
+        })
+        
+        # Exam pass rate
+        total_exams = (await db.execute(
+            select(func.count(CourseExamResult.id))
+            .where(
+                CourseExamResult.evaluated_at >= month_start,
+                CourseExamResult.evaluated_at < month_end
+            )
+        )).scalar() or 0
+        
+        passed_exams = (await db.execute(
+            select(func.count(CourseExamResult.id))
+            .where(
+                CourseExamResult.passed == True,
+                CourseExamResult.evaluated_at >= month_start,
+                CourseExamResult.evaluated_at < month_end
+            )
+        )).scalar() or 0
+        
+        pass_rate = (passed_exams / total_exams * 100) if total_exams > 0 else 0
+        
+        exam_pass_rate.append({
+            "month": month_start.strftime("%b"),
+            "passRate": round(pass_rate, 2)
+        })
+
     return {
         "total_students": total_students,
         "total_courses": total_courses,
@@ -530,6 +593,8 @@ async def get_admin_reports(db: AsyncSession) -> dict:
         "total_feedback": total_fb,
         "avg_feedback_rating": round(float(avg_rating), 2),
         "total_placements_eligible": eligible_count,
+        "revenue_trend": revenue_trend,
+        "exam_pass_rate": exam_pass_rate,
     }
 
 

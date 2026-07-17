@@ -1777,29 +1777,35 @@ async def list_franchise_ibs(
     db: AsyncSession = Depends(get_db),
 ):
     """List all Franchise IBs and their stats for admin."""
-    from sqlalchemy import select
-    from app.modules.franchise_ibs.models import FranchiseIB
-    from app.modules.auth.models import User
-    from app.modules.franchise_ibs.services import get_dashboard_stats
+    try:
+        from sqlalchemy import select
+        from app.modules.franchise_ibs.models import FranchiseIB
+        from app.modules.auth.models import User
+        from app.modules.franchise_ibs.services import get_dashboard_stats
 
-    stmt = select(FranchiseIB, User).join(User, FranchiseIB.user_id == User.id).order_by(FranchiseIB.id.desc())
-    result = await db.execute(stmt)
-    
-    data = []
-    for ib, user in result.all():
-        stats = await get_dashboard_stats(db, ib.id)
-        data.append({
-            "id": ib.id,
-            "user_id": user.id,
-            "user_name": user.full_name,
-            "user_email": user.email,
-            "phone": user.phone,
-            "city": user.city,
-            "referral_code": ib.referral_code,
-            "total_students_referred": stats.total_students,
-            "total_revenue_generated": stats.total_revenue,
-        })
-    return {"status": "success", "data": data}
+        stmt = select(FranchiseIB, User).join(User, FranchiseIB.user_id == User.id).order_by(FranchiseIB.id.desc())
+        result = await db.execute(stmt)
+        
+        data = []
+        for ib, user in result.all():
+            stats = await get_dashboard_stats(db, ib.id)
+            data.append({
+                "id": ib.id,
+                "user_id": user.id,
+                "user_name": user.full_name,
+                "user_email": user.email,
+                "phone": user.phone,
+                "city": user.city,
+                "referral_code": ib.referral_code,
+                "total_students_referred": stats.total_students,
+                "total_revenue_generated": stats.total_revenue,
+            })
+        return {"status": "success", "data": data}
+    except Exception as e:
+        import traceback
+        with open("admin_franchise_ibs_error.log", "w") as f:
+            f.write(traceback.format_exc())
+        raise e
 
 @router.get("/franchise-ibs/{id}/students")
 async def get_franchise_ib_students(

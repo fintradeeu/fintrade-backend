@@ -127,6 +127,8 @@ class AdminReportsResponse(BaseModel):
     total_feedback: int
     avg_feedback_rating: float
     total_placements_eligible: int
+    revenue_trend: List[dict] = []
+    exam_pass_rate: List[dict] = []
 
 
 class AdminCertificateItem(BaseModel):
