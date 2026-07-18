@@ -103,6 +103,7 @@ class MessageResponse(BaseModel):
 class ManualStudentRegisterRequest(BaseModel):
     full_name: str
     email: EmailStr
+    password: str
     phone: str
     city: Optional[str] = None
     course_id: Optional[int] = None

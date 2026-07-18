@@ -359,6 +359,14 @@ async def list_referral_journeys(db: AsyncSession, distributor_id: Optional[int]
                         
             row["total_course_price"] = total_price
             row["pending_amount"] = total_pending
+            
+            if enrollments:
+                if total_pending > 0:
+                    row["payment_status"] = "Partial Paid" if row.get("fees_paid") else "Unpaid"
+                else:
+                    row["payment_status"] = "Full Paid"
+            else:
+                row["payment_status"] = "Unpaid"
 
             kyc = kyc_by_user.get(user_id)
             row["kyc_done"] = bool(kyc)
@@ -465,8 +473,8 @@ async def manual_register_student(
     from app.utils.smtp_notifications import send_email
     from app.config import settings
     
-    # 1. Generate random password
-    password = "".join(random.choices(string.ascii_letters + string.digits, k=10))
+    # 1. Use the password provided by the franchisee/IB
+    password = data.password
     
     # 2. Check if user exists. If yes, raise an error so the IB knows it's already taken.
     existing = await db.execute(select(User).where(User.email == data.email.strip().lower()))
@@ -518,6 +526,16 @@ async def manual_register_student(
         )
         payment_response = await create_offline_payment(db, user, payment_req)
         
+        # Create CourseEnrollment so the student has access and dashboard works
+        enrollment = CourseEnrollment(
+            user_id=user.id,
+            course_id=data.course_id,
+            price_paid=data.amount,
+            distributor_id=distributor_id,
+            is_active=True
+        )
+        db.add(enrollment)
+
     await db.commit()
     
     # 5. Send Email to Student with credentials if new user

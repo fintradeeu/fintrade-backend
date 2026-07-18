@@ -14,7 +14,7 @@ from app.config import settings
 from app.utils.logger import get_logger
 from app.modules.payments.models import PaymentTransaction
 from app.modules.payments import schemas
-from app.modules.courses.models import Course
+from app.modules.courses.models import Course, CourseEnrollment
 from app.modules.auth.models import User
 from app.modules.courses.services import enroll_user
 from app.utils.smtp_notifications import send_email
@@ -99,10 +99,19 @@ async def initiate_payment(
     # The coupon was already validated server-side at POST /offers/apply.
     # At payment time we simply use the pre-validated discounted_price sent by the frontend.
     # We still sanity-check: it must be positive and less than the full course price.
-    if discounted_price is not None and 0 < discounted_price < course.price:
-        base_amount = discounted_price
+    # Check if student is already enrolled with a partial payment
+    enrollment = (await db.execute(select(CourseEnrollment).where(CourseEnrollment.user_id == user.id, CourseEnrollment.course_id == course_id))).scalar_one_or_none()
+    
+    if enrollment:
+        paid = enrollment.price_paid or 0.0
+        if paid >= course.price:
+            raise HTTPException(status_code=400, detail="You have already fully paid for this course.")
+        base_amount = course.price - paid
     else:
-        base_amount = course.price
+        if discounted_price is not None and 0 < discounted_price < course.price:
+            base_amount = discounted_price
+        else:
+            base_amount = course.price
 
     # Add 18% GST to the payment amount
     charge_amount = round(base_amount * 1.18, 2)
@@ -387,12 +396,31 @@ async def verify_razorpay_payment(
     transaction.updated_at = datetime.now(timezone.utc)
 
     try:
-        await enroll_user(
-            db,
-            user_id=transaction.user_id,
-            course_id=transaction.course_id,
-            distributor_code=transaction.coupon_code,
-        )
+        # Check if enrollment already exists and update price_paid if so
+        enrollment = (await db.execute(select(CourseEnrollment).where(
+            CourseEnrollment.user_id == transaction.user_id,
+            CourseEnrollment.course_id == transaction.course_id
+        ))).scalar_one_or_none()
+        
+        if enrollment:
+            current_paid = enrollment.price_paid or 0.0
+            enrollment.price_paid = current_paid + transaction.amount
+            logger.info("razorpay_course_balance_paid", txnid=txnid, new_price_paid=enrollment.price_paid)
+        else:
+            await enroll_user(
+                db,
+                user_id=transaction.user_id,
+                course_id=transaction.course_id,
+                distributor_code=transaction.coupon_code,
+            )
+            # Update the new enrollment with the price paid
+            new_enrollment = (await db.execute(select(CourseEnrollment).where(
+                CourseEnrollment.user_id == transaction.user_id,
+                CourseEnrollment.course_id == transaction.course_id
+            ))).scalar_one_or_none()
+            if new_enrollment:
+                new_enrollment.price_paid = transaction.amount
+                
         logger.info("razorpay_course_unlocked", txnid=txnid, user_id=transaction.user_id, course_id=transaction.course_id)
         try:
             from app.modules.batches.services import enroll_student_in_batch_or_active
@@ -473,13 +501,31 @@ async def process_webhook(db: AsyncSession, form_data: dict) -> dict:
 
     if status.lower() == "success":
         try:
-            # Grant course access
-            await enroll_user(
-                db,
-                user_id=transaction.user_id,
-                course_id=transaction.course_id,
-                distributor_code=transaction.coupon_code
-            )
+            # Check if enrollment already exists and update price_paid if so
+            enrollment = (await db.execute(select(CourseEnrollment).where(
+                CourseEnrollment.user_id == transaction.user_id,
+                CourseEnrollment.course_id == transaction.course_id
+            ))).scalar_one_or_none()
+            
+            if enrollment:
+                current_paid = enrollment.price_paid or 0.0
+                enrollment.price_paid = current_paid + transaction.amount
+                logger.info("easebuzz_course_balance_paid", txnid=txnid, new_price_paid=enrollment.price_paid)
+            else:
+                await enroll_user(
+                    db,
+                    user_id=transaction.user_id,
+                    course_id=transaction.course_id,
+                    distributor_code=transaction.coupon_code
+                )
+                # Update the new enrollment with the price paid
+                new_enrollment = (await db.execute(select(CourseEnrollment).where(
+                    CourseEnrollment.user_id == transaction.user_id,
+                    CourseEnrollment.course_id == transaction.course_id
+                ))).scalar_one_or_none()
+                if new_enrollment:
+                    new_enrollment.price_paid = transaction.amount
+                    
             logger.info("easebuzz_course_unlocked", txnid=txnid, user_id=transaction.user_id, course_id=transaction.course_id)
             try:
                 from app.modules.batches.services import enroll_student_in_batch_or_active

@@ -193,3 +193,21 @@ async def admin_monitor(
     db: AsyncSession = Depends(get_db),
 ):
     return await services.admin_monitor(db)
+
+
+@router.get("/admin/students/{user_id}/dashboard", response_model=schemas.DashboardResponse)
+async def admin_student_dashboard(
+    user_id: int,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """View a specific student's trading simulator dashboard (Admin only)."""
+    data = await services.get_dashboard(db, user_id)
+    return {
+        "account": schemas.SimulatorAccountResponse.model_validate(data["account"]),
+        "wallet": schemas.WalletResponse.model_validate(data["wallet"]),
+        "open_positions": [schemas.PositionResponse.model_validate(p) for p in data["open_positions"]],
+        "closed_trades": [schemas.TradeResponse.model_validate(t) for t in data["closed_trades"]],
+        "order_history": data["order_history"],
+        "performance": data["performance"],
+    }

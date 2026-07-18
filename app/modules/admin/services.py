@@ -377,15 +377,13 @@ async def update_user(db: AsyncSession, user_id: int, data: dict) -> User:
         if kyc:
             kyc.mobile = user.phone
             
-    # Check if user is a distributor and update distributor fields
-    is_distributor = any(role.name == "distributor" for role in user.roles)
-    if is_distributor:
-        dist_result = await db.execute(
-            select(Distributor).where(Distributor.user_id == user.id)
-        )
-        distributor = dist_result.scalar_one_or_none()
-        
-        if distributor:
+    # Check if user has a distributor profile and update distributor fields
+    dist_result = await db.execute(
+        select(Distributor).where(Distributor.user_id == user.id)
+    )
+    distributor = dist_result.scalar_one_or_none()
+    
+    if distributor:
             # Check referral code uniqueness if changed
             new_ref_code = data.get("referral_code")
             if new_ref_code and new_ref_code != distributor.referral_code:

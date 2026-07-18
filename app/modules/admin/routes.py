@@ -291,7 +291,7 @@ async def distributor_stats(
     return schemas.AdminDistributorStatsResponse(**stats)
 
 
-@router.get("/distributors/{distributor_id}/referrals", response_model=List[ReferralResponse])
+@router.get("/distributors/{distributor_id}/referrals", response_model=List[dict])
 async def list_distributor_referrals(
     distributor_id: int,
     admin: User = Depends(require_roles(["admin"])),

@@ -635,9 +635,18 @@ async def get_dashboard(db: AsyncSession, user_id: int) -> Dict[str, Any]:
 
 
 async def admin_monitor(db: AsyncSession) -> Dict[str, Any]:
-    accounts = (
-        await db.execute(select(SimulatorAccount).options(selectinload(SimulatorAccount.wallet)).order_by(SimulatorAccount.created_at.desc()))
-    ).scalars().all()
+    from app.modules.auth.models import User
+    
+    # Fetch accounts with joined user details
+    accounts_result = await db.execute(
+        select(SimulatorAccount, User.full_name, User.email)
+        .join(User, User.id == SimulatorAccount.user_id)
+        .options(selectinload(SimulatorAccount.wallet))
+        .order_by(SimulatorAccount.created_at.desc())
+    )
+    accounts_data = accounts_result.all()
+    accounts = [row[0] for row in accounts_data]
+    
     positions = (await db.execute(select(Position).order_by(Position.opened_at.desc()).limit(100))).scalars().all()
     trades = (await db.execute(select(Trade).order_by(Trade.opened_at.desc()).limit(100))).scalars().all()
     logs = (await db.execute(select(TradeLog).order_by(TradeLog.created_at.desc()).limit(100))).scalars().all()
@@ -649,7 +658,7 @@ async def admin_monitor(db: AsyncSession) -> Dict[str, Any]:
         "closed_positions": [{"id": t.id, "account_id": t.account_id, "symbol": t.symbol, "pnl": t.pnl, "closed_at": t.closed_at} for t in trades if t.status == "closed"],
         "wallet_balances": [{"account_id": a.id, "user_id": a.user_id, "balance": a.balance, "equity": a.equity, "status": a.challenge_status} for a in accounts],
         "student_rankings": sorted(
-            [{"account_id": a.id, "user_id": a.user_id, "equity": a.equity, "pnl": (a.equity or 0) - (a.initial_balance or 0)} for a in accounts],
+            [{"account_id": a.id, "user_id": a.user_id, "student_name": name, "student_email": email, "equity": a.equity, "pnl": (a.equity or 0) - (a.initial_balance or 0)} for a, name, email in accounts_data],
             key=lambda row: row["pnl"],
             reverse=True,
         ),
