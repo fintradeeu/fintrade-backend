@@ -299,21 +299,10 @@ async def list_distributor_referrals(
 ):
     """List referred students for a specific distributor (Super Admin only)."""
     require_super_admin_user(admin)
-    from app.modules.distributors import services as dist_services
+    from app.modules.distributors.services import list_referral_journeys
     
-    referrals = await dist_services.list_referrals(db, distributor_id)
-    return [
-        ReferralResponse(
-            id=r.id,
-            student_id=r.student_id,
-            student_name=r.student.full_name if r.student else None,
-            student_email=r.student.email if r.student else None,
-            course_id=r.course_id,
-            course_title=r.course.title if r.course else None,
-            created_at=r.created_at,
-        )
-        for r in referrals
-    ]
+    journeys = await list_referral_journeys(db, distributor_id=distributor_id)
+    return journeys
 
 
 # ── Course management ────────────────────────────────────────────────
