@@ -420,7 +420,7 @@ async def enroll_user(
                 discounted_price=price_paid,
             )
             db.add(redemption)
-            offer.current_redemptions += 1
+            offer.current_redemptions = (offer.current_redemptions or 0) + 1
 
     enrollment = CourseEnrollment(
         user_id=user_id,
