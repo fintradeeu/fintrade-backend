@@ -526,6 +526,23 @@ async def manual_register_student(
         )
         payment_response = await create_offline_payment(db, user, payment_req)
         
+        # Auto-approve the offline payment since it's manual admin/IB entry
+        txnid = payment_response.get("txnid")
+        from app.modules.payments.models import PaymentTransaction
+        transaction = (await db.execute(select(PaymentTransaction).where(PaymentTransaction.txnid == txnid))).scalar_one_or_none()
+        if transaction:
+            transaction.status = "success"
+            
+            # Send Invoice Email
+            from app.modules.payments.services import send_invoice_email
+            from app.modules.courses.models import Course
+            course = await db.get(Course, data.course_id)
+            if course:
+                try:
+                    await send_invoice_email(user, course, transaction)
+                except Exception as e:
+                    logger.error("manual_registration_invoice_failed", error=str(e))
+        
         # Create CourseEnrollment so the student has access and dashboard works
         enrollment = CourseEnrollment(
             user_id=user.id,

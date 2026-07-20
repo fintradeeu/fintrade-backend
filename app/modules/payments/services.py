@@ -103,10 +103,12 @@ async def initiate_payment(
     enrollment = (await db.execute(select(CourseEnrollment).where(CourseEnrollment.user_id == user.id, CourseEnrollment.course_id == course_id))).scalar_one_or_none()
     
     if enrollment:
+        discount = enrollment.discount_applied or 0.0
+        effective_price = course.price - discount
         paid = enrollment.price_paid or 0.0
-        if paid >= course.price:
+        if paid >= effective_price:
             raise HTTPException(status_code=400, detail="You have already fully paid for this course.")
-        base_amount = course.price - paid
+        base_amount = effective_price - paid
     else:
         if discounted_price is not None and 0 < discounted_price < course.price:
             base_amount = discounted_price
