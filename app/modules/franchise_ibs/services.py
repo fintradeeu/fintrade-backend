@@ -3,7 +3,7 @@
 import random
 import string
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from datetime import datetime, timezone
 
 from app.modules.franchise_ibs.models import FranchiseIB
