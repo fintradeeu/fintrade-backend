@@ -122,7 +122,20 @@ async def register_user(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A user with this email already exists",
-            )
+    if phone:
+        phone_existing = await db.execute(select(User).where(User.phone == phone))
+        phone_user = phone_existing.scalar_one_or_none()
+        if phone_user:
+            if phone_user.is_verified:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="A user with this phone number already exists",
+                )
+            else:
+                # Delete unverified user holding this phone number
+                logger.info("deleting_unverified_existing_user_by_phone", user_id=phone_user.id, phone=phone)
+                await db.delete(phone_user)
+                await db.flush()
 
     role = await get_or_create_role(db, role_name)
 
