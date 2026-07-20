@@ -122,6 +122,8 @@ async def register_user(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A user with this email already exists",
+            )
+            
     if phone:
         phone_existing = await db.execute(select(User).where(User.phone == phone))
         phone_user = phone_existing.scalar_one_or_none()
