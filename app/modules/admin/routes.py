@@ -312,9 +312,12 @@ async def admin_list_courses(
     db: AsyncSession = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, le=100),
+    exclude_batch_only: bool = Query(True, description="Hide batch-only courses"),
 ):
     """List all courses including drafts (admin/faculty only)."""
-    courses = await course_services.list_courses(db, skip=skip, limit=limit, published_only=False)
+    courses = await course_services.list_courses(
+        db, skip=skip, limit=limit, published_only=False, exclude_batch_only=exclude_batch_only
+    )
     return [course_schemas.CourseListResponse.model_validate(c) for c in courses]
 
 @router.post("/courses", response_model=course_schemas.CourseDetailResponse, status_code=201)
@@ -1792,9 +1795,15 @@ async def list_franchise_ibs(
         return {"status": "success", "data": data}
     except Exception as e:
         import traceback
-        with open("admin_franchise_ibs_error.log", "w") as f:
-            f.write(traceback.format_exc())
-        raise e
+        error_msg = traceback.format_exc()
+        try:
+            from app.utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.error(f"Franchise IBs Admin Error: {error_msg}")
+        except:
+            pass
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"Error in /admin/franchise-ibs: {error_msg}")
 
 @router.get("/franchise-ibs/{id}/students")
 async def get_franchise_ib_students(

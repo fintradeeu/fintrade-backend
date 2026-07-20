@@ -512,13 +512,23 @@ async def manual_register_student(
         db.add(referral)
         await db.flush()
         
-    # 4. Handle Offline Payment if course_id is provided and payment_mode is offline
     payment_response = None
     if data.course_id and data.payment_mode in ["cash", "cheque"]:
+        from app.modules.courses.models import Course
+        course = await db.get(Course, data.course_id)
+        if course and data.amount > (course.price or 0.0):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Highest value added based on course price. Cannot add higher value than course price (₹{course.price or 0.0})."
+            )
+
+        # Add 18% GST to the entered amount
+        charge_amount = round(data.amount * 1.18, 2)
+
         payment_req = OfflinePaymentRequest(
             course_id=data.course_id,
             payment_mode=data.payment_mode,
-            amount=data.amount,
+            amount=charge_amount,
             reference_number=data.reference_number,
             cheque_image_url=data.cheque_image_url,
             remarks=data.remarks,
@@ -547,7 +557,7 @@ async def manual_register_student(
         enrollment = CourseEnrollment(
             user_id=user.id,
             course_id=data.course_id,
-            price_paid=data.amount,
+            price_paid=charge_amount,
             distributor_id=distributor_id,
             is_active=True
         )
