@@ -368,7 +368,9 @@ async def create_offline_payment_route(
     db: AsyncSession = Depends(get_db)
 ):
     """Submit a cash or cheque payment."""
-    return await services.create_offline_payment(db, user=current_user, data=body)
+    res = await services.create_offline_payment(db, user=current_user, data=body)
+    await db.commit()
+    return res
 
 
 @router.put("/admin/{id}/approve")

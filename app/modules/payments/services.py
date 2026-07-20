@@ -687,6 +687,6 @@ async def create_offline_payment(
         remarks=data.remarks
     )
     db.add(transaction)
-    await db.commit()
+    await db.flush()
     return {"status": "ok", "txnid": txnid, "message": "Offline payment submitted successfully."}
 
