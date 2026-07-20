@@ -560,13 +560,13 @@ async def send_invoice_email(user: User, course: Course, transaction: PaymentTra
     """Send an invoice email for the successful purchase."""
     original_price = course.price or 0.0
     total_paid = transaction.amount or 0.0
-    subtotal = round(total_paid / 1.18, 2)
-    gst_amount = round(total_paid - subtotal, 2)
+    subtotal = round(float(total_paid) / 1.18, 2)
+    gst_amount = round(float(total_paid) - subtotal, 2)
     
     # Calculate discount if coupon was applied
     discount_amount = 0.0
     if transaction.coupon_code:
-        discount_amount = max(round(original_price - subtotal, 2), 0.0)
+        discount_amount = max(round(float(original_price) - subtotal, 2), 0.0)
 
     subject = f"Invoice for {course.title} - FinTrade LMS"
     

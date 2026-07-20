@@ -156,10 +156,16 @@ import traceback as _tb
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    error_detail = str(exc)
-    tb = _tb.format_exc()
-    import logging
-    logging.getLogger("uvicorn.error").error(f"Unhandled error on {request.method} {request.url}: {error_detail}\n{tb}")
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+    if isinstance(exc, StarletteHTTPException):
+        error_detail = exc.detail
+        status_code = exc.status_code
+    else:
+        error_detail = str(exc)
+        status_code = 500
+        tb = _tb.format_exc()
+        import logging
+        logging.getLogger("uvicorn.error").error(f"Unhandled error on {request.method} {request.url}: {error_detail}\n{tb}")
     
     headers = {}
     origin = request.headers.get("origin")
@@ -171,12 +177,14 @@ async def global_exception_handler(request: Request, exc: Exception):
             headers["Access-Control-Allow-Headers"] = "*"
             
     public_detail = (
-        f"Internal Server Error: {error_detail}"
-        if settings.DEBUG
-        else "An unexpected server error occurred. Please try again."
+        error_detail if status_code != 500 else (
+            f"Internal Server Error: {error_detail}"
+            if settings.DEBUG
+            else "An unexpected server error occurred. Please try again."
+        )
     )
     return JSONResponse(
-        status_code=500,
+        status_code=status_code,
         content={"detail": public_detail},
         headers=headers,
     )
