@@ -235,6 +235,46 @@ async def delete_user(
     return schemas.MessageResponse(message="User deleted successfully")
 
 
+@router.put("/users/{user_id}/enrollments/{enrollment_id}/partial-payment", response_model=schemas.MessageResponse)
+async def update_partial_payment(
+    user_id: int,
+    enrollment_id: int,
+    body: schemas.UpdatePartialPaymentRequest,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update partial payment access for a student enrollment."""
+    from sqlalchemy import select
+    from app.modules.courses.models import CourseEnrollment
+    from app.modules.batches.models import StudentBatchEnrollment
+    from fastapi import HTTPException
+    
+    # Try course enrollment first
+    course_enr = await db.execute(
+        select(CourseEnrollment).where(CourseEnrollment.id == enrollment_id, CourseEnrollment.user_id == user_id)
+    )
+    course_enr_obj = course_enr.scalar_one_or_none()
+    
+    batch_enr_obj = None
+    if not course_enr_obj:
+        # Try batch enrollment
+        batch_enr = await db.execute(
+            select(StudentBatchEnrollment).where(StudentBatchEnrollment.id == enrollment_id, StudentBatchEnrollment.user_id == user_id)
+        )
+        batch_enr_obj = batch_enr.scalar_one_or_none()
+    
+    if not course_enr_obj and not batch_enr_obj:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    enr_obj = course_enr_obj or batch_enr_obj
+    enr_obj.payment_status = body.payment_status
+    enr_obj.allowed_modules = body.allowed_modules
+    enr_obj.payment_due_date = body.payment_due_date
+    
+    await db.commit()
+    return schemas.MessageResponse(message="Partial payment access updated successfully")
+
+
 # ── Distributor management ──────────────────────────────────────────
 @router.get("/distributors", response_model=List[schemas.AdminDistributorResponse])
 async def list_distributors(

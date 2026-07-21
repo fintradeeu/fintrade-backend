@@ -28,6 +28,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ── JWT ──────────────────────────────────────────────────────────────
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -91,6 +92,19 @@ async def get_current_user(
     if user is None:
         raise HTTPException(status_code=401, detail="User not found or deactivated")
     return user
+
+
+async def get_current_user_optional(
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the User ORM object if token is valid, else None."""
+    if not token:
+        return None
+    try:
+        return await get_current_user(token=token, db=db)
+    except HTTPException:
+        return None
 
 
 def require_roles(allowed_roles: List[str]):

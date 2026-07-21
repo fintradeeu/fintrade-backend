@@ -178,6 +178,7 @@ class BatchModuleResponse(BaseModel):
     description: Optional[str] = None
     order: int
     is_published: bool
+    is_locked: bool = False
     lessons: List[BatchLessonResponse] = []
     created_at: datetime
 

@@ -158,3 +158,8 @@ class AdminSimulatorResponse(BaseModel):
     total_accounts: int
     top_performers: List[AdminSimulatorItem]
 
+
+class UpdatePartialPaymentRequest(BaseModel):
+    payment_status: str = Field(..., description="Either 'full' or 'partial'")
+    allowed_modules: Optional[List[int]] = None
+    payment_due_date: Optional[datetime] = None

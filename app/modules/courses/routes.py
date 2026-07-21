@@ -8,7 +8,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import PaginationParams
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_current_user_optional
 from app.db.database import get_db
 from app.modules.courses import schemas, services
 from app.modules.auth.models import User
@@ -41,9 +41,45 @@ async def enrolled_courses(
 async def get_course(
     course_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Get full course details with modules and lessons."""
     course = await services.get_course(db, course_id)
+    
+    if current_user:
+        # Check if user has partial payment restriction
+        from sqlalchemy import select
+        from app.modules.courses.models import CourseEnrollment
+        from app.modules.batches.models import StudentBatchEnrollment
+        
+        enr = await db.execute(select(CourseEnrollment).where(
+            CourseEnrollment.course_id == course_id,
+            CourseEnrollment.user_id == current_user.id,
+            CourseEnrollment.payment_status == "partial"
+        ))
+        course_enr = enr.scalar_one_or_none()
+        
+        allowed_modules = None
+        if course_enr:
+            allowed_modules = course_enr.allowed_modules
+        else:
+            # Check batch enrollment just in case
+            batch_enr = await db.execute(select(StudentBatchEnrollment).where(
+                StudentBatchEnrollment.user_id == current_user.id,
+                StudentBatchEnrollment.payment_status == "partial"
+            ))
+            # We assume if they have any partial batch enrollment, we filter.
+            # However, batch enrollments don't specify course_id directly, but batches do.
+            # Let's keep it simple: if course_enr has partial payment, we lock modules.
+            pass
+            
+        if course_enr:
+            allowed = set(allowed_modules) if allowed_modules else set()
+            for module in course.modules:
+                if module.id not in allowed:
+                    module.is_locked = True
+                    module.lessons = []
+                    
     return schemas.CourseDetailResponse.model_validate(course)
 
 

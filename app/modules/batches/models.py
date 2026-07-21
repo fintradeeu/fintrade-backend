@@ -141,6 +141,9 @@ class StudentBatchEnrollment(Base):
     price_paid = Column(Float, default=0.0, nullable=False)
     discount_applied = Column(Float, default=0.0, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    payment_status = Column(String(50), default="full", nullable=False)
+    allowed_modules = Column(JSON, nullable=True)
+    payment_due_date = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     batch = relationship("Batch", back_populates="enrollments")

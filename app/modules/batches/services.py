@@ -574,7 +574,23 @@ async def list_student_batch_modules(db: AsyncSession, user_id: int, course_id: 
     if not assigned_res.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Course is not assigned to your batch.")
 
-    return await list_batch_modules(db, batch.id, course_id)
+    from app.modules.batches.models import StudentBatchEnrollment
+    enr_stmt = select(StudentBatchEnrollment).where(
+        StudentBatchEnrollment.user_id == user_id,
+        StudentBatchEnrollment.batch_id == batch.id
+    )
+    enr_res = await db.execute(enr_stmt)
+    enr = enr_res.scalar_one_or_none()
+
+    modules = await list_batch_modules(db, batch.id, course_id)
+    if enr and enr.payment_status == "partial":
+        allowed = set(enr.allowed_modules) if enr.allowed_modules else set()
+        for mod in modules:
+            if mod.id not in allowed:
+                mod.is_locked = True
+                mod.lessons = []
+    
+    return modules
 
 async def create_batch_module(db: AsyncSession, data: dict) -> BatchModule:
     module = BatchModule(**data)

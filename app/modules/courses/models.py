@@ -106,6 +106,9 @@ class CourseEnrollment(Base):
     discount_applied = Column(Float, default=0.0)
     price_paid = Column(Float, nullable=True)
     distributor_id = Column(Integer, ForeignKey("distributors.id", ondelete="SET NULL"), nullable=True)
+    payment_status = Column(String(50), default="full", nullable=False)
+    allowed_modules = Column(JSON, nullable=True)
+    payment_due_date = Column(DateTime(timezone=True), nullable=True)
 
     # relationships
     course = relationship("Course", back_populates="enrollments", lazy="selectin")

@@ -76,6 +76,7 @@ class ModuleResponse(BaseModel):
     description: Optional[str] = None
     order: int
     is_published: bool
+    is_locked: bool = False
     lessons: List[LessonResponse] = []
     created_at: datetime
 
@@ -171,6 +172,9 @@ class EnrollmentResponse(BaseModel):
     coupon_title: Optional[str] = None
     payment_amount: Optional[float] = None
     payment_txnid: Optional[str] = None
+    payment_status: str = "full"
+    allowed_modules: Optional[List[int]] = None
+    payment_due_date: Optional[datetime] = None
     course: CourseListResponse
 
     model_config = {"from_attributes": True}

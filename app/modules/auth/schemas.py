@@ -136,6 +136,9 @@ class UserResponse(BaseModel):
                             "coupon_title": coupon_title,
                             "payment_txnid": getattr(e, "payment_txnid", None),
                             "payment_mode": getattr(e, "payment_mode", None),
+                            "payment_status": getattr(e, "payment_status", "full"),
+                            "allowed_modules": getattr(e, "allowed_modules", None),
+                            "payment_due_date": e.payment_due_date.isoformat() if getattr(e, "payment_due_date", None) else None,
                             "enrolled_at": e.enrolled_at.isoformat() if e.enrolled_at else None,
                             "is_active": e.is_active
                         })
