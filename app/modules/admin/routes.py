@@ -68,8 +68,22 @@ async def list_purchased_students(
         for user in users
         if not any(role.name == "distributor" for role in user.roles)
     ]
+    # Fetch all StudentReferral records to map user_id -> franchise_ib_id
+    from app.modules.distributors.models import StudentReferral
+    from sqlalchemy import select
+    
+    stmt = select(StudentReferral.student_id, StudentReferral.franchise_ib_id)
+    result = await db.execute(stmt)
+    student_to_ib = {row[0]: row[1] for row in result.all()}
+    
+    response_users = []
+    for u in users:
+        u_dict = UserResponse.model_validate(u).model_dump()
+        u_dict["franchise_ib_id"] = student_to_ib.get(u.id)
+        response_users.append(u_dict)
+        
     return schemas.UserListResponse(
-        users=[UserResponse.model_validate(u) for u in users],
+        users=response_users,
         total=len(users) if users != data["users"] else data["total"],
     )
 
@@ -1789,8 +1803,10 @@ async def list_franchise_ibs(
                 "phone": user.phone,
                 "city": user.city,
                 "referral_code": ib.referral_code,
+                "commission_percentage": ib.commission_percentage,
                 "total_students_referred": stats.total_students,
                 "total_revenue_generated": stats.total_revenue,
+                "commission_revenue": stats.total_revenue * (ib.commission_percentage / 100.0) if ib.commission_percentage is not None else stats.total_revenue,
             })
         return {"status": "success", "data": data}
     except Exception as e:

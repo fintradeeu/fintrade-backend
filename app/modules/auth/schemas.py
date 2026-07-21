@@ -103,6 +103,7 @@ class UserResponse(BaseModel):
     created_at: datetime
     enrolled_courses: List[dict] = []
     login_history: List[dict] = []
+    franchise_ib_id: Optional[int] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -178,7 +179,8 @@ class UserResponse(BaseModel):
                 "is_admin_created": getattr(data, "created_by", None) is not None,
                 "created_at": data.created_at,
                 "enrolled_courses": enrolled,
-                "login_history": history
+                "login_history": history,
+                "franchise_ib_id": getattr(data, "franchise_ib_id", None) if not isinstance(data, dict) else data.get("franchise_ib_id")
             }
             if "roles" in data.__dict__:
                 res["roles"] = data.roles

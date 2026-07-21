@@ -110,7 +110,7 @@ async def initiate_payment(
             raise HTTPException(status_code=400, detail="You have already fully paid for this course.")
         base_amount = effective_price - paid
     else:
-        if discounted_price is not None and 0 < discounted_price < course.price:
+        if discounted_price is not None and 0 <= discounted_price < course.price:
             base_amount = discounted_price
         else:
             base_amount = course.price
@@ -120,6 +120,12 @@ async def initiate_payment(
 
     logger.info("payment_charge_amount", course_id=course_id, course_price=course.price,
                 coupon_code=coupon_code, discounted_price=discounted_price, charge_amount=charge_amount)
+
+    if charge_amount == 0.0:
+        raise HTTPException(
+            status_code=400, 
+            detail="Payment amount is 0. Please use the direct enrollment process for 100% discount."
+        )
 
     # Entrance Exam Prerequisite Check (Removed from flow)
     # from app.modules.exams.models import EntranceExam, ExamResult

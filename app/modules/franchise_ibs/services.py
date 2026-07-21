@@ -68,6 +68,7 @@ async def create_franchise_ib(db: AsyncSession, data: schemas.FranchiseIBCreate,
         bank_name=data.bank_name,
         bank_account_number=data.bank_account_number,
         bank_ifsc_code=data.bank_ifsc_code,
+        commission_percentage=data.commission_percentage if data.commission_percentage is not None else 100.0,
         self_registered="no" if created_by_admin else "yes",
         verification_status="approved" if created_by_admin else "pending",
     )
@@ -109,7 +110,15 @@ async def get_dashboard_stats(db: AsyncSession, franchise_id: int) -> schemas.Fr
     row = result.first()
     
     total_enrollments = row[0] if row and row[0] else 0
-    total_revenue = float(row[1]) if row and row[1] else 0.0
+    raw_revenue = float(row[1]) if row and row[1] else 0.0
+
+    fib_stmt = select(FranchiseIB.referral_code, FranchiseIB.commission_percentage).where(FranchiseIB.id == franchise_id)
+    fib_res = await db.execute(fib_stmt)
+    fib_data = fib_res.first()
+    referral_code = fib_data[0] if fib_data else None
+    commission_pct = fib_data[1] if fib_data and fib_data[1] is not None else 100.0
+
+    total_revenue = raw_revenue * (commission_pct / 100.0)
 
     # Chart data (Mocked slightly for demonstration, can be expanded to group by date)
     revenue_chart_data = [
@@ -125,8 +134,7 @@ async def get_dashboard_stats(db: AsyncSession, franchise_id: int) -> schemas.Fr
         {"name": "Jul", "value": total_enrollments},
     ]
 
-    fib_stmt = select(FranchiseIB.referral_code).where(FranchiseIB.id == franchise_id)
-    referral_code = (await db.execute(fib_stmt)).scalar()
+    # Chart data is below
 
     return schemas.FranchiseIBDashboardStats(
         referral_code=referral_code,

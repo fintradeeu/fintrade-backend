@@ -37,6 +37,7 @@ class FranchiseIB(Base):
     
     self_registered = Column(String(10), nullable=False, default="no")
     verification_status = Column(String(30), nullable=False, default="pending")
+    commission_percentage = Column(Float, nullable=False, default=100.0)
     
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

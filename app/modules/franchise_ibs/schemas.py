@@ -18,6 +18,7 @@ class FranchiseIBCreate(BaseModel):
     bank_name: Optional[str] = None
     bank_account_number: Optional[str] = None
     bank_ifsc_code: Optional[str] = None
+    commission_percentage: Optional[float] = 100.0
 
 
 class FranchiseIBResponse(BaseModel):
@@ -34,6 +35,7 @@ class FranchiseIBResponse(BaseModel):
     bank_name: Optional[str] = None
     bank_account_number: Optional[str] = None
     bank_ifsc_code: Optional[str] = None
+    commission_percentage: float
 
     class Config:
         from_attributes = True
