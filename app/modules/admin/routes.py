@@ -270,6 +270,8 @@ async def update_partial_payment(
     enr_obj.payment_status = body.payment_status
     enr_obj.allowed_modules = body.allowed_modules
     enr_obj.payment_due_date = body.payment_due_date
+    if body.access_blocked is not None:
+        enr_obj.access_blocked = body.access_blocked
     
     await db.commit()
     return schemas.MessageResponse(message="Partial payment access updated successfully")

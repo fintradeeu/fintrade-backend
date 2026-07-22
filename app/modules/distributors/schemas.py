@@ -113,3 +113,9 @@ class ManualStudentRegisterRequest(BaseModel):
     reference_number: Optional[str] = None
     cheque_image_url: Optional[str] = None
     remarks: Optional[str] = None
+    bank_name: Optional[str] = None
+    branch_name: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    payment_date: Optional[datetime] = None
+    # Deadline for remaining balance payment (when partial payment is made)
+    payment_due_date: Optional[datetime] = None

@@ -109,6 +109,7 @@ class CourseEnrollment(Base):
     payment_status = Column(String(50), default="full", nullable=False)
     allowed_modules = Column(JSON, nullable=True)
     payment_due_date = Column(DateTime(timezone=True), nullable=True)
+    access_blocked = Column(Boolean, default=False, nullable=False)  # Superadmin can suspend access
 
     # relationships
     course = relationship("Course", back_populates="enrollments", lazy="selectin")

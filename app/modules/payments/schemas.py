@@ -46,7 +46,7 @@ class OfflinePaymentRequest(BaseModel):
     payment_mode: str # 'cash' or 'cheque'
     amount: float
     reference_number: Optional[str] = None
-    payment_date: Optional[str] = None
+    payment_date: Optional[datetime] = None
     bank_name: Optional[str] = None
     branch_name: Optional[str] = None
     account_holder_name: Optional[str] = None

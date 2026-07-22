@@ -533,6 +533,10 @@ async def manual_register_student(
             cheque_image_url=data.cheque_image_url,
             remarks=data.remarks,
             batch_id=data.batch_id,
+            bank_name=data.bank_name,
+            branch_name=data.branch_name,
+            account_holder_name=data.account_holder_name,
+            payment_date=data.payment_date,
         )
         payment_response = await create_offline_payment(db, user, payment_req)
         
@@ -553,13 +557,19 @@ async def manual_register_student(
                 except Exception as e:
                     logger.error("manual_registration_invoice_failed", error=str(e))
         
+        # Determine if payment is partial or full
+        is_partial = data.amount < (course.price or 0.0) if course else False
+        payment_status_val = "partial" if is_partial else "full"
+
         # Create CourseEnrollment so the student has access and dashboard works
         enrollment = CourseEnrollment(
             user_id=user.id,
             course_id=data.course_id,
             price_paid=charge_amount,
             distributor_id=distributor_id,
-            is_active=True
+            is_active=True,
+            payment_status=payment_status_val,
+            payment_due_date=data.payment_due_date if is_partial else None,
         )
         db.add(enrollment)
 
