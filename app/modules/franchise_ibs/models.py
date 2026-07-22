@@ -48,3 +48,41 @@ class FranchiseIB(Base):
 
     def __repr__(self):
         return f"<FranchiseIB {self.referral_code}>"
+
+
+class FranchiseIBWallet(Base):
+    __tablename__ = "franchise_ib_wallets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    franchise_ib_id = Column(Integer, ForeignKey("franchise_ibs.id", ondelete="CASCADE"), nullable=False, unique=True)
+    available_balance = Column(Float, default=0.0, nullable=False)
+    total_earned = Column(Float, default=0.0, nullable=False)
+    total_withdrawn = Column(Float, default=0.0, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    franchise_ib = relationship("FranchiseIB")
+
+
+class FranchiseIBWithdrawalRequest(Base):
+    __tablename__ = "franchise_ib_withdrawal_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    franchise_ib_id = Column(Integer, ForeignKey("franchise_ibs.id", ondelete="CASCADE"), nullable=False)
+    amount = Column(Float, nullable=False)
+    withdrawal_method = Column(String(30), nullable=False)  # bank, upi
+    account_holder_name = Column(String(255), nullable=True)
+    bank_name = Column(String(255), nullable=True)
+    account_number = Column(String(100), nullable=True)
+    ifsc_code = Column(String(50), nullable=True)
+    upi_id = Column(String(255), nullable=True)
+    qr_code_image = Column(Text, nullable=True)
+    status = Column(String(30), default="pending", nullable=False)  # pending, approved, paid, rejected
+    requested_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+    admin_remarks = Column(Text, nullable=True)
+    payment_proof = Column(Text, nullable=True)
+    utr_number = Column(String(100), nullable=True)
+    transaction_reference = Column(String(150), nullable=True)
+
+    franchise_ib = relationship("FranchiseIB")

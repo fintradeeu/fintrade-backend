@@ -158,3 +158,162 @@ async def update_franchise_student(
     return MessageResponse(message="Student details updated successfully")
 
 
+# ── Franchise IB Wallet & Withdrawal Routes ─────────────────────────
+
+from fastapi import File, Form, UploadFile
+from typing import Optional, List
+import os
+from uuid import uuid4
+
+def withdrawal_resp(req) -> schemas.FranchiseIBWithdrawalResponse:
+    fib_name = None
+    if hasattr(req, "franchise_ib") and req.franchise_ib and req.franchise_ib.user:
+        fib_name = req.franchise_ib.user.full_name
+    return schemas.FranchiseIBWithdrawalResponse(
+        id=req.id,
+        franchise_ib_id=req.franchise_ib_id,
+        franchise_ib_name=fib_name,
+        amount=req.amount,
+        withdrawal_method=req.withdrawal_method,
+        account_holder_name=req.account_holder_name,
+        bank_name=req.bank_name,
+        account_number=req.account_number,
+        ifsc_code=req.ifsc_code,
+        upi_id=req.upi_id,
+        qr_code_image=req.qr_code_image,
+        status=req.status,
+        requested_at=req.requested_at,
+        approved_at=req.approved_at,
+        paid_at=req.paid_at,
+        admin_remarks=req.admin_remarks,
+        payment_proof=req.payment_proof,
+        utr_number=req.utr_number,
+        transaction_reference=req.transaction_reference,
+    )
+
+
+@router.get("/wallet", response_model=schemas.FranchiseIBWalletSummary)
+async def get_franchise_wallet(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    profile = await services.get_franchise_ib_by_user(db, current_user.id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Franchise IB profile not found")
+    summary = await services.get_franchise_wallet_summary(db, profile.id)
+    return summary
+
+
+@router.get("/withdrawals", response_model=List[schemas.FranchiseIBWithdrawalResponse])
+async def get_franchise_withdrawals(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    profile = await services.get_franchise_ib_by_user(db, current_user.id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Franchise IB profile not found")
+    reqs = await services.list_franchise_withdrawals(db, profile.id)
+    return [withdrawal_resp(r) for r in reqs]
+
+
+@router.post("/withdrawals", response_model=schemas.FranchiseIBWithdrawalResponse)
+async def create_franchise_withdrawal(
+    body: schemas.FranchiseIBWithdrawalCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    profile = await services.get_franchise_ib_by_user(db, current_user.id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Franchise IB profile not found")
+    req = await services.create_franchise_withdrawal(db, profile.id, body.model_dump())
+    await db.commit()
+    reqs = await services.list_franchise_withdrawals(db, profile.id)
+    return withdrawal_resp(next(r for r in reqs if r.id == req.id))
+
+
+@router.post("/withdrawals/qr-upload")
+async def upload_franchise_qr(
+    file: UploadFile = File(...),
+    _current_user: User = Depends(get_current_user),
+):
+    ext = os.path.splitext(file.filename or "")[1].lower().lstrip(".")
+    if ext not in {"jpg", "jpeg", "png"}:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Allowed: jpg, jpeg, png")
+    upload_dir = os.path.join("uploads", "withdrawal_qr")
+    os.makedirs(upload_dir, exist_ok=True)
+    filename = f"{uuid4().hex}.{ext}"
+    path = os.path.join(upload_dir, filename)
+    content = await file.read()
+    with open(path, "wb") as out:
+        out.write(content)
+    return {"url": f"/{path.replace(os.sep, '/')}"}
+
+
+# ── Admin Franchise IB Withdrawal Management ───────────────────────
+
+@router.get("/admin/withdrawals", response_model=List[schemas.FranchiseIBWithdrawalResponse])
+async def admin_list_franchise_withdrawals(
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    reqs = await services.list_franchise_withdrawals(db, franchise_ib_id=None)
+    return [withdrawal_resp(r) for r in reqs]
+
+
+@router.post("/admin/withdrawals/{request_id}/approve", response_model=schemas.FranchiseIBWithdrawalResponse)
+async def admin_approve_franchise_withdrawal(
+    request_id: int,
+    remarks: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    req = await services.approve_franchise_withdrawal(db, request_id, remarks)
+    await db.commit()
+    reqs = await services.list_franchise_withdrawals(db, None)
+    return withdrawal_resp(next(r for r in reqs if r.id == req.id))
+
+
+@router.post("/admin/withdrawals/{request_id}/reject", response_model=schemas.FranchiseIBWithdrawalResponse)
+async def admin_reject_franchise_withdrawal(
+    request_id: int,
+    remarks: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    req = await services.reject_franchise_withdrawal(db, request_id, remarks)
+    await db.commit()
+    reqs = await services.list_franchise_withdrawals(db, None)
+    return withdrawal_resp(next(r for r in reqs if r.id == req.id))
+
+
+@router.post("/admin/withdrawals/{request_id}/mark-paid", response_model=schemas.FranchiseIBWithdrawalResponse)
+async def admin_mark_paid_franchise_withdrawal(
+    request_id: int,
+    utr_number: Optional[str] = Form(None),
+    transaction_reference: Optional[str] = Form(None),
+    proof_file: Optional[UploadFile] = File(None),
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    proof_path = None
+    if proof_file:
+        ext = os.path.splitext(proof_file.filename or "")[1].lower().lstrip(".")
+        if ext not in {"pdf", "jpg", "jpeg", "png"}:
+            raise HTTPException(status_code=400, detail="Unsupported file type for proof")
+        upload_dir = os.path.join("uploads", "commission_proofs")
+        os.makedirs(upload_dir, exist_ok=True)
+        filename = f"{uuid4().hex}.{ext}"
+        path = os.path.join(upload_dir, filename)
+        content = await proof_file.read()
+        with open(path, "wb") as out:
+            out.write(content)
+        proof_path = f"/{path.replace(os.sep, '/')}"
+
+    req = await services.mark_paid_franchise_withdrawal(
+        db, request_id, proof_path, utr_number, transaction_reference
+    )
+    await db.commit()
+    reqs = await services.list_franchise_withdrawals(db, None)
+    return withdrawal_resp(next(r for r in reqs if r.id == req.id))
+
+

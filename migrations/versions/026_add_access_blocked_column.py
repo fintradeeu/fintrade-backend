@@ -13,17 +13,13 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '026'
-down_revision: Union[str, None] = '025'
+down_revision: Union[str, None] = '025_make_distributor_id_nullable'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add access_blocked column to course_enrollments
-    # Superadmin can suspend student access if payment deadline is missed
-    op.add_column('course_enrollments', sa.Column(
-        'access_blocked', sa.Boolean(), nullable=False, server_default='false'
-    ))
+    op.execute("ALTER TABLE course_enrollments ADD COLUMN IF NOT EXISTS access_blocked BOOLEAN NOT NULL DEFAULT false")
 
 
 def downgrade() -> None:

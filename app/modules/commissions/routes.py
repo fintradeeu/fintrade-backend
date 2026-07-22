@@ -242,6 +242,16 @@ async def upload_qr_code(
     return {"url": await save_upload(file, "withdrawal_qr", {"jpg", "jpeg", "png"})}
 
 
+@router.get("/admin/commissions/revenue/ib-wise")
+async def ib_wise_revenue(
+    admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return per-Franchise-IB revenue breakdown for superadmin."""
+    require_super_admin(admin)
+    return await services.ib_wise_revenue_report(db)
+
+
 @router.get("/distributor/withdrawals", response_model=List[schemas.WithdrawalResponse])
 async def ib_withdrawals(
     current_user: User = Depends(require_roles(["distributor"])),

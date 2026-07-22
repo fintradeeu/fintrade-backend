@@ -106,6 +106,7 @@ async def lifespan(app: FastAPI):
                 await _repair_certificates_schema_async(session)
                 await _repair_batches_schema_async(session)
                 await _repair_doubts_schema_async(session)
+                await _repair_franchise_ib_wallets_schema_async(session)
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Schema auto-repair skipped or failed: {e}")
@@ -696,6 +697,59 @@ async def _repair_doubts_schema_async(db):
                 import logging
                 logging.getLogger(__name__).warning(
                     f"Doubts schema repair statement failed: {statement.strip()[:60]}... error: {e}"
+                )
+
+
+async def _repair_franchise_ib_wallets_schema_async(db):
+    """Create franchise_ib_wallets and franchise_ib_withdrawal_requests tables if missing."""
+    import sqlalchemy as sa
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS franchise_ib_wallets (
+            id SERIAL PRIMARY KEY,
+            franchise_ib_id INTEGER NOT NULL UNIQUE REFERENCES franchise_ibs(id) ON DELETE CASCADE,
+            available_balance FLOAT DEFAULT 0.0 NOT NULL,
+            total_earned FLOAT DEFAULT 0.0 NOT NULL,
+            total_withdrawn FLOAT DEFAULT 0.0 NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_franchise_ib_wallets_id ON franchise_ib_wallets (id)",
+        """
+        CREATE TABLE IF NOT EXISTS franchise_ib_withdrawal_requests (
+            id SERIAL PRIMARY KEY,
+            franchise_ib_id INTEGER NOT NULL REFERENCES franchise_ibs(id) ON DELETE CASCADE,
+            amount FLOAT NOT NULL,
+            withdrawal_method VARCHAR(30) NOT NULL,
+            account_holder_name VARCHAR(255),
+            bank_name VARCHAR(255),
+            account_number VARCHAR(100),
+            ifsc_code VARCHAR(50),
+            upi_id VARCHAR(255),
+            qr_code_image TEXT,
+            status VARCHAR(30) DEFAULT 'pending' NOT NULL,
+            requested_at TIMESTAMPTZ DEFAULT NOW(),
+            approved_at TIMESTAMPTZ,
+            paid_at TIMESTAMPTZ,
+            admin_remarks TEXT,
+            payment_proof TEXT,
+            utr_number VARCHAR(100),
+            transaction_reference VARCHAR(150)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_franchise_ib_withdrawal_requests_id ON franchise_ib_withdrawal_requests (id)",
+    ]
+    for statement in statements:
+        try:
+            await db.execute(sa.text(statement))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            err_msg = str(e)
+            if "already exists" not in err_msg.lower():
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Franchise IB wallet schema repair failed: {statement.strip()[:60]}... error: {e}"
                 )
 
 

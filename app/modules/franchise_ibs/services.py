@@ -4,7 +4,9 @@ import random
 import string
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func
+from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone
+from typing import Optional, List
 
 from app.modules.franchise_ibs.models import FranchiseIB
 from app.modules.auth.models import User, Role
@@ -152,3 +154,180 @@ async def get_dashboard_stats(db: AsyncSession, franchise_id: int) -> schemas.Fr
         revenue_chart_data=revenue_chart_data,
         enrollment_chart_data=enrollment_chart_data
     )
+
+
+from app.modules.franchise_ibs.models import FranchiseIBWallet, FranchiseIBWithdrawalRequest
+from app.modules.courses.models import CourseEnrollment
+from fastapi import HTTPException
+
+
+async def get_or_create_franchise_wallet(db: AsyncSession, franchise_ib_id: int) -> FranchiseIBWallet:
+    stmt = select(FranchiseIBWallet).where(FranchiseIBWallet.franchise_ib_id == franchise_ib_id)
+    res = await db.execute(stmt)
+    wallet = res.scalar_one_or_none()
+    if not wallet:
+        wallet = FranchiseIBWallet(franchise_ib_id=franchise_ib_id)
+        db.add(wallet)
+        await db.flush()
+    return wallet
+
+
+async def get_franchise_wallet_summary(db: AsyncSession, franchise_ib_id: int) -> dict:
+    wallet = await get_or_create_franchise_wallet(db, franchise_ib_id)
+    fib = await db.get(FranchiseIB, franchise_ib_id)
+    commission_pct = fib.commission_percentage if fib and fib.commission_percentage is not None else 100.0
+
+    # Calculate gross revenue from payments & course enrollments
+    # 1. Payments from students linked to this Franchise IB via StudentReferral
+    pmt_stmt = (
+        select(func.coalesce(func.sum(PaymentTransaction.amount), 0.0))
+        .select_from(PaymentTransaction)
+        .join(StudentReferral, StudentReferral.student_id == PaymentTransaction.user_id)
+        .where(StudentReferral.franchise_ib_id == franchise_ib_id)
+        .where(PaymentTransaction.status.in_(["success", "pending_verification", "completed"]))
+    )
+    pmt_revenue = float((await db.execute(pmt_stmt)).scalar() or 0.0)
+
+    # 2. Course enrollments via sub-IBs under this Franchise IB
+    sub_ib_ids_stmt = select(Distributor.id).where(Distributor.franchise_id == franchise_ib_id)
+    sub_ib_ids = (await db.execute(sub_ib_ids_stmt)).scalars().all()
+    
+    enr_revenue = 0.0
+    if sub_ib_ids:
+        enr_stmt = (
+            select(func.coalesce(func.sum(CourseEnrollment.price_paid), 0.0))
+            .where(CourseEnrollment.distributor_id.in_(sub_ib_ids))
+        )
+        enr_revenue = float((await db.execute(enr_stmt)).scalar() or 0.0)
+
+    gross_revenue = max(pmt_revenue, enr_revenue)
+    total_earned = round(gross_revenue * (commission_pct / 100.0), 2)
+
+    # Calculate total withdrawn (paid)
+    withdrawn_stmt = select(func.coalesce(func.sum(FranchiseIBWithdrawalRequest.amount), 0.0)).where(
+        FranchiseIBWithdrawalRequest.franchise_ib_id == franchise_ib_id,
+        FranchiseIBWithdrawalRequest.status == "paid"
+    )
+    total_withdrawn = round(float((await db.execute(withdrawn_stmt)).scalar() or 0.0), 2)
+
+    # Calculate pending withdrawals
+    pending_stmt = select(func.coalesce(func.sum(FranchiseIBWithdrawalRequest.amount), 0.0)).where(
+        FranchiseIBWithdrawalRequest.franchise_ib_id == franchise_ib_id,
+        FranchiseIBWithdrawalRequest.status.in_(["pending", "approved"])
+    )
+    pending_withdrawals = round(float((await db.execute(pending_stmt)).scalar() or 0.0), 2)
+
+    available_balance = max(0.0, round(total_earned - total_withdrawn - pending_withdrawals, 2))
+
+    # Update wallet record
+    wallet.total_earned = total_earned
+    wallet.total_withdrawn = total_withdrawn
+    wallet.available_balance = available_balance
+    await db.flush()
+
+    return {
+        "available_balance": available_balance,
+        "total_earned": total_earned,
+        "total_withdrawn": total_withdrawn,
+        "pending_withdrawals": pending_withdrawals,
+    }
+
+
+async def create_franchise_withdrawal(db: AsyncSession, franchise_ib_id: int, data: dict) -> FranchiseIBWithdrawalRequest:
+    amount = float(data.get("amount", 0.0))
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than 0")
+
+    summary = await get_franchise_wallet_summary(db, franchise_ib_id)
+    if amount > summary["available_balance"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient balance. Available balance is ₹{summary['available_balance']}"
+        )
+
+    method = data.get("withdrawal_method", "bank")
+    if method == "bank":
+        if not data.get("account_number") or not data.get("ifsc_code"):
+            raise HTTPException(status_code=400, detail="Bank Account Number and IFSC Code are required")
+        if data.get("account_number") != data.get("confirm_account_number"):
+            raise HTTPException(status_code=400, detail="Bank Account Numbers do not match")
+    elif method == "upi":
+        if not data.get("upi_id") and not data.get("qr_code_image"):
+            raise HTTPException(status_code=400, detail="UPI ID or QR Code image is required")
+
+    req = FranchiseIBWithdrawalRequest(
+        franchise_ib_id=franchise_ib_id,
+        amount=amount,
+        withdrawal_method=method,
+        account_holder_name=data.get("account_holder_name"),
+        bank_name=data.get("bank_name"),
+        account_number=data.get("account_number"),
+        ifsc_code=data.get("ifsc_code"),
+        upi_id=data.get("upi_id"),
+        qr_code_image=data.get("qr_code_image"),
+        status="pending",
+    )
+    db.add(req)
+    await db.flush()
+
+    # Re-sync wallet
+    await get_franchise_wallet_summary(db, franchise_ib_id)
+    return req
+
+
+async def list_franchise_withdrawals(db: AsyncSession, franchise_ib_id: Optional[int] = None) -> list[FranchiseIBWithdrawalRequest]:
+    stmt = select(FranchiseIBWithdrawalRequest).options(
+        selectinload(FranchiseIBWithdrawalRequest.franchise_ib).selectinload(FranchiseIB.user)
+    ).order_by(desc(FranchiseIBWithdrawalRequest.requested_at))
+    if franchise_ib_id is not None:
+        stmt = stmt.where(FranchiseIBWithdrawalRequest.franchise_ib_id == franchise_ib_id)
+    res = await db.execute(stmt)
+    return res.scalars().all()
+
+
+async def approve_franchise_withdrawal(db: AsyncSession, request_id: int, remarks: Optional[str] = None) -> FranchiseIBWithdrawalRequest:
+    req = await db.get(FranchiseIBWithdrawalRequest, request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Withdrawal request not found")
+    if req.status != "pending":
+        raise HTTPException(status_code=400, detail="Only pending requests can be approved")
+    req.status = "approved"
+    req.approved_at = datetime.now(timezone.utc)
+    req.admin_remarks = remarks
+    await db.flush()
+    return req
+
+
+async def reject_franchise_withdrawal(db: AsyncSession, request_id: int, remarks: Optional[str] = None) -> FranchiseIBWithdrawalRequest:
+    req = await db.get(FranchiseIBWithdrawalRequest, request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Withdrawal request not found")
+    if req.status not in ["pending", "approved"]:
+        raise HTTPException(status_code=400, detail="Only pending or approved requests can be rejected")
+    req.status = "rejected"
+    req.admin_remarks = remarks
+    await db.flush()
+    await get_franchise_wallet_summary(db, req.franchise_ib_id)
+    return req
+
+
+async def mark_paid_franchise_withdrawal(
+    db: AsyncSession,
+    request_id: int,
+    proof_file: Optional[str],
+    utr_number: Optional[str],
+    transaction_reference: Optional[str]
+) -> FranchiseIBWithdrawalRequest:
+    req = await db.get(FranchiseIBWithdrawalRequest, request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Withdrawal request not found")
+    if req.status not in ["pending", "approved"]:
+        raise HTTPException(status_code=400, detail="Only pending or approved requests can be marked paid")
+    req.status = "paid"
+    req.paid_at = datetime.now(timezone.utc)
+    req.payment_proof = proof_file
+    req.utr_number = utr_number
+    req.transaction_reference = transaction_reference
+    await db.flush()
+    await get_franchise_wallet_summary(db, req.franchise_ib_id)
+    return req

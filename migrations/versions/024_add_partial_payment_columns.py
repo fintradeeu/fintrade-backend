@@ -20,26 +20,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Add partial payment columns to course_enrollments
-    op.add_column('course_enrollments', sa.Column(
-        'payment_status', sa.String(50), nullable=False, server_default='full'
-    ))
-    op.add_column('course_enrollments', sa.Column(
-        'allowed_modules', sa.JSON(), nullable=True
-    ))
-    op.add_column('course_enrollments', sa.Column(
-        'payment_due_date', sa.DateTime(timezone=True), nullable=True
-    ))
+    op.execute("ALTER TABLE course_enrollments ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) NOT NULL DEFAULT 'full'")
+    op.execute("ALTER TABLE course_enrollments ADD COLUMN IF NOT EXISTS allowed_modules JSONB")
+    op.execute("ALTER TABLE course_enrollments ADD COLUMN IF NOT EXISTS payment_due_date TIMESTAMPTZ")
 
     # Add partial payment columns to student_batch_enrollments
-    op.add_column('student_batch_enrollments', sa.Column(
-        'payment_status', sa.String(50), nullable=False, server_default='full'
-    ))
-    op.add_column('student_batch_enrollments', sa.Column(
-        'allowed_modules', sa.JSON(), nullable=True
-    ))
-    op.add_column('student_batch_enrollments', sa.Column(
-        'payment_due_date', sa.DateTime(timezone=True), nullable=True
-    ))
+    op.execute("ALTER TABLE student_batch_enrollments ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) NOT NULL DEFAULT 'full'")
+    op.execute("ALTER TABLE student_batch_enrollments ADD COLUMN IF NOT EXISTS allowed_modules JSONB")
+    op.execute("ALTER TABLE student_batch_enrollments ADD COLUMN IF NOT EXISTS payment_due_date TIMESTAMPTZ")
 
 
 def downgrade() -> None:

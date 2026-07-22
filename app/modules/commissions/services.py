@@ -347,3 +347,110 @@ async def withdrawal_report(db: AsyncSession) -> dict:
     paid = (await db.execute(select(func.coalesce(func.sum(WithdrawalRequest.amount), 0.0)).where(WithdrawalRequest.status == "paid"))).scalar() or 0.0
     pending = (await db.execute(select(func.coalesce(func.sum(WithdrawalRequest.amount), 0.0)).where(WithdrawalRequest.status.in_(["pending", "approved"])))).scalar() or 0.0
     return {"requested_amount": float(requested), "paid_amount": float(paid), "pending_amount": float(pending)}
+
+
+async def ib_wise_revenue_report(db: AsyncSession) -> dict:
+    """Per-Franchise-IB revenue breakdown: gross sales, IB commission, superadmin net."""
+
+    # Fetch all distributors (Franchise IBs) with their user info
+    result = await db.execute(
+        select(Distributor)
+        .options(selectinload(Distributor.user))
+        .order_by(Distributor.created_at.desc())
+    )
+    ibs = result.scalars().all()
+
+    rows = []
+    total_gross = 0.0
+    total_commission_paid = 0.0
+    total_net = 0.0
+
+    for ib in ibs:
+        # Gross revenue collected from students enrolled via this IB
+        gross_res = await db.execute(
+            select(func.coalesce(func.sum(CourseEnrollment.price_paid), 0.0))
+            .where(CourseEnrollment.distributor_id == ib.id)
+        )
+        gross = float(gross_res.scalar() or 0.0)
+
+        # Student count enrolled via this IB
+        student_count_res = await db.execute(
+            select(func.count(CourseEnrollment.id))
+            .where(CourseEnrollment.distributor_id == ib.id)
+        )
+        student_count = int(student_count_res.scalar() or 0)
+
+        # Total commission earned by this IB (credited to wallet)
+        commission_res = await db.execute(
+            select(func.coalesce(func.sum(WalletTransaction.commission_amount), 0.0))
+            .where(
+                WalletTransaction.ib_id == ib.id,
+                WalletTransaction.transaction_type == "credit",
+            )
+        )
+        commission_earned = float(commission_res.scalar() or 0.0)
+
+        # Total commission already paid out (withdrawn and marked paid)
+        paid_res = await db.execute(
+            select(func.coalesce(func.sum(WithdrawalRequest.amount), 0.0))
+            .where(WithdrawalRequest.ib_id == ib.id, WithdrawalRequest.status == "paid")
+        )
+        commission_paid_out = float(paid_res.scalar() or 0.0)
+
+        # Pending commissions (approved/pending withdrawal)
+        pending_res = await db.execute(
+            select(func.coalesce(func.sum(WithdrawalRequest.amount), 0.0))
+            .where(WithdrawalRequest.ib_id == ib.id, WithdrawalRequest.status.in_(["pending", "approved"]))
+        )
+        pending_withdrawal = float(pending_res.scalar() or 0.0)
+
+        # Wallet current balance
+        wallet_res = await db.execute(select(IBWallet).where(IBWallet.ib_id == ib.id))
+        wallet = wallet_res.scalar_one_or_none()
+        wallet_balance = float(wallet.available_balance) if wallet else 0.0
+
+        # Superadmin net = gross revenue - total commission earned by IB
+        net_revenue = round(gross - commission_earned, 2)
+
+        total_gross += gross
+        total_commission_paid += commission_earned
+        total_net += net_revenue
+
+        rows.append({
+            "ib_id": ib.id,
+            "ib_name": ib.user.full_name if ib.user else f"IB #{ib.id}",
+            "ib_email": ib.user.email if ib.user else None,
+            "referral_code": ib.referral_code,
+            "student_count": student_count,
+            "gross_revenue": round(gross, 2),
+            "commission_earned": round(commission_earned, 2),
+            "commission_paid_out": round(commission_paid_out, 2),
+            "pending_withdrawal": round(pending_withdrawal, 2),
+            "wallet_balance": round(wallet_balance, 2),
+            "superadmin_net_revenue": net_revenue,
+        })
+
+    # Also compute direct (no IB) revenue
+    direct_gross_res = await db.execute(
+        select(func.coalesce(func.sum(CourseEnrollment.price_paid), 0.0))
+        .where(CourseEnrollment.distributor_id.is_(None))
+    )
+    direct_gross = float(direct_gross_res.scalar() or 0.0)
+
+    direct_student_count_res = await db.execute(
+        select(func.count(CourseEnrollment.id))
+        .where(CourseEnrollment.distributor_id.is_(None))
+    )
+    direct_student_count = int(direct_student_count_res.scalar() or 0)
+
+    return {
+        "summary": {
+            "total_gross_revenue": round(total_gross + direct_gross, 2),
+            "total_ib_commission": round(total_commission_paid, 2),
+            "total_superadmin_net": round(total_net + direct_gross, 2),
+            "direct_revenue": round(direct_gross, 2),
+            "direct_student_count": direct_student_count,
+            "total_ib_count": len(rows),
+        },
+        "ib_rows": rows,
+    }

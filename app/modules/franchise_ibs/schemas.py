@@ -69,3 +69,47 @@ class StudentUpdate(BaseModel):
     phone: Optional[str] = None
     city: Optional[str] = None
 
+
+class FranchiseIBWithdrawalCreateRequest(BaseModel):
+    amount: float
+    withdrawal_method: str  # bank, upi
+    account_holder_name: Optional[str] = None
+    bank_name: Optional[str] = None
+    account_number: Optional[str] = None
+    confirm_account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    upi_id: Optional[str] = None
+    qr_code_image: Optional[str] = None
+
+
+class FranchiseIBWithdrawalResponse(BaseModel):
+    id: int
+    franchise_ib_id: int
+    franchise_ib_name: Optional[str] = None
+    amount: float
+    withdrawal_method: str
+    account_holder_name: Optional[str] = None
+    bank_name: Optional[str] = None
+    account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    upi_id: Optional[str] = None
+    qr_code_image: Optional[str] = None
+    status: str
+    requested_at: datetime
+    approved_at: Optional[datetime] = None
+    paid_at: Optional[datetime] = None
+    admin_remarks: Optional[str] = None
+    payment_proof: Optional[str] = None
+    utr_number: Optional[str] = None
+    transaction_reference: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class FranchiseIBWalletSummary(BaseModel):
+    available_balance: float
+    total_earned: float
+    total_withdrawn: float
+    pending_withdrawals: float
+
