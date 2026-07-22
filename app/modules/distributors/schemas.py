@@ -100,6 +100,9 @@ class MessageResponse(BaseModel):
     message: str
 
 
+from pydantic import BaseModel, EmailStr, field_validator
+
+
 class ManualStudentRegisterRequest(BaseModel):
     full_name: str
     email: EmailStr
@@ -119,3 +122,10 @@ class ManualStudentRegisterRequest(BaseModel):
     payment_date: Optional[datetime] = None
     # Deadline for remaining balance payment (when partial payment is made)
     payment_due_date: Optional[datetime] = None
+
+    @field_validator("payment_date", "payment_due_date", mode="before")
+    @classmethod
+    def parse_optional_datetime(cls, v):
+        if not v or (isinstance(v, str) and not v.strip()):
+            return None
+        return v
