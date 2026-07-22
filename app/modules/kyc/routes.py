@@ -196,10 +196,17 @@ async def get_user_kyc_detail(
     db: AsyncSession = Depends(get_db),
 ):
     """Get full KYC details for a specific user by user_id (admin only)."""
-    from fastapi import HTTPException
     kyc = await services.get_kyc_status(db, user_id)
     if not kyc:
-        raise HTTPException(status_code=404, detail="No KYC submission found for this user.")
+        return schemas.KYCStatusResponse(
+            id=0,
+            user_id=user_id,
+            full_name="",
+            mobile="",
+            status="not_started",
+            mobile_verified=False,
+            email_verified=False,
+        )
     user_res = await db.execute(select(User).where(User.id == user_id))
     user = user_res.scalar_one_or_none()
     if user and user.phone and kyc.mobile != user.phone:
@@ -217,6 +224,30 @@ async def approve_submission(
 ):
     """Approve KYC submission (admin only)."""
     kyc = await services.approve_kyc(db, kyc_id, admin.id)
+    return schemas.KYCStatusResponse.model_validate(kyc)
+
+
+@router.post("/admin/direct-complete", response_model=schemas.KYCStatusResponse)
+async def direct_complete_kyc(
+    body: schemas.AdminDirectKYCRequest,
+    admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Directly perform and complete eKYC for any student (Franchise IB or SuperAdmin created)."""
+    kyc = await services.direct_complete_kyc(db, admin.id, body.model_dump(exclude_unset=True))
+    return schemas.KYCStatusResponse.model_validate(kyc)
+
+
+@router.post("/admin/upload-document-for-user", response_model=schemas.KYCStatusResponse)
+async def admin_upload_document_for_user(
+    user_id: int = Query(...),
+    doc_type: str = Query(..., description="One of: aadhaar, pan, photo, signature, biometric"),
+    file: UploadFile = File(...),
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload KYC document on behalf of a specific student (admin only)."""
+    kyc = await services.upload_document(db, user_id, doc_type, file)
     return schemas.KYCStatusResponse.model_validate(kyc)
 
 

@@ -160,6 +160,12 @@ async def list_purchased_students(db: AsyncSession, skip: int = 0, limit: int = 
 
     if users:
         user_ids = [user.id for user in users]
+        from app.modules.kyc.models import KYCSubmission
+        kyc_res = await db.execute(select(KYCSubmission).where(KYCSubmission.user_id.in_(user_ids)))
+        kyc_map = {k.user_id: k.status for k in kyc_res.scalars().all()}
+        for u in users:
+            setattr(u, "kyc_status", kyc_map.get(u.id, "not_started"))
+
         transactions_result = await db.execute(
             select(PaymentTransaction)
             .where(PaymentTransaction.user_id.in_(user_ids))

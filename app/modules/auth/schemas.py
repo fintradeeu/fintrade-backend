@@ -104,11 +104,20 @@ class UserResponse(BaseModel):
     enrolled_courses: List[dict] = []
     login_history: List[dict] = []
     franchise_ib_id: Optional[int] = None
+    kyc_status: Optional[str] = "not_started"
 
     @model_validator(mode="before")
     @classmethod
     def check_relationships(cls, data: Any) -> Any:
         if hasattr(data, "_sa_instance_state"):
+            try:
+                if not hasattr(data, "kyc_status") or not getattr(data, "kyc_status", None):
+                    if hasattr(data, "kyc_submission") and getattr(data, "kyc_submission", None):
+                        setattr(data, "kyc_status", data.kyc_submission.status)
+                    else:
+                        setattr(data, "kyc_status", "not_started")
+            except Exception:
+                pass
             enrolled = []
             is_enrollments_loaded = False
             try:

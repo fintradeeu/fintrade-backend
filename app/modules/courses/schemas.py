@@ -175,6 +175,7 @@ class EnrollmentResponse(BaseModel):
     payment_status: str = "full"
     allowed_modules: Optional[List[int]] = None
     payment_due_date: Optional[datetime] = None
+    access_blocked: bool = False
     course: CourseListResponse
 
     model_config = {"from_attributes": True}

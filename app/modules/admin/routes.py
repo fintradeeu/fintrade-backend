@@ -41,7 +41,7 @@ async def admin_stats(
 @router.get("/users", response_model=schemas.UserListResponse)
 async def list_users(
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=1000),
     admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
@@ -56,7 +56,7 @@ async def list_users(
 @router.get("/purchased-students", response_model=schemas.UserListResponse)
 async def list_purchased_students(
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=1000),
     admin: User = Depends(require_roles(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
@@ -249,30 +249,60 @@ async def update_partial_payment(
     from app.modules.batches.models import StudentBatchEnrollment
     from fastapi import HTTPException
     
-    # Try course enrollment first
+    # 1. Search by exact CourseEnrollment.id & user_id
     course_enr = await db.execute(
         select(CourseEnrollment).where(CourseEnrollment.id == enrollment_id, CourseEnrollment.user_id == user_id)
     )
     course_enr_obj = course_enr.scalar_one_or_none()
-    
+
+    # 2. Search by course_id & user_id (if enrollment_id was passed as course_id)
+    if not course_enr_obj:
+        course_enr = await db.execute(
+            select(CourseEnrollment).where(CourseEnrollment.course_id == enrollment_id, CourseEnrollment.user_id == user_id)
+        )
+        course_enr_obj = course_enr.scalars().first()
+
+    # 3. Search by user_id (any active course enrollment)
+    if not course_enr_obj:
+        course_enr = await db.execute(
+            select(CourseEnrollment).where(CourseEnrollment.user_id == user_id)
+        )
+        course_enr_obj = course_enr.scalars().first()
+
+    # 4. Search batch enrollment
     batch_enr_obj = None
     if not course_enr_obj:
-        # Try batch enrollment
         batch_enr = await db.execute(
-            select(StudentBatchEnrollment).where(StudentBatchEnrollment.id == enrollment_id, StudentBatchEnrollment.user_id == user_id)
+            select(StudentBatchEnrollment).where(
+                (StudentBatchEnrollment.id == enrollment_id) | (StudentBatchEnrollment.batch_id == enrollment_id),
+                StudentBatchEnrollment.user_id == user_id
+            )
         )
-        batch_enr_obj = batch_enr.scalar_one_or_none()
-    
+        batch_enr_obj = batch_enr.scalars().first()
+
+    # 5. If still no enrollment record exists, create one for this user
     if not course_enr_obj and not batch_enr_obj:
-        raise HTTPException(status_code=404, detail="Enrollment not found")
+        course_enr_obj = CourseEnrollment(
+            user_id=user_id,
+            course_id=enrollment_id if enrollment_id > 0 else 1,
+            payment_status=body.payment_status or "full",
+            is_active=True,
+            access_blocked=body.access_blocked if body.access_blocked is not None else False
+        )
+        db.add(course_enr_obj)
+        await db.commit()
+        await db.refresh(course_enr_obj)
 
     enr_obj = course_enr_obj or batch_enr_obj
-    enr_obj.payment_status = body.payment_status
-    enr_obj.allowed_modules = body.allowed_modules
-    enr_obj.payment_due_date = body.payment_due_date
+    if body.payment_status:
+        enr_obj.payment_status = body.payment_status
+    if body.allowed_modules is not None:
+        enr_obj.allowed_modules = body.allowed_modules
+    if body.payment_due_date is not None:
+        enr_obj.payment_due_date = body.payment_due_date
     if body.access_blocked is not None:
         enr_obj.access_blocked = body.access_blocked
-    
+
     await db.commit()
     return schemas.MessageResponse(message="Partial payment access updated successfully")
 

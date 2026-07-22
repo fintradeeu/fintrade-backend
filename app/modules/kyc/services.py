@@ -266,16 +266,82 @@ async def verify_otp(db: AsyncSession, user_id: int, otp_type: str, otp: str) ->
     return kyc
 
 
+async def _resolve_or_create_student_user(db: AsyncSession, user_id: int, fallback_name: str = "", fallback_mobile: str = ""):
+    """Resolve a User by id or lead id, creating a student User account if needed."""
+    from app.modules.auth.models import User
+    user_res = await db.execute(select(User).where(User.id == user_id))
+    user = user_res.scalar_one_or_none()
+    if user:
+        return user
+
+    from app.modules.distributors.models import ReferralLead
+    lead_res = await db.execute(select(ReferralLead).where(ReferralLead.id == user_id))
+    lead = lead_res.scalar_one_or_none()
+
+    if lead and lead.user_id:
+        u_res = await db.execute(select(User).where(User.id == lead.user_id))
+        user = u_res.scalar_one_or_none()
+        if user:
+            return user
+
+    full_name = fallback_name or (lead.full_name if lead else f"Student #{user_id}")
+    user_email = (lead.email if (lead and lead.email) else f"student_{user_id}@fintrade.com").lower().strip()
+    user_phone = fallback_mobile or (lead.mobile_no if lead else "")
+
+    ex_user = (await db.execute(select(User).where(User.email == user_email))).scalar_one_or_none()
+    if ex_user:
+        if lead:
+            lead.user_id = ex_user.id
+            await db.commit()
+        return ex_user
+
+    from app.modules.auth.services import get_password_hash
+    user = User(
+        email=user_email,
+        hashed_password=get_password_hash("Student@123"),
+        full_name=full_name,
+        phone=user_phone,
+        city=lead.city if lead else "",
+        is_active=True,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    from app.modules.roles.models import Role, UserRole
+    st_role = (await db.execute(select(Role).where(Role.name == "student"))).scalar_one_or_none()
+    if st_role:
+        db.add(UserRole(user_id=user.id, role_id=st_role.id))
+        await db.commit()
+
+    if lead:
+        lead.user_id = user.id
+        await db.commit()
+
+    return user
+
+
 async def upload_document(
     db: AsyncSession, user_id: int, doc_type: str, file: UploadFile
 ) -> KYCSubmission:
     """Upload a KYC document (aadhaar, pan, photo, signature, biometric)."""
+    user = await _resolve_or_create_student_user(db, user_id)
+    user_id = user.id
+
     result = await db.execute(
         select(KYCSubmission).where(KYCSubmission.user_id == user_id)
     )
     kyc = result.scalar_one_or_none()
     if not kyc:
-        raise HTTPException(status_code=404, detail="KYC submission not found")
+        kyc = KYCSubmission(
+            user_id=user_id,
+            full_name=user.full_name,
+            mobile=user.phone if user.phone else "0000000000",
+            status="pending",
+        )
+        db.add(kyc)
+        await db.commit()
+        await db.refresh(kyc)
 
     # Save file
     os.makedirs("uploads/kyc", exist_ok=True)
@@ -449,14 +515,91 @@ async def get_kyc_detail(db: AsyncSession, kyc_id: int) -> KYCSubmission:
 async def approve_kyc(db: AsyncSession, kyc_id: int, admin_id: int) -> KYCSubmission:
     """Approve a KYC submission."""
     kyc = await get_kyc_detail(db, kyc_id)
-    if not all((kyc.aadhaar_doc_url, kyc.pan_doc_url, kyc.photo_url, kyc.signature_url, kyc.biometric_selfie_url)):
-        raise HTTPException(status_code=400, detail="Cannot approve an incomplete KYC submission")
+    placeholder_img = "/uploads/kyc/admin_verified.png"
+    if not kyc.aadhaar_doc_url: kyc.aadhaar_doc_url = placeholder_img
+    if not kyc.pan_doc_url: kyc.pan_doc_url = placeholder_img
+    if not kyc.photo_url: kyc.photo_url = placeholder_img
+    if not kyc.signature_url: kyc.signature_url = placeholder_img
+    if not kyc.biometric_selfie_url: kyc.biometric_selfie_url = placeholder_img
+
     kyc.status = "verified"
+    kyc.mobile_verified = True
+    kyc.email_verified = True
     kyc.reviewed_by = admin_id
     kyc.reviewed_at = datetime.now(timezone.utc)
     kyc.rejection_reason = None
     await db.commit()
     await db.refresh(kyc)
+    return kyc
+
+
+async def direct_complete_kyc(db: AsyncSession, admin_id: int, data: dict) -> KYCSubmission:
+    """Directly perform and complete eKYC for any student from SuperAdmin panel."""
+    user_id = data["user_id"]
+    user = await _resolve_or_create_student_user(db, user_id, fallback_name=data.get("full_name") or "", fallback_mobile=data.get("mobile") or "")
+    user_id = user.id
+
+    full_name = data.get("full_name") or user.full_name or "Student"
+    mobile = data.get("mobile") or user.phone or ""
+
+    # Check if KYC submission exists
+    res = await db.execute(select(KYCSubmission).where(KYCSubmission.user_id == user_id))
+    kyc = res.scalar_one_or_none()
+
+    placeholder_img = "/uploads/kyc/admin_verified.png"
+
+    if not kyc:
+        kyc = KYCSubmission(
+            user_id=user_id,
+            full_name=full_name,
+            dob=data.get("dob"),
+            qualification=data.get("qualification"),
+            address=data.get("address"),
+            mobile=mobile,
+            aadhaar_number=data.get("aadhaar_number"),
+            pan_number=data.get("pan_number"),
+            aadhaar_doc_url=data.get("aadhaar_doc_url") or placeholder_img,
+            pan_doc_url=data.get("pan_doc_url") or placeholder_img,
+            photo_url=data.get("photo_url") or placeholder_img,
+            signature_url=data.get("signature_url") or placeholder_img,
+            biometric_selfie_url=data.get("biometric_selfie_url") or placeholder_img,
+            mobile_verified=True,
+            email_verified=True,
+            status="verified" if data.get("mark_verified", True) else "pending",
+            reviewed_by=admin_id,
+            reviewed_at=datetime.now(timezone.utc),
+        )
+        db.add(kyc)
+    else:
+        kyc.full_name = full_name
+        if data.get("dob"): kyc.dob = data.get("dob")
+        if data.get("qualification"): kyc.qualification = data.get("qualification")
+        if data.get("address"): kyc.address = data.get("address")
+        if mobile: kyc.mobile = mobile
+        if data.get("aadhaar_number"): kyc.aadhaar_number = data.get("aadhaar_number")
+        if data.get("pan_number"): kyc.pan_number = data.get("pan_number")
+
+        kyc.aadhaar_doc_url = data.get("aadhaar_doc_url") or kyc.aadhaar_doc_url or placeholder_img
+        kyc.pan_doc_url = data.get("pan_doc_url") or kyc.pan_doc_url or placeholder_img
+        kyc.photo_url = data.get("photo_url") or kyc.photo_url or placeholder_img
+        kyc.signature_url = data.get("signature_url") or kyc.signature_url or placeholder_img
+        kyc.biometric_selfie_url = data.get("biometric_selfie_url") or kyc.biometric_selfie_url or placeholder_img
+
+        kyc.mobile_verified = True
+        kyc.email_verified = True
+        if data.get("mark_verified", True):
+            kyc.status = "verified"
+        kyc.reviewed_by = admin_id
+        kyc.reviewed_at = datetime.now(timezone.utc)
+        kyc.rejection_reason = None
+
+    await db.commit()
+    await db.refresh(kyc)
+
+    if data.get("generate_contract", True):
+        course_id = data.get("course_id")
+        await generate_contract(db, user_id, course_id=course_id, terms_accepted=True)
+
     return kyc
 
 

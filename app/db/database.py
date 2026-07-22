@@ -72,6 +72,19 @@ async def init_db():
             async with engine.begin() as conn:
                 from app.db.base import import_all_models  # noqa
                 await conn.run_sync(Base.metadata.create_all)
+
+                # Ensure missing columns exist on PostgreSQL database
+                from sqlalchemy import text
+                if not settings.async_database_url.startswith("sqlite"):
+                    try:
+                        await conn.execute(text("ALTER TABLE course_enrollments ADD COLUMN IF NOT EXISTS access_blocked BOOLEAN DEFAULT FALSE NOT NULL;"))
+                        await conn.execute(text("ALTER TABLE course_enrollments ADD COLUMN IF NOT EXISTS payment_due_date TIMESTAMP WITH TIME ZONE;"))
+                        await conn.execute(text("ALTER TABLE course_enrollments ADD COLUMN IF NOT EXISTS allowed_modules JSON;"))
+                        await conn.execute(text("ALTER TABLE student_batch_enrollments ADD COLUMN IF NOT EXISTS access_blocked BOOLEAN DEFAULT FALSE NOT NULL;"))
+                        await conn.execute(text("ALTER TABLE student_batch_enrollments ADD COLUMN IF NOT EXISTS payment_due_date TIMESTAMP WITH TIME ZONE;"))
+                        await conn.execute(text("ALTER TABLE student_batch_enrollments ADD COLUMN IF NOT EXISTS allowed_modules JSON;"))
+                    except Exception:
+                        pass
             return
         except Exception as exc:
             last_error = exc

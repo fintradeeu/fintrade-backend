@@ -26,6 +26,25 @@ class KYCRejectRequest(BaseModel):
     reason: str
 
 
+class AdminDirectKYCRequest(BaseModel):
+    user_id: int
+    full_name: str
+    dob: Optional[str] = None
+    qualification: Optional[str] = None
+    address: Optional[str] = None
+    mobile: Optional[str] = None
+    aadhaar_number: Optional[str] = None
+    pan_number: Optional[str] = None
+    aadhaar_doc_url: Optional[str] = None
+    pan_doc_url: Optional[str] = None
+    photo_url: Optional[str] = None
+    signature_url: Optional[str] = None
+    biometric_selfie_url: Optional[str] = None
+    course_id: Optional[int] = None
+    mark_verified: bool = True
+    generate_contract: bool = True
+
+
 class ContractGenerateRequest(BaseModel):
     course_id: Optional[int] = None
     terms_accepted: bool = True

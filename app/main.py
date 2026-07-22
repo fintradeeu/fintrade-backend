@@ -221,6 +221,7 @@ app.include_router(batches_router)
 app.include_router(doubts_router)
 app.include_router(franchise_ibs_router)
 app.include_router(logs_router)
+# KYC Admin direct completion endpoints registered
 
 # Mount media directory
 
