@@ -513,7 +513,7 @@ async def manual_register_student(
         await db.flush()
         
     payment_response = None
-    if data.course_id and data.payment_mode in ["cash", "cheque"]:
+    if data.course_id and data.payment_mode.lower() in ["cash", "cheque"]:
         from app.modules.courses.models import Course
         course = await db.get(Course, data.course_id)
         if course and data.amount > (course.price or 0.0):
@@ -527,7 +527,7 @@ async def manual_register_student(
 
         payment_req = OfflinePaymentRequest(
             course_id=data.course_id,
-            payment_mode=data.payment_mode,
+            payment_mode=data.payment_mode.lower(),
             amount=charge_amount,
             reference_number=data.reference_number,
             cheque_image_url=data.cheque_image_url,

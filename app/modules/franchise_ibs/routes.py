@@ -107,3 +107,54 @@ async def manual_register_student(
         
     return await _manual_register(db, data=body, franchise_ib_id=profile.id)
 
+
+@router.put("/students/{student_id}", response_model=MessageResponse)
+async def update_franchise_student(
+    student_id: int,
+    body: schemas.StudentUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update details of a student registered under the Franchise IB."""
+    profile = await services.get_franchise_ib_by_user(db, current_user.id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Franchise IB profile not found")
+        
+    # Check if student is referred by this Franchise IB
+    from app.modules.distributors.models import StudentReferral
+    from app.modules.auth.models import User
+    
+    stmt = select(StudentReferral).where(
+        StudentReferral.student_id == student_id,
+        StudentReferral.franchise_ib_id == profile.id
+    )
+    res = await db.execute(stmt)
+    referral = res.scalar_one_or_none()
+    if not referral:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to update this student's details"
+        )
+        
+    # Fetch the student user
+    student = await db.get(User, student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+        
+    # Update fields
+    if body.full_name is not None:
+        student.full_name = body.full_name
+    if body.phone is not None:
+        # Check if phone number is already taken by another user
+        if body.phone != student.phone:
+            dup = await db.execute(select(User).where(User.phone == body.phone))
+            if dup.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Phone number already registered by another user")
+        student.phone = body.phone
+    if body.city is not None:
+        student.city = body.city
+        
+    await db.commit()
+    return MessageResponse(message="Student details updated successfully")
+
+

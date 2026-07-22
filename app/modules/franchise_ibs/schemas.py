@@ -62,3 +62,10 @@ class FranchiseIBDashboardStats(BaseModel):
     
     revenue_chart_data: List[ChartDataPoint] = []
     enrollment_chart_data: List[ChartDataPoint] = []
+
+
+class StudentUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    city: Optional[str] = None
+
