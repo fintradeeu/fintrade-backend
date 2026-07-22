@@ -563,7 +563,25 @@ async def manual_register_student(
         )
         db.add(enrollment)
 
-    await db.commit()
+        # Also enroll the student in the selected batch (or active batch)
+        from app.modules.batches.services import enroll_student_in_batch_or_active
+        await enroll_student_in_batch_or_active(
+            db=db,
+            user_id=user.id,
+            course_id=data.course_id,
+            batch_id=data.batch_id,
+            price_paid=charge_amount
+        )
+
+    try:
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        logger.error("manual_registration_commit_failed", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="Database transaction failed during registration. Please try again."
+        )
     
     # 5. Send Email to Student with credentials if new user
     if is_new_user:
