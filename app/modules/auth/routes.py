@@ -126,12 +126,8 @@ async def login(
         )
     
     # Normal user flow: Generate OTP
-    is_phone = False
-    digits = "".join(c for c in body.email if c.isdigit())
-    if len(digits) >= 8:
-        is_phone = True
-
-    channel = "email" if any(role in user_role_names for role in ["distributor", "franchise_ib", "master_ib"]) else ("sms" if is_phone else "email")
+    is_phone = services._looks_like_phone(body.email)
+    channel = "sms" if is_phone else "email"
     otp_result = await services.generate_and_send_otp(db, user, channel=channel)
     
     message_text = "Verification code sent to your email."

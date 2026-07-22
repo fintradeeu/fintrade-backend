@@ -32,6 +32,8 @@ MAX_OTP_ATTEMPTS = 5  # Lock after 5 wrong attempts
 
 
 def _looks_like_phone(identifier: str) -> bool:
+    if "@" in identifier:
+        return False
     digits = "".join(c for c in identifier if c.isdigit())
     return len(digits) >= 8
 
@@ -749,8 +751,8 @@ async def resend_otp(db: AsyncSession, otp_token: str) -> dict:
             detail="User not found",
         )
 
-    # Generate new OTP
-    return await generate_and_send_otp(db, user)
+    # Generate new OTP using the same channel as before
+    return await generate_and_send_otp(db, user, channel=otp.channel)
 
 
 # ── Session management ───────────────────────────────────────────────
