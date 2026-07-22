@@ -546,6 +546,8 @@ async def manual_register_student(
         transaction = (await db.execute(select(PaymentTransaction).where(PaymentTransaction.txnid == txnid))).scalar_one_or_none()
         if transaction:
             transaction.status = "success"
+            if data.coupon_code:
+                transaction.coupon_code = data.coupon_code
             
             # Send Invoice Email
             from app.modules.payments.services import send_invoice_email
@@ -571,6 +573,8 @@ async def manual_register_student(
             payment_status=payment_status_val,
             payment_due_date=data.payment_due_date if is_partial else None,
         )
+        if data.coupon_code:
+            setattr(enrollment, "coupon_code", data.coupon_code)
         db.add(enrollment)
 
         # Also enroll the student in the selected batch (or active batch)

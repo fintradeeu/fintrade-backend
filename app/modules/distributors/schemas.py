@@ -120,6 +120,7 @@ class ManualStudentRegisterRequest(BaseModel):
     branch_name: Optional[str] = None
     account_holder_name: Optional[str] = None
     payment_date: Optional[datetime] = None
+    coupon_code: Optional[str] = None
     # Deadline for remaining balance payment (when partial payment is made)
     payment_due_date: Optional[datetime] = None
 

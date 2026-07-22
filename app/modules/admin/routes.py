@@ -11,7 +11,7 @@ from app.modules.admin import schemas, services
 from app.modules.admin.schemas import MessageResponse
 from app.modules.auth.models import User
 from app.modules.auth.schemas import UserResponse
-from app.modules.distributors.schemas import ReferralResponse
+from app.modules.distributors.schemas import ReferralResponse, ManualStudentRegisterRequest
 
 # Course / Exam / Lecture / Offer schemas for creation
 from app.modules.courses import schemas as course_schemas, services as course_services
@@ -20,6 +20,17 @@ from app.modules.lectures import schemas as lecture_schemas, services as lecture
 from app.modules.offers import schemas as offer_schemas, services as offer_services
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+@router.post("/manual-register", status_code=201)
+async def manual_register_student_admin(
+    body: ManualStudentRegisterRequest,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Superadmin manually registers a student with batch, course, payment (cash/cheque/razorpay), and due date."""
+    from app.modules.distributors.services import manual_register_student as _manual_register
+    return await _manual_register(db, data=body, distributor_id=None, franchise_ib_id=None)
 
 
 def require_super_admin_user(user: User) -> None:
