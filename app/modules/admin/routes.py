@@ -99,6 +99,93 @@ async def list_purchased_students(
     )
 
 
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: int,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a user (student) and all their associated data."""
+    from sqlalchemy import select
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Manually delete related records if SQLite foreign keys aren't strictly enforced
+    from app.modules.distributors.models import StudentReferral, ReferralLead
+    
+    # Delete ORM loaded relationships first to prevent StaleDataError
+    for enrollment in user.enrollments:
+        await db.delete(enrollment)
+        
+    await db.execute(StudentReferral.__table__.delete().where(StudentReferral.student_id == user_id))
+    await db.execute(ReferralLead.__table__.delete().where(ReferralLead.user_id == user_id))
+    
+    await db.delete(user)
+    await db.commit()
+    return {"message": "User deleted successfully"}
+
+
+@router.delete("/franchise-ibs/{id}")
+async def delete_franchise_ib(
+    id: int,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a Franchise IB and their underlying user."""
+    from sqlalchemy import select
+    from app.modules.franchise_ibs.models import FranchiseIB, FranchiseIBWallet
+    
+    result = await db.execute(select(FranchiseIB).where(FranchiseIB.id == id))
+    fib = result.scalar_one_or_none()
+    if not fib:
+        raise HTTPException(status_code=404, detail="Franchise IB not found")
+        
+    user_id = fib.user_id
+    
+    await db.execute(FranchiseIBWallet.__table__.delete().where(FranchiseIBWallet.franchise_ib_id == id))
+    await db.delete(fib)
+    
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    if user:
+        await db.delete(user)
+        
+    await db.commit()
+    return {"message": "Franchise IB deleted successfully"}
+
+
+@router.delete("/distributors/{id}")
+async def delete_distributor(
+    id: int,
+    _admin: User = Depends(require_roles(["admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a Distributor (IB) and their underlying user."""
+    from sqlalchemy import select
+    from app.modules.distributors.models import Distributor, StudentReferral, ReferralLead
+    
+    result = await db.execute(select(Distributor).where(Distributor.id == id))
+    dist = result.scalar_one_or_none()
+    if not dist:
+        raise HTTPException(status_code=404, detail="Distributor not found")
+        
+    user_id = dist.user_id
+    
+    await db.execute(StudentReferral.__table__.delete().where(StudentReferral.distributor_id == id))
+    await db.execute(ReferralLead.__table__.delete().where(ReferralLead.distributor_id == id))
+    await db.delete(dist)
+    
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    if user:
+        await db.delete(user)
+        
+    await db.commit()
+    return {"message": "Distributor deleted successfully"}
+
+
 # ── User management ─────────────────────────────────────────────────
 @router.post("/users/create-student", response_model=UserResponse, status_code=201)
 async def create_student(
@@ -1875,9 +1962,27 @@ async def list_franchise_ibs(
         stmt = select(FranchiseIB, User).join(User, FranchiseIB.user_id == User.id).order_by(FranchiseIB.id.desc())
         result = await db.execute(stmt)
         
+        from app.modules.payments.models import PaymentTransaction
+        from app.modules.distributors.models import StudentReferral
+        from sqlalchemy import func
+
         data = []
         for ib, user in result.all():
             stats = await get_dashboard_stats(db, ib.id)
+            
+            # Calculate gross revenue
+            pmt_stmt = (
+                select(func.coalesce(func.sum(PaymentTransaction.amount), 0.0))
+                .select_from(PaymentTransaction)
+                .join(StudentReferral, StudentReferral.student_id == PaymentTransaction.user_id)
+                .where(StudentReferral.franchise_ib_id == ib.id)
+                .where(PaymentTransaction.status.in_(["success", "pending_verification", "completed"]))
+            )
+            raw_revenue = float((await db.execute(pmt_stmt)).scalar() or 0.0)
+            base_revenue = round(raw_revenue / 1.18, 2)
+            commission_pct = ib.commission_percentage if ib.commission_percentage is not None else 100.0
+            commission_revenue = round(base_revenue * (commission_pct / 100.0), 2)
+
             data.append({
                 "id": ib.id,
                 "user_id": user.id,
@@ -1888,8 +1993,8 @@ async def list_franchise_ibs(
                 "referral_code": ib.referral_code,
                 "commission_percentage": ib.commission_percentage,
                 "total_students_referred": stats.total_students,
-                "total_revenue_generated": stats.total_revenue,
-                "commission_revenue": stats.total_revenue * (ib.commission_percentage / 100.0) if ib.commission_percentage is not None else stats.total_revenue,
+                "total_revenue_generated": raw_revenue,
+                "commission_revenue": commission_revenue,
             })
         return {"status": "success", "data": data}
     except Exception as e:

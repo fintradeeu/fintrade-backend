@@ -522,8 +522,13 @@ async def manual_register_student(
                 detail=f"Highest value added based on course price. Cannot add higher value than course price (₹{course.price or 0.0})."
             )
 
-        # Add 18% GST to the entered amount
-        charge_amount = round(data.amount * 1.18, 2)
+        if data.is_installment and data.installment_months and data.installment_months > 0:
+            total_with_gst = round((course.price or 0.0) * 1.18, 2)
+            emi_amount = round(total_with_gst / data.installment_months, 2)
+            charge_amount = emi_amount
+        else:
+            # Add 18% GST to the entered amount
+            charge_amount = round(data.amount * 1.18, 2)
 
         payment_req = OfflinePaymentRequest(
             course_id=data.course_id,
@@ -559,9 +564,12 @@ async def manual_register_student(
                 except Exception as e:
                     logger.error("manual_registration_invoice_failed", error=str(e))
         
-        # Determine if payment is partial or full
-        is_partial = data.amount < (course.price or 0.0) if course else False
-        payment_status_val = "partial" if is_partial else "full"
+        # Determine payment status
+        if data.is_installment and data.installment_months and data.installment_months > 0:
+            payment_status_val = "installment"
+        else:
+            is_partial = data.amount < (course.price or 0.0) if course else False
+            payment_status_val = "partial" if is_partial else "full"
 
         # Create CourseEnrollment so the student has access and dashboard works
         enrollment = CourseEnrollment(
@@ -571,11 +579,55 @@ async def manual_register_student(
             distributor_id=distributor_id,
             is_active=True,
             payment_status=payment_status_val,
-            payment_due_date=data.payment_due_date if is_partial else None,
+            payment_due_date=data.payment_due_date if payment_status_val == "partial" else None,
         )
         if data.coupon_code:
             setattr(enrollment, "coupon_code", data.coupon_code)
         db.add(enrollment)
+        await db.flush()
+
+        if data.is_installment and data.installment_months and data.installment_months > 0:
+            from app.modules.payments.models import StudentInstallment
+            import datetime
+            
+            total_with_gst = round((course.price or 0.0) * 1.18, 2)
+            emi_amount = round(total_with_gst / data.installment_months, 2)
+            preferred_date = data.preferred_payment_date or 5
+            
+            now = datetime.datetime.now(datetime.timezone.utc)
+            
+            for i in range(1, data.installment_months + 1):
+                if i == 1:
+                    due_date = now
+                    status = "paid"
+                    paid_date = now
+                else:
+                    # Calculate next month's date
+                    month_offset = i - 1
+                    new_month = now.month + month_offset
+                    new_year = now.year + (new_month - 1) // 12
+                    new_month = ((new_month - 1) % 12) + 1
+                    
+                    try:
+                        due_date = now.replace(year=new_year, month=new_month, day=preferred_date)
+                    except ValueError:
+                        # Handle cases like Feb 29, 30, 31
+                        due_date = now.replace(year=new_year, month=new_month, day=28)
+                    
+                    status = "pending"
+                    paid_date = None
+
+                installment = StudentInstallment(
+                    user_id=user.id,
+                    course_id=data.course_id,
+                    enrollment_id=enrollment.id,
+                    installment_no=i,
+                    amount=emi_amount,
+                    due_date=due_date,
+                    status=status,
+                    paid_date=paid_date
+                )
+                db.add(installment)
 
         # Also enroll the student in the selected batch (or active batch)
         from app.modules.batches.services import enroll_student_in_batch_or_active

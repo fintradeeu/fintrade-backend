@@ -124,6 +124,11 @@ class ManualStudentRegisterRequest(BaseModel):
     # Deadline for remaining balance payment (when partial payment is made)
     payment_due_date: Optional[datetime] = None
 
+    # EMI/Installment fields
+    is_installment: bool = False
+    installment_months: Optional[int] = None
+    preferred_payment_date: Optional[int] = None # Day of month, 1-28
+
     @field_validator("payment_date", "payment_due_date", mode="before")
     @classmethod
     def parse_optional_datetime(cls, v):

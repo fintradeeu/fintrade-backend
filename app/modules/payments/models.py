@@ -45,3 +45,20 @@ class PaymentTransaction(Base):
     cheque_image_url = Column(String(500), nullable=True)
     remarks = Column(String(1000), nullable=True)
 
+
+class StudentInstallment(Base):
+    __tablename__ = "student_installments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    enrollment_id = Column(Integer, ForeignKey("course_enrollments.id", ondelete="CASCADE"), nullable=False)
+    
+    installment_no = Column(Integer, nullable=False)
+    amount = Column(Float, nullable=False)
+    due_date = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String(50), default="pending", nullable=False) # pending, paid, overdue
+    paid_date = Column(DateTime(timezone=True), nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

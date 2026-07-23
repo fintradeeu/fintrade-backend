@@ -120,7 +120,8 @@ async def get_dashboard_stats(db: AsyncSession, franchise_id: int) -> schemas.Fr
     referral_code = fib_data[0] if fib_data else None
     commission_pct = fib_data[1] if fib_data and fib_data[1] is not None else 100.0
 
-    total_revenue = raw_revenue * (commission_pct / 100.0)
+    base_revenue = raw_revenue / 1.18
+    total_revenue = base_revenue * (commission_pct / 100.0)
 
     # Chart data (Mocked slightly for demonstration, can be expanded to group by date)
     revenue_chart_data = [
@@ -201,7 +202,8 @@ async def get_franchise_wallet_summary(db: AsyncSession, franchise_ib_id: int) -
         enr_revenue = float((await db.execute(enr_stmt)).scalar() or 0.0)
 
     gross_revenue = max(pmt_revenue, enr_revenue)
-    total_earned = round(gross_revenue * (commission_pct / 100.0), 2)
+    base_revenue = gross_revenue / 1.18
+    total_earned = round(base_revenue * (commission_pct / 100.0), 2)
 
     # Calculate total withdrawn (paid)
     withdrawn_stmt = select(func.coalesce(func.sum(FranchiseIBWithdrawalRequest.amount), 0.0)).where(
