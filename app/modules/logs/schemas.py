@@ -22,6 +22,32 @@ class UserBase(BaseModel):
     class Config:
         from_attributes = True
 
+class ActivityLogMetadataResponse(BaseModel):
+    referrer: Optional[str] = None
+    user_agent: Optional[str] = None
+    browser: Optional[str] = None
+    browser_version: Optional[str] = None
+    os: Optional[str] = None
+    os_version: Optional[str] = None
+    device_type: Optional[str] = None
+    screen_width: Optional[int] = None
+    screen_height: Optional[int] = None
+    language: Optional[str] = None
+    timezone: Optional[str] = None
+    ip_address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    country: Optional[str] = None
+    state: Optional[str] = None
+    city: Optional[str] = None
+    postal_code: Optional[str] = None
+    permission_status: Optional[str] = None
+    app_version: Optional[str] = None
+    build_number: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 class ActivityLogResponse(BaseModel):
     id: int
     user_id: Optional[int] = None
@@ -40,6 +66,7 @@ class ActivityLogResponse(BaseModel):
     created_at: datetime
     
     user: Optional[UserBase] = None
+    log_metadata: Optional[ActivityLogMetadataResponse] = None
 
     class Config:
         from_attributes = True

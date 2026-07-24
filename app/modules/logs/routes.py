@@ -49,16 +49,47 @@ async def create_activity_log(
     )
     
     db.add(log_entry)
+    await db.flush() # get log_entry.id
+    
+    # Process extended metadata if provided in metadata_json
+    if body.metadata_json:
+        metadata_model = models.ActivityLogMetadata(
+            activity_log_id=log_entry.id,
+            referrer=body.metadata_json.get("referrer"),
+            user_agent=body.metadata_json.get("userAgent"),
+            browser=body.metadata_json.get("browser"),
+            browser_version=body.metadata_json.get("browserVersion"),
+            os=body.metadata_json.get("os"),
+            os_version=body.metadata_json.get("osVersion"),
+            device_type=body.metadata_json.get("deviceType"),
+            screen_width=body.metadata_json.get("screenWidth"),
+            screen_height=body.metadata_json.get("screenHeight"),
+            language=body.metadata_json.get("language"),
+            timezone=body.metadata_json.get("timezone"),
+            ip_address=body.metadata_json.get("ipAddress"),
+            latitude=body.metadata_json.get("latitude"),
+            longitude=body.metadata_json.get("longitude"),
+            country=body.metadata_json.get("country"),
+            state=body.metadata_json.get("state"),
+            city=body.metadata_json.get("city"),
+            postal_code=body.metadata_json.get("postalCode"),
+            permission_status=body.metadata_json.get("permissionStatus"),
+            app_version=body.metadata_json.get("appVersion"),
+            build_number=body.metadata_json.get("buildNumber")
+        )
+        db.add(metadata_model)
+        
     await db.commit()
     await db.refresh(log_entry)
     
-    # Eager load user if exists
-    if log_entry.user_id:
-        # reload with user
-        result = await db.execute(
-            select(models.ActivityLog).options(selectinload(models.ActivityLog.user)).where(models.ActivityLog.id == log_entry.id)
-        )
-        log_entry = result.scalar_one()
+    # Eager load user and log_metadata if exists
+    result = await db.execute(
+        select(models.ActivityLog)
+        .options(selectinload(models.ActivityLog.user))
+        .options(selectinload(models.ActivityLog.log_metadata))
+        .where(models.ActivityLog.id == log_entry.id)
+    )
+    log_entry = result.scalar_one()
 
     return log_entry
 

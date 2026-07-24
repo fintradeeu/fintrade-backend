@@ -44,6 +44,7 @@ from app.modules.commissions.routes import router as commissions_router
 from app.modules.batches.routes import router as batches_router
 from app.modules.doubts.routes import router as doubts_router
 from app.modules.logs.routes import router as logs_router
+from app.modules.devices.routes import router as devices_router, users_router
 
 
 @asynccontextmanager
@@ -222,6 +223,8 @@ app.include_router(batches_router)
 app.include_router(doubts_router)
 app.include_router(franchise_ibs_router)
 app.include_router(logs_router)
+app.include_router(devices_router, prefix="/api/v1")
+app.include_router(users_router, prefix="/api/v1")
 # KYC Admin direct completion endpoints registered
 
 # Mount media directory
