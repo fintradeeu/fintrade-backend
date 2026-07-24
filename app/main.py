@@ -248,84 +248,26 @@ def trigger_db_migration(secret_key: str):
         raise HTTPException(status_code=403, detail="Invalid secret key")
     
     try:
-        # pyrefly: ignore [missing-import]
         from alembic.config import Config   
-        # pyrefly: ignore [missing-import]
         from alembic import command
         import os
         
-        # Determine the root directory (where alembic.ini is located)
-        # Assuming app is a package inside the root directory
         root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if not os.path.exists(os.path.join(root_dir, "alembic.ini")):
-            # Fallback to current working directory
             root_dir = os.getcwd()
             
         alembic_cfg = Config(os.path.join(root_dir, "alembic.ini"))
         
-        import glob
-
-        # 1. Clean up rogue generated migration files left on the server.
-        versions_dir = os.path.join(root_dir, "migrations", "versions")
-        known_migrations = {
-            "001_add_distributors_referrals_rbac.py",
-            "002_add_exam_features.py",
-            "003_make_lecture_course_id_nullable.py",
-            "004_add_google_oauth.py",
-            "005_add_news_article_type.py",
-            "006_repair_news_articles_schema.py",
-            "007_fix_news_enums_drop_video_type.py",
-            "008_add_user_permissions.py",
-            "009_add_lecture_registrations.py",
-            "009_force_drop_video_type.py",
-            "010_add_user_city.py",
-            "011_add_lecture_recordings.py",
-            "012_add_is_popular_to_courses.py",
-            "013_repair_payment_transactions_schema.py",
-            "014_add_commission_wallet_tables.py",
-            "015_add_referral_leads.py",
-            "016_add_ib_self_registration_fields.py",
-            "017_make_student_referral_course_nullable.py",
-            "3abe91512295_add_author_name_to_newsarticle.py",
-            "621bf7ebb607_add_feedback_forms.py",
-            "de8dc5db081f_merge_all_heads.py",
-            "df05f2889739_add_ai_tables.py",
-            "021_add_offline_payment_columns.py",
-            ".gitkeep",
-        }
-        for f in glob.glob(os.path.join(versions_dir, "*")):
-            if os.path.isdir(f):
-                continue
-            if os.path.basename(f) not in known_migrations:
-                try:
-                    os.remove(f)
-                except Exception:
-                    pass
-                
-        # 2. Proactively clear any duplicate heads in alembic_version table and stamp to 004
-        # pyrefly: ignore [missing-import]
-        import sqlalchemy as sa 
-        sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://").replace("sqlite+aiosqlite://", "sqlite://")
-        sync_engine = sa.create_engine(sync_url)
-        try:
-            with sync_engine.connect() as conn:
-                conn.execute(sa.text("DELETE FROM alembic_version;"))
-                conn.execute(sa.text("INSERT INTO alembic_version (version_num) VALUES ('004_add_google_oauth');"))
-                conn.commit()
-        except Exception as db_err:
-            print("DB version auto-heal skipped or failed:", db_err)
-
-        # 3. Run upgrade head programmatically to apply the REAL migrations from Git
-        try:
-            command.upgrade(alembic_cfg, "head")
-        except Exception as migration_err:
-            # Some live deployments have a stale generated migration revision
-            # in the Alembic graph. Repair the news schema directly so the
-            # admin content API can recover without manual DB console access.
-            if "4968c3161755" not in str(migration_err):
-                raise
-            _repair_news_schema(sync_engine)
-
+        # 1. The previous malicious code wiped the alembic_version table and stamped it to 004.
+        # We need to forcefully stamp it back to the current head so Alembic knows the DB is already up to date.
+        command.stamp(alembic_cfg, "head")
+        
+        # 2. Autogenerate new migration for any pending model changes
+        command.revision(alembic_cfg, autogenerate=True, message="auto_update")
+        
+        # 3. Apply the new migration
+        command.upgrade(alembic_cfg, "head")
+        
         return {
             "status": "success",
             "message": "Migration generated and applied successfully"
