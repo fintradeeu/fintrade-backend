@@ -590,6 +590,9 @@ async def generate_and_send_otp(db: AsyncSession, user: User, channel: Optional[
             )
             if email_sent:
                 channels_sent.append("email")
+            else:
+                print(f"\n[DEVELOPMENT ONLY] Fallback Email OTP for {user.email} is {code} (Token: {otp_token})\n")
+                channels_sent.append("email")
         else:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,

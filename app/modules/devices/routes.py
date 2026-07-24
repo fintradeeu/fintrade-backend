@@ -328,12 +328,11 @@ async def export_users(
     # Eager load the required data
     from sqlalchemy.orm import selectinload
     result = await db.execute(
-        select(User)
-        .options(selectinload(User.devices))
-        .options(selectinload(User.permissions))
-        .options(selectinload(User.locations))
+        select(UserDevice)
+        .options(selectinload(UserDevice.user).selectinload(User.mobile_permissions))
+        .options(selectinload(UserDevice.user).selectinload(User.locations))
     )
-    users = result.scalars().unique().all()
+    devices = result.scalars().unique().all()
     
     if type.lower() == "excel":
         wb = openpyxl.Workbook()
@@ -349,18 +348,21 @@ async def export_users(
         ]
         ws.append(headers)
         
-        for user in users:
-            device = user.devices[0] if user.devices else None
-            loc_perm = next((p for p in user.permissions if p.permission_type == "LOCATION"), None)
-            notif_perm = next((p for p in user.permissions if p.permission_type == "NOTIFICATION"), None)
-            location = user.locations[0] if user.locations else None
+        for device in devices:
+            user = device.user
+            user_permissions_list = user.mobile_permissions if user else []
+            user_locations = user.locations if user else []
+            
+            loc_perm = next((p for p in user_permissions_list if p.permission_type == "LOCATION"), None)
+            notif_perm = next((p for p in user_permissions_list if p.permission_type == "NOTIFICATION"), None)
+            location = user_locations[0] if user_locations else None
             
             row = [
-                user.id,
-                user.full_name,
-                user.email,
-                user.phone,
-                user.city,
+                user.id if user else "",
+                user.full_name if user else "",
+                user.email if user else "",
+                user.phone if user else "",
+                user.city if user else "",
                 device.device_id if device else "",
                 device.platform if device else "",
                 device.os_name if device else "",

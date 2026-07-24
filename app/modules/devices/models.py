@@ -33,7 +33,7 @@ class UserDevice(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_updated = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
-    user = relationship("User", backref="devices")
+    user = relationship("User", backref="mobile_devices")
 
 class UserPermission(Base):
     __tablename__ = "user_permissions"
@@ -50,7 +50,7 @@ class UserPermission(Base):
     granted_date = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_updated = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
-    user = relationship("User", backref="permissions")
+    user = relationship("User", backref="mobile_permissions")
 
 class UserLocation(Base):
     __tablename__ = "user_locations"

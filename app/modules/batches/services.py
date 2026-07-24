@@ -500,6 +500,13 @@ async def enroll_student_in_batch(
 
 async def auto_enroll_student_in_active_batch(db: AsyncSession, user_id: int, course_id: int, price_paid: float = 0.0) -> Optional[StudentBatchEnrollment]:
     try:
+        # Check if user already has an active batch
+        current_batch = await get_student_current_batch(db, user_id)
+        if current_batch:
+            import logging
+            logging.getLogger(__name__).info(f"User {user_id} is already in batch {current_batch.id}. Skipping auto-enroll.")
+            return None
+
         now = datetime.now(timezone.utc)
         batch_stmt = (
             select(Batch)
