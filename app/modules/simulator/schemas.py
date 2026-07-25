@@ -197,3 +197,140 @@ class ReportResponse(BaseModel):
     generated_at: datetime
     summary: Dict[str, Any]
     rows: List[Dict[str, Any]]
+
+
+# ── Watchlist Schemas ────────────────────────────────────────────────
+class WatchlistAddRequest(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=20)
+    name: Optional[str] = None
+    exchange: Optional[str] = "NSE"
+    tv_symbol: Optional[str] = None
+
+
+class WatchlistResponse(BaseModel):
+    id: int
+    user_id: int
+    symbol: str
+    name: Optional[str] = None
+    exchange: str
+    tv_symbol: Optional[str] = None
+    added_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── User Settings Schemas ────────────────────────────────────────────
+class UserSettingsUpdateRequest(BaseModel):
+    default_timeframe: Optional[str] = "1m"
+    chart_theme: Optional[str] = "light"
+    default_quantity: Optional[float] = 50.0
+    beginner_mode: Optional[bool] = True
+    active_strategy_id: Optional[int] = None
+
+
+class UserSettingsResponse(BaseModel):
+    id: int
+    user_id: int
+    default_timeframe: str
+    chart_theme: str
+    default_quantity: float
+    beginner_mode: bool
+    active_strategy_id: Optional[int] = None
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Trading Journal Schemas ──────────────────────────────────────────
+class JournalCreateRequest(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=20)
+    side: str = Field(..., pattern="^(buy|sell)$")
+    trade_id: Optional[int] = None
+    pnl: Optional[float] = 0.0
+    notes: Optional[str] = None
+    emotion: str = "disciplined"
+    rating: int = Field(3, ge=1, le=5)
+    tags: Optional[List[str]] = None
+
+
+class JournalUpdateRequest(BaseModel):
+    notes: Optional[str] = None
+    emotion: Optional[str] = None
+    rating: Optional[int] = Field(None, ge=1, le=5)
+    tags: Optional[List[str]] = None
+
+
+class JournalResponse(BaseModel):
+    id: int
+    user_id: int
+    trade_id: Optional[int] = None
+    symbol: str
+    side: str
+    pnl: float
+    notes: Optional[str] = None
+    emotion: str
+    rating: int
+    ai_review: Optional[str] = None
+    tags: Optional[List[str]] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Strategy Schemas ─────────────────────────────────────────────────
+class StrategyCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    entry_rules: Optional[str] = None
+    exit_rules: Optional[str] = None
+    timeframe: str = "1day"
+
+
+class StrategyResponse(BaseModel):
+    id: int
+    user_id: int
+    name: str
+    description: Optional[str] = None
+    entry_rules: Optional[str] = None
+    exit_rules: Optional[str] = None
+    timeframe: str
+    win_rate: float
+    profit_factor: float
+    backtest_results: Optional[Dict[str, Any]] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Position / Risk Calculator Schemas ───────────────────────────────
+class PositionSizeCalcRequest(BaseModel):
+    account_balance: float = Field(..., gt=0)
+    risk_percentage: float = Field(..., gt=0, le=100)
+    entry_price: float = Field(..., gt=0)
+    stop_loss_price: float = Field(..., gt=0)
+
+
+class PositionSizeCalcResponse(BaseModel):
+    recommended_shares: int
+    recommended_position_value: float
+    monetary_risk_amount: float
+    risk_reward_ratio: Optional[float] = None
+
+
+# ── Advanced Analytics Schemas ───────────────────────────────────────
+class AdvancedAnalyticsResponse(BaseModel):
+    win_rate: float
+    loss_rate: float
+    profit_factor: float
+    average_profit: float
+    average_loss: float
+    largest_winner: float
+    largest_loser: float
+    max_drawdown: float
+    sharpe_ratio: float
+    equity_curve: List[Dict[str, Any]]
+    monthly_pnl: List[Dict[str, Any]]
+    emotion_breakdown: Dict[str, int]
+    total_trades: int
+

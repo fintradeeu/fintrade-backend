@@ -2,7 +2,7 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Response, status, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user, require_roles, require_student_kyc
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/simulator", tags=["Trading Simulator"])
 
 
 @router.get("/market-data", response_model=List[schemas.MarketQuoteResponse])
-async def get_market_data(symbols: str = Query("AAPL,MSFT,TSLA,NVDA,BTC/USD,EUR/USD")):
+async def get_market_data(symbols: str = Query("RELIANCE,TCS,HDFCBANK,INFY,SENSEX,NIFTY,TATAMOTORS,ICICIBANK,BTC/USD,AAPL")):
     """Server-side market quotes from Twelve Data. The API key never reaches the frontend."""
     selected = [symbol.strip() for symbol in symbols.split(",") if symbol.strip()]
     return await services.market_quotes(selected)
@@ -208,6 +208,165 @@ async def admin_student_dashboard(
         "wallet": schemas.WalletResponse.model_validate(data["wallet"]),
         "open_positions": [schemas.PositionResponse.model_validate(p) for p in data["open_positions"]],
         "closed_trades": [schemas.TradeResponse.model_validate(t) for t in data["closed_trades"]],
-        "order_history": data["order_history"],
         "performance": data["performance"],
     }
+
+
+# ── Watchlist Routes ─────────────────────────────────────────────────
+@router.get("/watchlist", response_model=List[schemas.WatchlistResponse])
+async def get_watchlist(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """Get persistent user watchlist (auto-seeds defaults if empty)."""
+    return await services.get_user_watchlist(db, current_user.id)
+
+
+@router.post("/watchlist", response_model=schemas.WatchlistResponse, status_code=status.HTTP_201_CREATED)
+async def add_watchlist_item(
+    req: schemas.WatchlistAddRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """Add a stock symbol to user's persistent watchlist."""
+    try:
+        return await services.add_to_watchlist(db, current_user.id, req.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+
+
+@router.delete("/watchlist/{symbol}", status_code=status.HTTP_200_OK)
+async def delete_watchlist_item(
+    symbol: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """Remove a symbol from persistent watchlist."""
+    removed = await services.remove_from_watchlist(db, current_user.id, symbol)
+    if not removed:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Symbol not found in watchlist")
+    return {"message": "Symbol removed successfully", "symbol": symbol.upper()}
+
+
+# ── User Settings Routes ─────────────────────────────────────────────
+@router.get("/settings", response_model=schemas.UserSettingsResponse)
+async def get_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """Get user's trading simulator preferences."""
+    return await services.get_user_settings(db, current_user.id)
+
+
+@router.put("/settings", response_model=schemas.UserSettingsResponse)
+async def update_settings(
+    req: schemas.UserSettingsUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """Update user's trading simulator preferences."""
+    return await services.update_user_settings(db, current_user.id, req.model_dump())
+
+
+# ── Trading Journal Routes ───────────────────────────────────────────
+@router.get("/journal", response_model=List[schemas.JournalResponse])
+async def list_journal_entries(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """List student's trading journal entries."""
+    return await services.get_journal_entries(db, current_user.id)
+
+
+@router.post("/journal", response_model=schemas.JournalResponse, status_code=status.HTTP_201_CREATED)
+async def create_journal(
+    req: schemas.JournalCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """Create a new trading journal entry."""
+    return await services.create_journal_entry(db, current_user.id, req.model_dump())
+
+
+@router.put("/journal/{entry_id}", response_model=schemas.JournalResponse)
+async def update_journal(
+    entry_id: int,
+    req: schemas.JournalUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """Update an existing journal entry."""
+    return await services.update_journal_entry(db, current_user.id, entry_id, req.model_dump())
+
+
+@router.delete("/journal/{entry_id}", status_code=status.HTTP_200_OK)
+async def delete_journal(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """Delete a trading journal entry."""
+    removed = await services.delete_journal_entry(db, current_user.id, entry_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+    return {"message": "Journal entry deleted successfully"}
+
+
+@router.post("/journal/{entry_id}/ai-review")
+async def generate_ai_trade_review(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """Generate an AI-powered educational review for a trade."""
+    return await services.generate_ai_review(db, current_user.id, entry_id)
+
+
+# ── Trading Strategies Routes ────────────────────────────────────────
+@router.get("/strategies", response_model=List[schemas.StrategyResponse])
+async def list_strategies(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """List user's custom trading strategies."""
+    return await services.get_strategies(db, current_user.id)
+
+
+@router.post("/strategies", response_model=schemas.StrategyResponse, status_code=status.HTTP_201_CREATED)
+async def create_trading_strategy(
+    req: schemas.StrategyCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """Create a new trading strategy for educational backtesting."""
+    return await services.create_strategy(db, current_user.id, req.model_dump())
+
+
+@router.post("/strategies/{strategy_id}/backtest")
+async def run_strategy_backtest(
+    strategy_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """Run an educational backtest for a strategy against historical data."""
+    return await services.backtest_strategy(db, current_user.id, strategy_id)
+
+
+# ── Position Size & Risk Calculator Routes ───────────────────────────
+@router.post("/calculator/position-size", response_model=schemas.PositionSizeCalcResponse)
+async def calc_position_size(
+    req: schemas.PositionSizeCalcRequest,
+    _user: User = Depends(require_student_kyc),
+):
+    """Calculate recommended position size and monetary risk."""
+    return services.calculate_position_size(req.model_dump())
+
+
+# ── Advanced Analytics Routes ────────────────────────────────────────
+@router.get("/analytics/advanced", response_model=schemas.AdvancedAnalyticsResponse)
+async def get_advanced_analytics(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student_kyc),
+):
+    """Get comprehensive trading analytics, ratios, equity curve, and emotion breakdown."""
+    return await services.get_advanced_analytics(db, current_user.id)

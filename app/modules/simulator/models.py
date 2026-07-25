@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     JSON,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -254,3 +255,99 @@ class PerformanceMetric(Base):
 
     def __repr__(self):
         return f"<PerformanceMetric account={self.account_id} pnl={self.total_pnl}>"
+
+
+class SimulatorWatchlist(Base):
+    """Persistent user watchlist for paper trading simulator."""
+    __tablename__ = "simulator_watchlists"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    name = Column(String(100), nullable=True)
+    exchange = Column(String(20), default="NSE")
+    tv_symbol = Column(String(50), nullable=True)
+    added_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "symbol", name="uq_user_simulator_watchlist_symbol"),
+    )
+
+    def __repr__(self):
+        return f"<SimulatorWatchlist user={self.user_id} symbol={self.symbol}>"
+
+
+class SimulatorUserSettings(Base):
+    """User-level simulator preferences and configurations."""
+    __tablename__ = "simulator_user_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    default_timeframe = Column(String(10), default="1m")
+    chart_theme = Column(String(20), default="light")
+    default_quantity = Column(Float, default=50.0)
+    beginner_mode = Column(Boolean, default=True)
+    active_strategy_id = Column(Integer, nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<SimulatorUserSettings user={self.user_id} timeframe={self.default_timeframe}>"
+
+
+class TradingJournalEntry(Base):
+    """Student trading journal entries with notes, emotions, and AI reviews."""
+    __tablename__ = "trading_journal_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    trade_id = Column(Integer, ForeignKey("trades.id", ondelete="SET NULL"), nullable=True)
+    symbol = Column(String(20), nullable=False)
+    side = Column(String(10), nullable=False)
+    pnl = Column(Float, default=0.0)
+    notes = Column(Text, nullable=True)
+    emotion = Column(String(30), default="disciplined")  # confident, fearful, greedy, fomo, disciplined, patient
+    rating = Column(Integer, default=3)  # 1 to 5 stars
+    ai_review = Column(Text, nullable=True)
+    tags = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<TradingJournalEntry id={self.id} symbol={self.symbol} rating={self.rating}>"
+
+
+class TradingStrategy(Base):
+    """Student or instructor trading strategies for educational backtesting."""
+    __tablename__ = "trading_strategies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    entry_rules = Column(Text, nullable=True)
+    exit_rules = Column(Text, nullable=True)
+    timeframe = Column(String(10), default="1day")
+    win_rate = Column(Float, default=0.0)
+    profit_factor = Column(Float, default=1.0)
+    backtest_results = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<TradingStrategy id={self.id} name={self.name}>"
+
+
+class PriceAlert(Base):
+    """User price alerts for real-time notification simulation."""
+    __tablename__ = "price_alerts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    symbol = Column(String(20), nullable=False)
+    target_price = Column(Float, nullable=False)
+    condition = Column(String(20), default="above")  # above, below
+    is_triggered = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    triggered_at = Column(DateTime(timezone=True), nullable=True)
+
+    def __repr__(self):
+        return f"<PriceAlert user={self.user_id} symbol={self.symbol} target={self.target_price}>"

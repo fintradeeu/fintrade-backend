@@ -103,6 +103,7 @@ async def list_activity_logs(
     result = await db.execute(
         select(models.ActivityLog)
         .options(selectinload(models.ActivityLog.user))
+        .options(selectinload(models.ActivityLog.log_metadata))
         .order_by(models.ActivityLog.created_at.desc())
         .offset(offset)
         .limit(limit)

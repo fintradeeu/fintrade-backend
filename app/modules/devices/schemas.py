@@ -22,8 +22,8 @@ class DeviceRegisterRequest(BaseModel):
     isEmulator: Optional[bool] = Field(False, alias="isEmulator")
 
 class DeviceLocationRequest(BaseModel):
-    latitude: float
-    longitude: float
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     permission: str
 
 class DeviceNotificationRequest(BaseModel):
