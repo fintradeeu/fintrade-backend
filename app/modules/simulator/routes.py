@@ -2,16 +2,31 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Query, Response, status, HTTPException, Body
+from fastapi import APIRouter, Depends, Query, Response, status, HTTPException, Body, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user, require_roles, require_student_kyc
 from app.db.database import get_db
 from app.modules.auth.models import User
 from app.modules.simulator import schemas, services
+from app.modules.simulator.ws import market_stream_manager
 from app.services.twelve_data_service import twelve_data_service
 
 router = APIRouter(prefix="/simulator", tags=["Trading Simulator"])
+
+
+@router.websocket("/ws/market")
+async def websocket_market_stream(websocket: WebSocket):
+    """Bidirectional WebSocket streaming real-time market ticks."""
+    await market_stream_manager.connect(websocket)
+    try:
+        while True:
+            message = await websocket.receive_text()
+            await market_stream_manager.handle_message(websocket, message)
+    except WebSocketDisconnect:
+        market_stream_manager.disconnect(websocket)
+    except Exception:
+        market_stream_manager.disconnect(websocket)
 
 
 @router.get("/market-data", response_model=List[schemas.MarketQuoteResponse])

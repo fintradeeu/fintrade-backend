@@ -99,12 +99,21 @@ class TwelveDataService:
         change = round(new_price - base["price"], 4)
         change_pct = round(fluc * 100, 4)
         
+        open_val = round(base["price"] * (1 - random.uniform(0, 0.003)), 4)
+        high_val = round(max(new_price, open_val) * (1 + random.uniform(0, 0.004)), 4)
+        low_val = round(min(new_price, open_val) * (1 - random.uniform(0, 0.004)), 4)
+        vol_val = int(random.uniform(15000, 350000))
+        
         price_data = {
             "symbol": sym_upper,
             "price": new_price,
             "change": change,
             "change_pct": change_pct,
             "timestamp": str(int(time.time())),
+            "open": open_val,
+            "high": high_val,
+            "low": low_val,
+            "volume": vol_val,
         }
         self._cache[sym_upper] = (time.time(), price_data)
         return price_data
@@ -185,12 +194,22 @@ class TwelveDataService:
                     return self._cache[sym_upper][1]
                 return self._generate_mock_price(sym_upper)
                 
+            price_val = float(price)
+            open_val = float(quote.get("open") or price_val)
+            high_val = float(quote.get("high") or max(price_val, open_val))
+            low_val = float(quote.get("low") or min(price_val, open_val))
+            volume_val = int(float(quote.get("volume") or 50000))
+
             price_data = {
                 "symbol": quote.get("symbol", symbol.upper()),
-                "price": float(price),
+                "price": price_val,
                 "change": float(quote.get("change") or 0),
                 "change_pct": float(quote.get("percent_change") or 0),
-                "timestamp": quote.get("timestamp") or quote.get("datetime"),
+                "timestamp": quote.get("timestamp") or quote.get("datetime") or str(int(time.time())),
+                "open": open_val,
+                "high": high_val,
+                "low": low_val,
+                "volume": volume_val,
             }
             self._cache[sym_upper] = (now, price_data)
             return price_data
@@ -270,12 +289,22 @@ class TwelveDataService:
                                 results[sym_upper] = self._generate_mock_price(sym_upper)
                             continue
                             
+                        price_val = float(price)
+                        open_val = float(quote.get("open") or price_val)
+                        high_val = float(quote.get("high") or max(price_val, open_val))
+                        low_val = float(quote.get("low") or min(price_val, open_val))
+                        volume_val = int(float(quote.get("volume") or 50000))
+
                         price_data = {
                             "symbol": quote.get("symbol", sym_upper),
-                            "price": float(price),
+                            "price": price_val,
                             "change": float(quote.get("change") or 0),
                             "change_pct": float(quote.get("percent_change") or 0),
-                            "timestamp": quote.get("timestamp") or quote.get("datetime"),
+                            "timestamp": quote.get("timestamp") or quote.get("datetime") or str(int(time.time())),
+                            "open": open_val,
+                            "high": high_val,
+                            "low": low_val,
+                            "volume": volume_val,
                         }
                         self._cache[sym_upper] = (now, price_data)
                         results[sym_upper] = price_data

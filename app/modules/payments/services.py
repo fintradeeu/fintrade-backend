@@ -121,11 +121,39 @@ async def initiate_payment(
     logger.info("payment_charge_amount", course_id=course_id, course_price=course.price,
                 coupon_code=coupon_code, discounted_price=discounted_price, charge_amount=charge_amount)
 
-    if charge_amount == 0.0:
-        raise HTTPException(
-            status_code=400, 
-            detail="Payment amount is 0. Please use the direct enrollment process for 100% discount."
-        )
+    if charge_amount < 1.0:
+        # Amount too small for payment gateway (e.g. 100% discount or < 1 INR), enroll directly
+        try:
+            await enroll_user(
+                db,
+                user_id=user.id,
+                course_id=course_id,
+                distributor_code=coupon_code,
+                paid_amount=0.0
+            )
+            try:
+                from app.modules.batches.services import enroll_student_in_batch_or_active
+                await enroll_student_in_batch_or_active(
+                    db, user_id=user.id, course_id=course_id, batch_id=batch_id, price_paid=0.0
+                )
+            except Exception as batch_err:
+                logger.error("free_enrollment_batch_failed", error=str(batch_err))
+                
+            await db.commit()
+        except Exception as e:
+            logger.error("free_enrollment_failed", error=str(e))
+            raise HTTPException(status_code=500, detail="Failed to enroll in free course")
+            
+        frontend_url = ""
+        if hasattr(settings, "CORS_ORIGINS") and settings.CORS_ORIGINS:
+            frontend_url = settings.CORS_ORIGINS.split(',')[0].strip()
+            
+        return {
+            "txnid": "FREE",
+            "gateway": "free",
+            "amount": 0,
+            "redirect_url": f"{frontend_url}/student/dashboard" if frontend_url else "/student/dashboard"
+        }
 
     # Entrance Exam Prerequisite Check (Removed from flow)
     # from app.modules.exams.models import EntranceExam, ExamResult

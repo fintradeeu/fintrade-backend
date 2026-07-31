@@ -116,6 +116,10 @@ async def lifespan(app: FastAPI):
         from app.utils.live_class_scheduler import live_class_scheduler_loop
         import asyncio
         asyncio.create_task(live_class_scheduler_loop())
+
+    # Start real-time trading simulator WebSocket ticker loop
+        from app.modules.simulator.ws import market_stream_manager
+        asyncio.create_task(market_stream_manager.start_broadcasting())
     except BaseException:
         import sys
         logging.basicConfig(level=logging.INFO)
@@ -125,6 +129,9 @@ async def lifespan(app: FastAPI):
         raise
 
     yield
+
+    from app.modules.simulator.ws import market_stream_manager
+    market_stream_manager.stop_broadcasting()
 
 
 app = FastAPI(
