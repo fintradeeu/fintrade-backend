@@ -307,6 +307,28 @@ async def create_distributor(
         phone=body.phone,
         city=body.city,
     )
+    
+    # Send email with credentials
+    from app.utils.smtp_notifications import send_email
+    import asyncio
+    subject = "Welcome to FinTrade Edutech - Distributor Account Details"
+    html_body = f"""
+    <html>
+      <body>
+        <p>Dear {body.full_name},</p>
+        <p>Your Distributor account has been successfully created.</p>
+        <p><strong>Login Details:</strong></p>
+        <ul>
+          <li><strong>Username:</strong> {body.email}</li>
+          <li><strong>Password:</strong> {body.password}</li>
+        </ul>
+        <p>You can now log in to the Distributor dashboard.</p>
+        <p>Best regards,<br>FinTrade Edutech Team</p>
+      </body>
+    </html>
+    """
+    asyncio.create_task(send_email(body.email, subject, html_body))
+    
     return UserResponse.model_validate(user)
 
 

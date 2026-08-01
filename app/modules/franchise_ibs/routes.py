@@ -30,6 +30,28 @@ async def register_franchise_ib(
     try:
         profile = await services.create_franchise_ib(db, data, created_by_admin=False)
         await db.commit()
+        
+        # Send email with credentials
+        from app.utils.smtp_notifications import send_email
+        import asyncio
+        subject = "Welcome to FinTrade Edutech - Franchise IB Account Details"
+        html_body = f"""
+        <html>
+          <body>
+            <p>Dear {data.full_name},</p>
+            <p>Your Franchise IB account has been successfully created.</p>
+            <p><strong>Login Details:</strong></p>
+            <ul>
+              <li><strong>Username:</strong> {data.email}</li>
+              <li><strong>Password:</strong> {data.password}</li>
+            </ul>
+            <p>You can now log in to the Franchise IB dashboard.</p>
+            <p>Best regards,<br>FinTrade Edutech Team</p>
+          </body>
+        </html>
+        """
+        asyncio.create_task(send_email(data.email, subject, html_body))
+        
         return profile
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
